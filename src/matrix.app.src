@@ -1,0 +1,12 @@
+{application, matrix,
+ [
+  {description, ""},
+  {vsn, git},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  %% {mod, { matrix_app, []}},
+  {env, []}
+ ]}.
