@@ -2,13 +2,18 @@
 %%% @copyright (C) 2017, Tony Rogvall
 %%% @doc
 %%%    flat tuple matrix version
+%%%
+%%%    benchmark:        PLAIN   NATIVE   NIF
+%%%               32x32  474     761      804
+%%%             100x100  16      26       24
+%%%
 %%% @end
 %%% Created : 22 Aug 2017 by Tony Rogvall <tony@rogvall.se>
 
 -module(matrix).
 
 %% -compile(native).
-
+%% -on_load(init/0).
 -export([normal/1, uniform/1, zero/1, identity/1]).
 -export([normal/2, uniform/2, zero/2, identity/2]).
 -export([add/2]).
@@ -25,12 +30,18 @@
 -export([row/2, column/2, sub_matrix/5]).
 -export([convolve/4, convolve/6]).
 -export([max/3, max/5, l2/3, l2/5]).
+-export([is_integer_matrix/1]).
 -export([filter/3, filter/5]).
 -export([fold_elems/7]).
+-export([rfold_elems/7]).
 -export([bench/1]).
 
 -type unsigned() :: non_neg_integer().
--type matrix() :: {unsigned(), unsigned(), tuple(number())}.
+-type matrix() :: {unsigned(), unsigned(), tuple()}.
+
+init() ->
+    Nif = filename:join(code:priv_dir(matrix), "matrix_drv"),
+    erlang:load_nif(Nif, 0).
 
 -spec normal({N::unsigned(), M::unsigned()}) -> matrix().
 normal({N,M}) ->
@@ -39,7 +50,7 @@ normal({N,M}) ->
 -spec normal(N::unsigned(), M::unsigned()) -> matrix().
 normal(N,M) when is_integer(N), N >= 1,
 		 is_integer(M), M >= 1 ->
-    {N,M,list_to_tuple(deep_random:normal_vector(N*M))}.
+    {N,M,list_to_tuple([standard_normal_() || _ <- lists:seq(1,N*M)])}.
 
 -spec uniform({N::unsigned(), M::unsigned()}) -> matrix().
 uniform({N,M}) ->
@@ -48,7 +59,7 @@ uniform({N,M}) ->
 -spec uniform(N::unsigned(), M::unsigned()) -> matrix().
 uniform(N,M) when is_integer(N), N >= 1,
 		  is_integer(M), M >= 1 ->
-    {N,M,list_to_tuple(deep_random:uniform_vector(N*M))}.
+    {N,M,list_to_tuple([uniform_() || _ <- lists:seq(1,N*M)])}.
 
 -spec zero({N::unsigned(), M::unsigned()}) -> matrix().
 zero({N,M}) ->
@@ -80,15 +91,6 @@ element(I,J,{_N,M,Xt}) ->
      
 -spec add(A::matrix(), B::matrix()) -> matrix().
 
-add({2,2,{X11,X12, X21,X22}},
-    {2,2,{Y11,Y12, Y21,Y22}}) ->
-    {2,2,{X11+Y11, X12+Y12, X21+Y21, X22+Y22}};
-add({3,3,{X11,X12,X13, X21,X22,X23, X31,X32,X33}},
-    {3,3,{Y11,Y12,Y13, Y21,Y22,Y23, Y31,Y32,Y33}}) ->
-    {3,3,
-     {X11+Y11, X12+Y12, X13+Y13,
-      X21+Y21, X22+Y22, X23+Y23,
-      X31+Y31, X32+Y32, X33+Y33}};
 add({N,M,X},{N,M,Y}) ->
     {N,M,list_to_tuple(add_(X,Y,N*M,[]))}.
 
@@ -128,22 +130,6 @@ scl_(F,Xt,I,Acc) ->
 
 -spec multiply(X::matrix(), Y::matrix()) -> matrix().
 
-multiply({2,2,{X11,X12,
-	       X21,X22}},
-	 {2,2,{Y11,Y12,
-	       Y21,Y22}}) ->
-    {2,2,{X11*Y11+X12*Y21, X11*Y12+X12*Y22,
-	  X21*Y11+X22*Y21, X21*Y12+X22*Y22}};
-multiply({3,3,{X11,X12,X13,
-	       X21,X22,X23,
-	       X31,X32,X33}},
-	 {3,3,{Y11,Y12,Y13,
-	       Y21,Y22,Y23,
-	       Y31,Y32,Y33}}) ->
-    {3,3,
-     {X11*Y11+X12*Y21+X13*Y31,X11*Y12+X12*Y22+X13*Y32,X11*Y13+X12*Y23+X13*Y33,
-      X21*Y11+X22*Y21+X23*Y31,X21*Y12+X22*Y22+X23*Y32,X21*Y13+X22*Y23+X23*Y33,
-      X31*Y11+X32*Y21+X33*Y31,X31*Y12+X32*Y22+X33*Y32,X31*Y13+X32*Y23+X33*Y33}};
 multiply({N,M,Xt}, {M,N,Yt}) ->
     {N,N,list_to_tuple(mult_(Xt,(N-1)*M+1,M, Yt,N,N, N*N, []))}.
 
@@ -384,6 +370,25 @@ format_element(X,0) when is_float(X) ->
 format_element(X,P) when is_float(X) ->
     lists:flatten(io_lib:format("~.*f", [P,X])).
 
+%% Standard normal distribute value
+standard_normal_() ->
+    normal_(0.0, 1.0).
+
+%% Generate a normal distributed random number
+%% S is the standard deviation = sqrt(CoVariance)
+normal_(M, S) when is_float(M), is_float(S), S > 0 ->
+    X1 = uniform_(),
+    X2 = uniform_(),
+    M + S*math:sqrt(-2*math:log(X1))*math:cos(2*math:pi()*X2).
+
+%% generate a double precision random number in [0-1)
+uniform_() ->
+    <<_:4,X:52>> = crypto:strong_rand_bytes(7),
+    <<F:64/float>> = <<16#3ff:12,X:52>>,
+    F - 1.
+
+uniform_(Min, Max) ->
+    Min + (uniform_()*(Max - Min )).
 		        
 bench(N) ->
     spawn(
