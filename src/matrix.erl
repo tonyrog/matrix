@@ -17,7 +17,7 @@
 -export([normal/2, uniform/2, zero/2, one/2, identity/2]).
 -export([normal/3, uniform/3, zero/3, one/3, identity/3]).
 -export([constant/4]).
--export([add/2,subtract/2,negate/1]).
+-export([add/2,subtract/2,times/2,negate/1]).
 -export([multiply/2, scale/2, square/1, pow/2]).
 -export([size/1, type/1]).
 -export([element/3]).
@@ -28,6 +28,7 @@
 -export([transpose/1]).
 -export([print/1, print/2, format/1, format/2]).
 -export([row/2, column/2, submatrix/5]).
+-export([argmax/1]).
 -export([convolve/4, convolve/6]).
 -export([rconvolve/4, rconvolve/6]).
 -export([max/3, max/5, l2/3, l2/5]).
@@ -415,6 +416,20 @@ subtract(X=#matrix{n=N,m=M,type=T1},
     new_(N,M,Type,Es).
 
 %%
+%% Multiply two matrices element wise
+%%
+-spec times(A::matrix(), B::matrix()) -> matrix().
+
+times(X=#matrix{n=N,m=M,type=T1},
+    Y=#matrix{n=N,m=M,type=T2}) ->
+    Type = type_combine(T1,T2),
+    Es = zipfoldr(
+	   fun(Xi,Yi,Acc) ->
+		   [number_to_bin(Type,Xi*Yi)|Acc]
+	   end, [], X, Y),
+    new_(N,M,Type,Es).
+
+%%
 %% Negate a matrix
 %%
 -spec negate(A::matrix()) -> matrix().
@@ -654,6 +669,22 @@ filter(W=#matrix{n=Nw,m=Mw}, B, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
 	   end, Nw, Mw, Sx, Sy, X),
     new_(((Nx-Nw) div Sx)+1, ((Mx-Mw) div Sy)+1, T, Es).
 
+%% 
+-spec argmax(A::matrix()) -> [integer()].
+argmax(A) ->
+    Al = to_list(A),
+    [ argmax_v(Ai) || Ai <- Al ].
+
+argmax_v([A|As]) ->
+    argmax_v(1, 0, A, As).
+
+argmax_v(I, _IMax, Max, [A|As]) when A > Max ->
+    argmax_v(I+1, I, A, As);
+argmax_v(I, IMax, Max, [_|As]) ->
+    argmax_v(I+1, IMax, Max, As);
+argmax_v(_I, IMax, _Max, []) ->
+    IMax.
+
 %%
 %% Scan embedded matrix data
 %%
@@ -789,8 +820,8 @@ format_element(X,Prec) when is_float(X) ->
 normal_bin(M,S,T) ->
     V = normal_(M,S),
     case T of
-	float64 -> <<V:64/native-float>>;
-	float32 -> <<V:32/native-float>>
+	?float64 -> <<V:64/native-float>>;
+	?float32 -> <<V:32/native-float>>
     end.
 
 %% Generate a normal distributed random number

@@ -107,9 +107,11 @@ static void matrix_unload(ErlNifEnv* env, void* priv_data);
 static ERL_NIF_TERM matrix_new(ErlNifEnv* env, int argc, 
 			       const ERL_NIF_TERM argv[]); 
 static ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, 
-			     const ERL_NIF_TERM argv[]);
+			       const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_subtract(ErlNifEnv* env, int argc, 
-			     const ERL_NIF_TERM argv[]);
+				    const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, 
+				 const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, 
 				    const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_negate(ErlNifEnv* env, int argc, 
@@ -118,6 +120,8 @@ static ERL_NIF_TERM matrix_transpose(ErlNifEnv* env, int argc,
 				     const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_sigmoid(ErlNifEnv* env, int argc, 
 				   const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_sigmoid_prime(ErlNifEnv* env, int argc, 
+					 const ERL_NIF_TERM argv[]);
 
 #if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 7))
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(0)}
@@ -127,13 +131,15 @@ static ERL_NIF_TERM matrix_sigmoid(ErlNifEnv* env, int argc,
 
 ErlNifFunc matrix_funcs[] =
 {
-    NIF_FUNC("new_",       4, matrix_new),
-    NIF_FUNC("add",        2, matrix_add),
-    NIF_FUNC("subtract",   2, matrix_subtract),
-    NIF_FUNC("multiply",   2, matrix_multiply),
-    NIF_FUNC("negate",     1, matrix_negate),
-    NIF_FUNC("transpose",  1, matrix_transpose),
-    NIF_FUNC("sigmoid",    1, matrix_sigmoid),
+    NIF_FUNC("new_",          4, matrix_new),
+    NIF_FUNC("add",           2, matrix_add),
+    NIF_FUNC("subtract",      2, matrix_subtract),
+    NIF_FUNC("times",         2, matrix_times),
+    NIF_FUNC("multiply",      2, matrix_multiply),
+    NIF_FUNC("negate",        1, matrix_negate),
+    NIF_FUNC("transpose",     1, matrix_transpose),
+    NIF_FUNC("sigmoid",       1, matrix_sigmoid),
+    NIF_FUNC("sigmoid_prime", 1, matrix_sigmoid_prime),
 };
 
 size_t element_size_[6] = { 1, 2, 4, 8, 4, 8 };
@@ -217,7 +223,7 @@ static void write_float(matrix_type_t type, byte_t* ptr, float64_t v)
 // comparison operators: ==, !=, <, <=, >, >=
 #define plus(x,y)  ((x)+(y))
 #define minus(x,y) ((x)-(y))
-#define times(x,y) ((x)*(y))
+#define mul(x,y)   ((x)*(y))
 #define div(x,y)   ((x)/(y))
 #define rem(x,y)   ((x)%(y))
 #define bxor(x,y)  ((x)^(y))
@@ -243,6 +249,12 @@ static void write_float(matrix_type_t type, byte_t* ptr, float64_t v)
 #define min(x,y)   (((x)<(y))?(x):(y))
 #define max(x,y)   (((x)>(y))?(x):(y))
 #define sigm(x)    (1.0/(1.0 + exp(-(x))))
+
+static inline float64_t sigm_prime(float64_t x)
+{
+    double z = sigm(x);
+    return z*(1-z);
+}
 
 #define MT_BINOP(name,fun,type)						\
 static void mt_##name##_(type* ap, size_t as, type* bp, size_t bs, type* cp, size_t cs, size_t n, size_t m) \
@@ -393,6 +405,24 @@ MT_BINVOP(add_float64,plus,float64_t)
 MT_BINVOP_SELECT(add)
 #endif
 
+MT_BINOP(times_int8,mul,int8_t)
+MT_BINOP(times_int16,mul,int16_t)
+MT_BINOP(times_int32,mul,int32_t)
+MT_BINOP(times_int64,mul,int64_t)
+MT_BINOP(times_float32,mul,float32_t)
+MT_BINOP(times_float64,mul,float64_t)
+MT_BINOP_SELECT(times)
+
+#ifdef USE_GCC_VECTOR
+MT_BINVOP(times_int8,mul,int8_t)
+MT_BINVOP(times_int16,mul,int16_t)
+MT_BINVOP(times_int32,mul,int32_t)
+MT_BINVOP(times_int64,mul,int64_t)
+MT_BINVOP(times_float32,mul,float32_t)
+MT_BINVOP(times_float64,mul,float64_t)
+MT_BINVOP_SELECT(times)
+#endif
+
 MT_BINOP(subtract_int8,minus,int8_t)
 MT_BINOP(subtract_int16,minus,int16_t)
 MT_BINOP(subtract_int32,minus,int32_t)
@@ -426,6 +456,14 @@ MT_UNOP(sigmoid_int64,sigm,int64_t)
 MT_UNOP(sigmoid_float32,sigm,float32_t)
 MT_UNOP(sigmoid_float64,sigm,float64_t)
 MT_UNOP_SELECT(sigmoid)
+
+MT_UNOP(sigmoid_prime_int8,sigm_prime,int8_t)
+MT_UNOP(sigmoid_prime_int16,sigm_prime,int16_t)
+MT_UNOP(sigmoid_prime_int32,sigm_prime,int32_t)
+MT_UNOP(sigmoid_prime_int64,sigm_prime,int64_t)
+MT_UNOP(sigmoid_prime_float32,sigm_prime,float32_t)
+MT_UNOP(sigmoid_prime_float64,sigm_prime,float64_t)
+MT_UNOP_SELECT(sigmoid_prime)
 
 #define MT_MULOP(name,type,atype)				      \
     static void mt_##name##_(type* ap,size_t as,size_t an, size_t am,	\
@@ -712,6 +750,69 @@ static void subtract(matrix_type_t at, byte_t* ap, size_t as,
 }
 
 
+static void times(matrix_type_t at, byte_t* ap, size_t as, 
+		  matrix_type_t bt, byte_t* bp, size_t bs,
+		  matrix_type_t ct, byte_t* cp, size_t cs,
+		  size_t n, size_t m)
+{
+    if ((at == bt) && (bt == ct)) {
+#ifdef USE_GCC_VECTOR
+	if (is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
+	    mtv_times_(at, ap, as, bp, bs, cp, cs, n, m);
+	else
+#endif
+	    mt_times_(at, ap, as, bp, bs, cp, cs, n, m);
+    }
+    else if (element_is_float(at) || element_is_float(bt) ||
+	     element_is_float(ct)) {
+	size_t elem_size_a = element_size(at);
+	size_t elem_size_b = element_size(bt);
+	size_t elem_size_c = element_size(ct);
+
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* bp1 = bp;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {
+		float64_t a = read_float(at, ap1);
+		float64_t b = read_float(bt, bp1);
+		ap += elem_size_a;
+		bp += elem_size_b;
+		write_float(ct, cp1, a*b);
+		cp1 += elem_size_c;
+	    }
+	    ap += as*elem_size_a;
+	    bp += bs*elem_size_b;
+	    cp += cs*elem_size_c;
+	}
+    }
+    else {
+	size_t elem_size_a = element_size(at);
+	size_t elem_size_b = element_size(bt);
+	size_t elem_size_c = element_size(ct);
+
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* bp1 = bp;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {
+		int64_t a = read_int(at, ap1);
+		int64_t b = read_int(bt, bp1);
+		ap += elem_size_a;
+		bp += elem_size_b;
+		write_int(ct, cp1, a*b);
+		cp1 += elem_size_c;
+	    }
+	    ap += as*elem_size_a;
+	    bp += bs*elem_size_b;
+	    cp += cs*elem_size_c;
+	}	
+    }
+}
+
+
 // a more general function for unary operations but slower
 static void apply1(int func,
 		   matrix_type_t at, byte_t* ap, size_t as,
@@ -851,6 +952,51 @@ static void sigmoid(matrix_type_t at, byte_t* ap, size_t as,
 		float64_t a = read_int(at, ap);
 		ap += elem_size_a;
 		write_int(ct, cp, sigm(a));
+		cp += elem_size_c;
+	    }
+	    ap1 += as*elem_size_a;
+	    cp1 += cs*elem_size_c;
+	}	
+    }    
+}
+
+static void sigmoid_prime(matrix_type_t at, byte_t* ap, size_t as,
+			  matrix_type_t ct, byte_t* cp, size_t cs,
+			  size_t n, size_t m)
+{
+    if (at == ct) {
+	mt_sigmoid_prime_(at, ap, as, cp, cs, n, m);
+    }
+    else if (element_is_float(at)) {
+	size_t elem_size_a = element_size(at);
+	size_t elem_size_c = element_size(ct);
+
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {
+		float64_t a = read_float(at, ap);
+		ap += elem_size_a;
+		write_float(ct, cp, sigm_prime(a));
+		cp += elem_size_c;
+	    }
+	    ap1 += as*elem_size_a;
+	    cp1 += cs*elem_size_c;
+	}
+    }
+    else {
+	size_t elem_size_a = element_size(at);
+	size_t elem_size_c = element_size(ct);
+
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {
+		float64_t a = read_int(at, ap);
+		ap += elem_size_a;
+		write_int(ct, cp, sigm_prime(a));
 		cp += elem_size_c;
 	    }
 	    ap1 += as*elem_size_a;
@@ -1198,6 +1344,40 @@ ERL_NIF_TERM matrix_subtract(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     return c_matrix;
 }
 
+// multiply two matrices element wise
+ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    matrix_t a, b;
+    byte_t* c_data;
+    matrix_type_t c_t;
+    ERL_NIF_TERM c_bin_term;
+    ERL_NIF_TERM c_matrix;
+    matrix_t* cp;
+    (void) argc;
+    
+    if (!get_matrix(env, argv[0], &a))
+	return enif_make_badarg(env);
+    if (!get_matrix(env, argv[1], &b))
+	return enif_make_badarg(env);
+    if ((a.n != b.n) || (a.m != b.m))
+	return enif_make_badarg(env);
+
+    c_t = combine_type(a.type, b.type);
+    if (!make_matrix_resource(env, a.n, a.m, c_t, &c_bin_term, &c_data, &cp))
+	return enif_make_badarg(env);
+    
+    enif_rwlock_rlock(a.rw_lock);
+    enif_rwlock_rlock(b.rw_lock);
+    times(a.type, a.data+a.byte_offset, a.stride,
+	  b.type, b.data+b.byte_offset, b.stride,
+	  c_t, c_data, cp->stride, a.n, a.m);
+    enif_rwlock_runlock(b.rw_lock);    
+    enif_rwlock_runlock(a.rw_lock);
+
+    c_matrix = make_matrix(env, a.n, a.m, c_t, cp, c_bin_term);
+    return c_matrix;
+}
+
 // multiply two matrices
 ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
@@ -1213,7 +1393,7 @@ ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
 	return enif_make_badarg(env);
     if (!get_matrix(env, argv[1], &b))
 	return enif_make_badarg(env);
-    if ((a.n != b.m) || (a.m != b.n))
+    if (a.m != b.n)
 	return enif_make_badarg(env);
 
     c_t = combine_type(a.type, b.type);
@@ -1283,6 +1463,32 @@ ERL_NIF_TERM matrix_sigmoid(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     sigmoid(a.type, a.data+a.byte_offset, a.stride,
 	    c_t, c_data+cp->byte_offset, cp->stride,
 	    a.n, a.m);
+    enif_rwlock_runlock(a.rw_lock);    
+    c_matrix = make_matrix(env, a.n, a.m, c_t, cp, c_bin_term);
+    return c_matrix;
+}
+
+// sigmoid a matrix
+ERL_NIF_TERM matrix_sigmoid_prime(ErlNifEnv* env, int argc,
+				  const ERL_NIF_TERM argv[])
+{
+    matrix_t a;
+    byte_t* c_data;
+    matrix_type_t c_t;
+    ERL_NIF_TERM c_bin_term;    
+    ERL_NIF_TERM c_matrix;
+    matrix_t* cp;
+    (void) argc;
+    
+    if (!get_matrix(env, argv[0], &a))
+	return enif_make_badarg(env);
+    c_t = a.type;
+    if (!make_matrix_resource(env, a.n, a.m, c_t, &c_bin_term, &c_data, &cp))
+	return enif_make_badarg(env);
+    enif_rwlock_rlock(a.rw_lock);
+    sigmoid_prime(a.type, a.data+a.byte_offset, a.stride,
+		  c_t, c_data+cp->byte_offset, cp->stride,
+		  a.n, a.m);
     enif_rwlock_runlock(a.rw_lock);    
     c_matrix = make_matrix(env, a.n, a.m, c_t, cp, c_bin_term);
     return c_matrix;
