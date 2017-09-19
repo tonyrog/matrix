@@ -1408,7 +1408,7 @@ ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     enif_rwlock_runlock(b.rw_lock);    
     enif_rwlock_runlock(a.rw_lock);
     
-    c_matrix = make_matrix(env, a.n, a.n, c_t, cp, c_bin_term);
+    c_matrix = make_matrix(env, a.n, b.m, c_t, cp, c_bin_term);
     return c_matrix;
 }
 
