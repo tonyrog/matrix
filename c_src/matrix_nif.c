@@ -53,10 +53,10 @@ typedef int64_t   vint64_t   __attribute__ ((vector_size (VSIZE)));
 typedef float32_t vfloat32_t __attribute__ ((vector_size (VSIZE)));
 typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
 
-#define vint8_t_zero {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
-#define vint16_t_zero {0,0,0,0,0,0,0,0}
-#define vint32_t_zero {0,0,0,0}
-#define vint64_t_zero {0,0}
+#define vint8_t_zero    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+#define vint16_t_zero   {0,0,0,0,0,0,0,0}
+#define vint32_t_zero   {0,0,0,0}
+#define vint64_t_zero   {0,0}
 #define vfloat32_t_zero {0,0,0,0}
 #define vfloat64_t_zero {0,0}
 #else
@@ -116,6 +116,8 @@ static ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc,
 				    const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_negate(ErlNifEnv* env, int argc, 
 				  const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_scale(ErlNifEnv* env, int argc, 
+				 const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_transpose(ErlNifEnv* env, int argc, 
 				     const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_sigmoid(ErlNifEnv* env, int argc, 
@@ -137,6 +139,7 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("times",         2, matrix_times),
     NIF_FUNC("multiply",      2, matrix_multiply),
     NIF_FUNC("negate",        1, matrix_negate),
+    NIF_FUNC("scale",         2, matrix_scale),
     NIF_FUNC("transpose",     1, matrix_transpose),
     NIF_FUNC("sigmoid",       1, matrix_sigmoid),
     NIF_FUNC("sigmoid_prime", 1, matrix_sigmoid_prime),
@@ -902,7 +905,7 @@ static void negate(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_int(at, ap);
+		int64_t a = read_int(at, ap);
 		ap += elem_size_a;
 		write_int(ct, cp, -a);
 		cp += elem_size_c;
@@ -913,6 +916,90 @@ static void negate(matrix_type_t at, byte_t* ap, size_t as,
     }    
 }
 
+
+static void scale_i(matrix_type_t at, byte_t* ap, size_t as,
+		    matrix_type_t ct, byte_t* cp, size_t cs,
+		    size_t n, size_t m, int64_t factor)
+{
+    if (element_is_float(at)) {
+	size_t elem_size_a = element_size(at);
+	size_t elem_size_c = element_size(ct);
+
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {
+		float64_t a = read_float(at, ap);
+		ap += elem_size_a;
+		write_float(ct, cp, a*factor);
+		cp += elem_size_c;
+	    }
+	    ap1 += as*elem_size_a;
+	    cp1 += cs*elem_size_c;
+	}
+    }
+    else {
+	size_t elem_size_a = element_size(at);
+	size_t elem_size_c = element_size(ct);
+
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {
+		int64_t a = read_int(at, ap);
+		ap += elem_size_a;
+		write_int(ct, cp, a*factor);
+		cp += elem_size_c;
+	    }
+	    ap1 += as*elem_size_a;
+	    cp1 += cs*elem_size_c;
+	}	
+    }    
+}
+
+static void scale_f(matrix_type_t at, byte_t* ap, size_t as,
+		    matrix_type_t ct, byte_t* cp, size_t cs,
+		    size_t n, size_t m, float64_t factor)
+{
+    if (element_is_float(at)) {
+	size_t elem_size_a = element_size(at);
+	size_t elem_size_c = element_size(ct);
+
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {
+		float64_t a = read_float(at, ap);
+		ap += elem_size_a;
+		write_float(ct, cp, a*factor);
+		cp += elem_size_c;
+	    }
+	    ap1 += as*elem_size_a;
+	    cp1 += cs*elem_size_c;
+	}
+    }
+    else {
+	size_t elem_size_a = element_size(at);
+	size_t elem_size_c = element_size(ct);
+
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {
+		int64_t a = read_int(at, ap);
+		ap += elem_size_a;
+		write_int(ct, cp, a*factor);
+		cp += elem_size_c;
+	    }
+	    ap1 += as*elem_size_a;
+	    cp1 += cs*elem_size_c;
+	}	
+    }    
+}
 
 
 static void sigmoid(matrix_type_t at, byte_t* ap, size_t as,
@@ -1438,6 +1525,43 @@ ERL_NIF_TERM matrix_negate(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	   a.type, a.data+a.byte_offset, a.stride,
 	   c_t, c_data+cp->byte_offset, cp->stride, a.n, a.m);
 #endif
+    enif_rwlock_runlock(a.rw_lock);
+    c_matrix = make_matrix(env, a.n, a.m, c_t, cp, c_bin_term);
+    return c_matrix;
+}
+
+// scale a matrix
+ERL_NIF_TERM matrix_scale(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    matrix_t a;
+    byte_t* c_data;
+    matrix_type_t c_t;
+    ERL_NIF_TERM c_bin_term;
+    ERL_NIF_TERM c_matrix;
+    matrix_t* cp;
+    ErlNifSInt64 i_scale;
+    double       f_scale;
+    int is_int;
+    (void) argc;
+    
+    if (!get_matrix(env, argv[1], &a))
+	return enif_make_badarg(env);
+    is_int = 1;
+    if (!enif_get_int64(env, argv[0], &i_scale)) {
+	if (!enif_get_double(env, argv[0], &f_scale))
+	    return enif_make_badarg(env);
+	is_int = 0;
+    }
+    c_t = a.type;
+    if (!make_matrix_resource(env, a.n, a.m, c_t, &c_bin_term, &c_data, &cp))
+	return enif_make_badarg(env);
+    enif_rwlock_rlock(a.rw_lock);
+    if (is_int) 
+	scale_i(a.type, a.data+a.byte_offset, a.stride,
+		c_t, c_data+cp->byte_offset, cp->stride, a.n, a.m, i_scale);
+    else
+	scale_f(a.type, a.data+a.byte_offset, a.stride,
+		c_t, c_data+cp->byte_offset, cp->stride, a.n, a.m, f_scale);
     enif_rwlock_runlock(a.rw_lock);
     c_matrix = make_matrix(env, a.n, a.m, c_t, cp, c_bin_term);
     return c_matrix;
