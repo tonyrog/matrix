@@ -53,12 +53,20 @@ typedef int64_t   vint64_t   __attribute__ ((vector_size (VSIZE)));
 typedef float32_t vfloat32_t __attribute__ ((vector_size (VSIZE)));
 typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
 
-#define vint8_t_zero    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
-#define vint16_t_zero   {0,0,0,0,0,0,0,0}
-#define vint32_t_zero   {0,0,0,0}
-#define vint64_t_zero   {0,0}
-#define vfloat32_t_zero {0,0,0,0}
-#define vfloat64_t_zero {0,0}
+#define vint8_t_const(a)    {(a),(a),(a),(a),(a),(a),(a),(a),\
+	                     (a),(a),(a),(a),(a),(a),(a),(a)}
+#define vint16_t_const(a)   {(a),(a),(a),(a),(a),(a),(a),(a)}
+#define vint32_t_const(a)   {(a),(a),(a),(a)}
+#define vint64_t_const(a)   {(a),(a)}
+#define vfloat32_t_const(a) {(a),(a),(a),(a)}
+#define vfloat64_t_const(a) {(a),(a)}
+
+#define vint8_t_zero    vint8_t_const(0)
+#define vint16_t_zero   vint16_t_const(0)
+#define vint32_t_zero   vint32_t_const(0)
+#define vint64_t_zero   vint64_t_const(0)
+#define vfloat32_t_zero vfloat32_t_const(0)
+#define vfloat64_t_zero vfloat64_t_const(0)
 #else
 #define ALIGN sizeof(void*)
 #endif
@@ -278,20 +286,6 @@ static void mt_##name##_(type* ap, size_t as, type* bp, size_t bs, type* cp, siz
     }									\
 }
 
-#define MT_BINOP_SELECT(name)						\
-static void mt_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* bp, size_t bs, byte_t* cp, size_t cs, size_t n, size_t m) \
-{ \
-  switch(type) { \
-  case INT8: mt_##name##_int8_((int8_t*)ap,as,(int8_t*)bp,bs,(int8_t*)cp,cs,n,m); break; \
-  case INT16: mt_##name##_int16_((int16_t*)ap,as,(int16_t*)bp,bs,(int16_t*)cp,cs,n,m); break; \
-  case INT32: mt_##name##_int32_((int32_t*)ap,as,(int32_t*)bp,bs,(int32_t*)cp,cs,n,m); break; \
-  case INT64: mt_##name##_int64_((int64_t*)ap,as,(int64_t*)bp,bs,(int64_t*)cp,cs,n,m); break; \
-  case FLOAT32: mt_##name##_float32_((float32_t*)ap,as,(float32_t*)bp,bs,(float32_t*)cp,cs,n,m); break; \
-  case FLOAT64: mt_##name##_float64_((float64_t*)ap,as,(float64_t*)bp,bs,(float64_t*)cp,cs,n,m); break; \
-  default: break;  \
-  }  \
-}
-
 // declare a binop that expand operators for each instance
 // only use if all vectors are VSIZE aligned
 #ifdef USE_GCC_VECTOR
@@ -322,7 +316,24 @@ static void mtv_##name##_(type* ap, size_t as, type* bp, size_t bs, type* cp, si
         cp += cs;							\
     }									\
 }
+#endif
 
+
+#define MT_BINOP_SELECT(name)						\
+static void mt_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* bp, size_t bs, byte_t* cp, size_t cs, size_t n, size_t m) \
+{ \
+  switch(type) { \
+  case INT8: mt_##name##_int8_((int8_t*)ap,as,(int8_t*)bp,bs,(int8_t*)cp,cs,n,m); break; \
+  case INT16: mt_##name##_int16_((int16_t*)ap,as,(int16_t*)bp,bs,(int16_t*)cp,cs,n,m); break; \
+  case INT32: mt_##name##_int32_((int32_t*)ap,as,(int32_t*)bp,bs,(int32_t*)cp,cs,n,m); break; \
+  case INT64: mt_##name##_int64_((int64_t*)ap,as,(int64_t*)bp,bs,(int64_t*)cp,cs,n,m); break; \
+  case FLOAT32: mt_##name##_float32_((float32_t*)ap,as,(float32_t*)bp,bs,(float32_t*)cp,cs,n,m); break; \
+  case FLOAT64: mt_##name##_float64_((float64_t*)ap,as,(float64_t*)bp,bs,(float64_t*)cp,cs,n,m); break; \
+  default: break;  \
+  }  \
+}
+
+#ifdef USE_GCC_VECTOR
 #define MT_BINVOP_SELECT(name)						\
 static void mtv_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* bp, size_t bs, byte_t* cp, size_t cs, size_t n, size_t m) \
 { \
@@ -336,9 +347,7 @@ static void mtv_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* bp,
   default: break;  \
   }  \
 }
-
 #endif
-
 
 
 #define MT_BINOP_FUN(name,ype)						\
@@ -376,6 +385,115 @@ static void mt_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, siz
     }									\
 }
 
+// declare a binop that expand operators for each instance
+// only use if all vectors are VSIZE aligned
+#ifdef USE_GCC_VECTOR
+#define MT_UNVOP(name,fun,type)						\
+static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m) \
+{									\
+    while(n--) {							\
+	type* ap1 = ap;							\
+	type* cp1 = cp;							\
+	size_t m1 = m;							\
+	while(m1 >= VELEMS(type)) {					\
+	    v##type a = *(v##type*)ap1;					\
+	    ap1 += VELEMS(type);					\
+	    *(v##type*)cp1 = fun(a);					\
+	    cp1 += VELEMS(type);					\
+	    m1  -= VELEMS(type);					\
+	}								\
+	while(m1--) {							\
+	    type a = *ap1++;						\
+	    *cp1++ = fun(a);						\
+	}								\
+        ap += as;							\
+        cp += cs;							\
+    }									\
+}
+
+#define MT_UNVOP1F(name,fun,type)					\
+static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,float64_t arg) \
+{									\
+    type sarg = arg;							\
+    v##type varg = v##type##_const(sarg);				\
+    while(n--) {							\
+	type* ap1 = ap;							\
+	type* cp1 = cp;							\
+	size_t m1 = m;							\
+	while(m1 >= VELEMS(type)) {					\
+	    v##type a = *(v##type*)ap1;					\
+	    ap1 += VELEMS(type);					\
+	    *(v##type*)cp1 = fun(a,varg);				\
+	    cp1 += VELEMS(type);					\
+	    m1  -= VELEMS(type);					\
+	}								\
+	while(m1--) {							\
+	    type a = *ap1++;						\
+	    *cp1++ = fun(a,arg);					\
+	}								\
+        ap += as;							\
+        cp += cs;							\
+    }									\
+}
+
+#define MT_UNVOP1I(name,fun,type)					\
+static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,int64_t arg) \
+{									\
+    type sarg = arg;							\
+    v##type varg = v##type##_const(sarg);				\
+    while(n--) {							\
+	type* ap1 = ap;							\
+	type* cp1 = cp;							\
+	size_t m1 = m;							\
+	while(m1 >= VELEMS(type)) {					\
+	    v##type a = *(v##type*)ap1;					\
+	    ap1 += VELEMS(type);					\
+	    *(v##type*)cp1 = fun(a,varg);				\
+	    cp1 += VELEMS(type);					\
+	    m1  -= VELEMS(type);					\
+	}								\
+	while(m1--) {							\
+	    type a = *ap1++;						\
+	    *cp1++ = fun(a,arg);					\
+	}								\
+        ap += as;							\
+        cp += cs;							\
+    }									\
+}
+#endif
+
+#define MT_UNOP1F(name,fun,type)					\
+static void mt_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,float64_t arg) \
+{									\
+    while(n--) {							\
+	type* ap1 = ap;							\
+	type* cp1 = cp;							\
+	size_t m1 = m;							\
+	while(m1--) {							\
+	    type a = *ap1++;						\
+	    *cp1++ = fun(a,arg);					\
+	}								\
+        ap += as;							\
+        cp += cs;							\
+    }									\
+}
+
+#define MT_UNOP1I(name,fun,type)					\
+static void mt_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,int64_t arg) \
+{									\
+    while(n--) {							\
+	type* ap1 = ap;							\
+	type* cp1 = cp;							\
+	size_t m1 = m;							\
+	while(m1--) {							\
+	    type a = *ap1++;						\
+	    *cp1++ = fun(a,arg);					\
+	}								\
+        ap += as;							\
+        cp += cs;							\
+    }									\
+}
+
 #define MT_UNOP_SELECT(name) \
 static void mt_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m) \
 { \
@@ -389,6 +507,81 @@ static void mt_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, 
   default: break;  \
   }  \
 }
+
+// Unary op with one floating point parameter
+#define MT_UNOP1F_SELECT(name) \
+static void mt_##name##_f_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, float64_t arg) \
+{ \
+  switch(type) { \
+  case INT8: mt_##name##_int8_float64_((int8_t*)ap,as,(int8_t*)cp,cs,n,m,arg); break; \
+  case INT16: mt_##name##_int16_float64_((int16_t*)ap,as,(int16_t*)cp,cs,n,m,arg); break; \
+  case INT32: mt_##name##_int32_float64_((int32_t*)ap,as,(int32_t*)cp,cs,n,m,arg); break; \
+  case INT64: mt_##name##_int64_float64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m,arg); break; \
+  case FLOAT32: mt_##name##_float32_float64_((float32_t*)ap,as,(float32_t*)cp,cs,n,m,arg); break; \
+  case FLOAT64: mt_##name##_float64_float64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m,arg); break; \
+  default: break;  \
+  }  \
+}
+
+// Unary op with one integer parameter
+#define MT_UNOP1I_SELECT(name) \
+static void mt_##name##_i_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, int64_t arg) \
+{ \
+  switch(type) { \
+  case INT8: mt_##name##_int8_int64_((int8_t*)ap,as,(int8_t*)cp,cs,n,m,arg); break; \
+  case INT16: mt_##name##_int16_int64_((int16_t*)ap,as,(int16_t*)cp,cs,n,m,arg); break; \
+  case INT32: mt_##name##_int32_int64_((int32_t*)ap,as,(int32_t*)cp,cs,n,m,arg); break; \
+  case INT64: mt_##name##_int64_int64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m,arg); break; \
+  case FLOAT32: mt_##name##_float32_int64_((float32_t*)ap,as,(float32_t*)cp,cs,n,m,arg); break; \
+  case FLOAT64: mt_##name##_float64_int64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m,arg); break; \
+  default: break;  \
+  }  \
+}
+
+#ifdef USE_GCC_VECTOR
+#define MT_UNVOP_SELECT(name) \
+static void mtv_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m) \
+{ \
+  switch(type) { \
+  case INT8: mtv_##name##_int8_((int8_t*)ap,as,(int8_t*)cp,cs,n,m); break; \
+  case INT16: mtv_##name##_int16_((int16_t*)ap,as,(int16_t*)cp,cs,n,m); break; \
+  case INT32: mtv_##name##_int32_((int32_t*)ap,as,(int32_t*)cp,cs,n,m); break; \
+  case INT64: mtv_##name##_int64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m); break; \
+  case FLOAT32: mtv_##name##_float32_((float32_t*)ap,as,(float32_t*)cp,cs,n,m); break; \
+  case FLOAT64: mtv_##name##_float64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m); break; \
+  default: break;  \
+  }  \
+}
+
+#define MT_UNVOP1F_SELECT(name) \
+static void mtv_##name##_f_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, float64_t arg) \
+{ \
+  switch(type) { \
+  case INT8: mtv_##name##_int8_float64_((int8_t*)ap,as,(int8_t*)cp,cs,n,m,arg); break; \
+  case INT16: mtv_##name##_int16_float64_((int16_t*)ap,as,(int16_t*)cp,cs,n,m,arg); break; \
+  case INT32: mtv_##name##_int32_float64_((int32_t*)ap,as,(int32_t*)cp,cs,n,m,arg); break; \
+  case INT64: mtv_##name##_int64_float64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m,arg); break; \
+  case FLOAT32: mtv_##name##_float32_float64_((float32_t*)ap,as,(float32_t*)cp,cs,n,m,arg); break; \
+  case FLOAT64: mtv_##name##_float64_float64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m,arg); break; \
+  default: break;  \
+  }  \
+}
+
+#define MT_UNVOP1I_SELECT(name) \
+static void mtv_##name##_i_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, int64_t arg) \
+{ \
+  switch(type) { \
+  case INT8: mtv_##name##_int8_int64_((int8_t*)ap,as,(int8_t*)cp,cs,n,m,arg); break; \
+  case INT16: mtv_##name##_int16_int64_((int16_t*)ap,as,(int16_t*)cp,cs,n,m,arg); break; \
+  case INT32: mtv_##name##_int32_int64_((int32_t*)ap,as,(int32_t*)cp,cs,n,m,arg); break; \
+  case INT64: mtv_##name##_int64_int64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m,arg); break; \
+  case FLOAT32: mtv_##name##_float32_int64_((float32_t*)ap,as,(float32_t*)cp,cs,n,m,arg); break; \
+  case FLOAT64: mtv_##name##_float64_int64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m,arg); break; \
+  default: break;  \
+  }  \
+}
+#endif
+
 
 MT_BINOP(add_int8,plus,int8_t)
 MT_BINOP(add_int16,plus,int16_t)
@@ -451,6 +644,53 @@ MT_UNOP(negate_int64,unary_minus,int64_t)
 MT_UNOP(negate_float32,unary_minus,float32_t)
 MT_UNOP(negate_float64,unary_minus,float64_t)
 MT_UNOP_SELECT(negate)
+
+#ifdef USE_GCC_VECTOR
+MT_UNVOP(negate_int8,unary_minus,int8_t)
+MT_UNVOP(negate_int16,unary_minus,int16_t)
+MT_UNVOP(negate_int32,unary_minus,int32_t)
+MT_UNVOP(negate_int64,unary_minus,int64_t)
+MT_UNVOP(negate_float32,unary_minus,float32_t)
+MT_UNVOP(negate_float64,unary_minus,float64_t)
+MT_UNVOP_SELECT(negate)
+#endif
+
+MT_UNOP1I(scale_int8_int64,mul,int8_t)
+MT_UNOP1I(scale_int16_int64,mul,int16_t)
+MT_UNOP1I(scale_int32_int64,mul,int32_t)
+MT_UNOP1I(scale_int64_int64,mul,int64_t)
+MT_UNOP1I(scale_float32_int64,mul,float32_t)
+MT_UNOP1I(scale_float64_int64,mul,float64_t)
+MT_UNOP1I_SELECT(scale)
+
+MT_UNOP1F(scale_int8_float64,mul,int8_t)
+MT_UNOP1F(scale_int16_float64,mul,int16_t)
+MT_UNOP1F(scale_int32_float64,mul,int32_t)
+MT_UNOP1F(scale_int64_float64,mul,int64_t)
+MT_UNOP1F(scale_float32_float64,mul,float32_t)
+MT_UNOP1F(scale_float64_float64,mul,float64_t)
+MT_UNOP1F_SELECT(scale)
+
+#ifdef USE_GCC_VECTOR
+MT_UNVOP1I(scale_int8_int64,mul,int8_t)
+MT_UNVOP1I(scale_int16_int64,mul,int16_t)
+MT_UNVOP1I(scale_int32_int64,mul,int32_t)
+MT_UNVOP1I(scale_int64_int64,mul,int64_t)
+MT_UNVOP1I(scale_float32_int64,mul,float32_t)
+MT_UNVOP1I(scale_float64_int64,mul,float64_t)
+MT_UNVOP1I_SELECT(scale)
+#endif
+
+#ifdef USE_GCC_VECTOR
+MT_UNVOP1F(scale_int8_float64,mul,int8_t)
+MT_UNVOP1F(scale_int16_float64,mul,int16_t)
+MT_UNVOP1F(scale_int32_float64,mul,int32_t)
+MT_UNVOP1F(scale_int64_float64,mul,int64_t)
+MT_UNVOP1F(scale_float32_float64,mul,float32_t)
+MT_UNVOP1F(scale_float64_float64,mul,float64_t)
+MT_UNVOP1F_SELECT(scale)
+#endif
+
 
 MT_UNOP(sigmoid_int8,sigm,int8_t)
 MT_UNOP(sigmoid_int16,sigm,int16_t)
@@ -839,6 +1079,7 @@ static void apply1(int func,
 		case RECTIFIER: c = max(0,a); break;
 		case TANH:      c = tanh(a); break;		
 		case NEGATE:    c = -a; break;
+		default:        c = 0; break;
 		}
 		write_float(ct, cp1, c);
 		cp1 += elem_size_c;
@@ -861,6 +1102,7 @@ static void apply1(int func,
 		case RECTIFIER: c = max(0,a); break;
 		case TANH:      c = tanh(a); break;		
 		case NEGATE:    c = -a; break;
+		default:        c = 0; break;		    
 		}
 		write_int(ct, cp1, c);
 		cp1 += elem_size_c;
@@ -876,7 +1118,12 @@ static void negate(matrix_type_t at, byte_t* ap, size_t as,
 		   size_t n, size_t m)
 {
     if (at == ct) {
-	mt_negate_(at, ap, as, cp, cs, n, m);
+#ifdef USE_GCC_VECTOR
+	if (is_aligned(ap) && is_aligned(cp))
+	    mtv_negate_(at, ap, as, cp, cs, n, m);
+	else
+#endif
+	    mt_negate_(at, ap, as, cp, cs, n, m);
     }
     else if (element_is_float(at)) {
 	size_t elem_size_a = element_size(at);
@@ -921,7 +1168,15 @@ static void scale_i(matrix_type_t at, byte_t* ap, size_t as,
 		    matrix_type_t ct, byte_t* cp, size_t cs,
 		    size_t n, size_t m, int64_t factor)
 {
-    if (element_is_float(at)) {
+    if (at == ct) {
+#ifdef USE_GCC_VECTOR
+	if (is_aligned(ap) && is_aligned(cp))
+	    mtv_scale_i_(at, ap, as, cp, cs, n, m, factor);
+	else
+#endif	
+	    mt_scale_i_(at, ap, as, cp, cs, n, m, factor);
+    }
+    else if (element_is_float(at)) {
 	size_t elem_size_a = element_size(at);
 	size_t elem_size_c = element_size(ct);
 
@@ -963,7 +1218,15 @@ static void scale_f(matrix_type_t at, byte_t* ap, size_t as,
 		    matrix_type_t ct, byte_t* cp, size_t cs,
 		    size_t n, size_t m, float64_t factor)
 {
-    if (element_is_float(at)) {
+    if (at == ct) {
+#ifdef USE_GCC_VECTOR
+	if (is_aligned(ap) && is_aligned(cp))
+	    mtv_scale_f_(at, ap, as, cp, cs, n, m, factor);
+	else
+#endif		
+	    mt_scale_f_(at, ap, as, cp, cs, n, m, factor);
+    }
+    else if (element_is_float(at)) {
 	size_t elem_size_a = element_size(at);
 	size_t elem_size_c = element_size(ct);
 
