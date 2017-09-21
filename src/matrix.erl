@@ -17,7 +17,10 @@
 -export([normal/2, uniform/2, zero/2, one/2, identity/2]).
 -export([normal/3, uniform/3, zero/3, one/3, identity/3]).
 -export([constant/4]).
--export([add/2,subtract/2,times/2,negate/1]).
+-export([add/2,add/3]).
+-export([subtract/2]).
+-export([times/2]).
+-export([negate/1]).
 -export([multiply/2, scale/2, square/1, pow/2]).
 -export([size/1, type/1]).
 -export([element/3]).
@@ -39,6 +42,11 @@
 -compile(export_all).
 
 -compile({no_auto_import,[size/1]}).
+
+-define(nif_stub,nif_stub_error(?LINE)).
+nif_stub_error(Line) ->
+    erlang:nif_error({nif_not_loaded,module,?MODULE,line,Line}).
+
 
 -define(int8,    0).
 -define(int16,   1).
@@ -392,14 +400,23 @@ zipfoldr_(F,A,N,J,M,
 %%
 -spec add(A::matrix(), B::matrix()) -> matrix().
 
-add(X=#matrix{n=N,m=M,type=T1},
-    Y=#matrix{n=N,m=M,type=T2}) ->
+add(A=#matrix{n=N,m=M,type=T1},
+    B=#matrix{n=N,m=M,type=T2}) ->
     Type = type_combine(T1,T2),
     Es = zipfoldr(
-	   fun(Xi,Yi,Acc) ->
-		   [number_to_bin(Type,Xi+Yi)|Acc]
-	   end, [], X, Y),
+	   fun(Ai,Bi,Acc) ->
+		   [number_to_bin(Type,Ai+Bi)|Acc]
+	   end, [], A, B),
     new_(N,M,Type,Es).
+
+%%
+%% add two matrices and destructivly store in destination.
+%% C = A + B
+%%
+-spec add(A::matrix(), B::matrix(), C::matrix()) -> matrix().
+
+add(_A, _B, _C) ->
+    ?nif_stub.    
 
 %%
 %% Subtract two matrices

@@ -143,6 +143,7 @@ ErlNifFunc matrix_funcs[] =
 {
     NIF_FUNC("new_",          4, matrix_new),
     NIF_FUNC("add",           2, matrix_add),
+    NIF_FUNC("add",           3, matrix_add),
     NIF_FUNC("subtract",      2, matrix_subtract),
     NIF_FUNC("times",         2, matrix_times),
     NIF_FUNC("multiply",      2, matrix_multiply),
@@ -289,7 +290,7 @@ static void mt_##name##_(type* ap, size_t as, type* bp, size_t bs, type* cp, siz
 // declare a binop that expand operators for each instance
 // only use if all vectors are VSIZE aligned
 #ifdef USE_GCC_VECTOR
-#define MT_BINVOP(name,fun,type)					\
+#define MTV_BINOP(name,fun,type)					\
 static void mtv_##name##_(type* ap, size_t as, type* bp, size_t bs, type* cp, size_t cs, size_t n, size_t m) \
 {									\
     while(n--) {							\
@@ -334,7 +335,7 @@ static void mt_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* bp, 
 }
 
 #ifdef USE_GCC_VECTOR
-#define MT_BINVOP_SELECT(name)						\
+#define MTV_BINOP_SELECT(name)						\
 static void mtv_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* bp, size_t bs, byte_t* cp, size_t cs, size_t n, size_t m) \
 { \
   switch(type) { \
@@ -388,7 +389,7 @@ static void mt_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, siz
 // declare a binop that expand operators for each instance
 // only use if all vectors are VSIZE aligned
 #ifdef USE_GCC_VECTOR
-#define MT_UNVOP(name,fun,type)						\
+#define MTV_UNOP(name,fun,type)						\
 static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m) \
 {									\
     while(n--) {							\
@@ -411,7 +412,7 @@ static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, si
     }									\
 }
 
-#define MT_UNVOP1F(name,fun,type)					\
+#define MTV_UNOP1F(name,fun,type)					\
 static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,float64_t arg) \
 {									\
     type sarg = arg;							\
@@ -436,7 +437,7 @@ static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, si
     }									\
 }
 
-#define MT_UNVOP1I(name,fun,type)					\
+#define MTV_UNOP1I(name,fun,type)					\
 static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,int64_t arg) \
 {									\
     type sarg = arg;							\
@@ -539,7 +540,7 @@ static void mt_##name##_i_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp
 }
 
 #ifdef USE_GCC_VECTOR
-#define MT_UNVOP_SELECT(name) \
+#define MTV_UNOP_SELECT(name) \
 static void mtv_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m) \
 { \
   switch(type) { \
@@ -553,7 +554,7 @@ static void mtv_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp,
   }  \
 }
 
-#define MT_UNVOP1F_SELECT(name) \
+#define MTV_UNOP1F_SELECT(name) \
 static void mtv_##name##_f_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, float64_t arg) \
 { \
   switch(type) { \
@@ -567,7 +568,7 @@ static void mtv_##name##_f_(matrix_type_t type, byte_t* ap, size_t as, byte_t* c
   }  \
 }
 
-#define MT_UNVOP1I_SELECT(name) \
+#define MTV_UNOP1I_SELECT(name) \
 static void mtv_##name##_i_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, int64_t arg) \
 { \
   switch(type) { \
@@ -592,13 +593,13 @@ MT_BINOP(add_float64,plus,float64_t)
 MT_BINOP_SELECT(add)
 
 #ifdef USE_GCC_VECTOR
-MT_BINVOP(add_int8,plus,int8_t)
-MT_BINVOP(add_int16,plus,int16_t)
-MT_BINVOP(add_int32,plus,int32_t)
-MT_BINVOP(add_int64,plus,int64_t)
-MT_BINVOP(add_float32,plus,float32_t)
-MT_BINVOP(add_float64,plus,float64_t)
-MT_BINVOP_SELECT(add)
+MTV_BINOP(add_int8,plus,int8_t)
+MTV_BINOP(add_int16,plus,int16_t)
+MTV_BINOP(add_int32,plus,int32_t)
+MTV_BINOP(add_int64,plus,int64_t)
+MTV_BINOP(add_float32,plus,float32_t)
+MTV_BINOP(add_float64,plus,float64_t)
+MTV_BINOP_SELECT(add)
 #endif
 
 MT_BINOP(times_int8,mul,int8_t)
@@ -610,13 +611,13 @@ MT_BINOP(times_float64,mul,float64_t)
 MT_BINOP_SELECT(times)
 
 #ifdef USE_GCC_VECTOR
-MT_BINVOP(times_int8,mul,int8_t)
-MT_BINVOP(times_int16,mul,int16_t)
-MT_BINVOP(times_int32,mul,int32_t)
-MT_BINVOP(times_int64,mul,int64_t)
-MT_BINVOP(times_float32,mul,float32_t)
-MT_BINVOP(times_float64,mul,float64_t)
-MT_BINVOP_SELECT(times)
+MTV_BINOP(times_int8,mul,int8_t)
+MTV_BINOP(times_int16,mul,int16_t)
+MTV_BINOP(times_int32,mul,int32_t)
+MTV_BINOP(times_int64,mul,int64_t)
+MTV_BINOP(times_float32,mul,float32_t)
+MTV_BINOP(times_float64,mul,float64_t)
+MTV_BINOP_SELECT(times)
 #endif
 
 MT_BINOP(subtract_int8,minus,int8_t)
@@ -628,13 +629,13 @@ MT_BINOP(subtract_float64,minus,float64_t)
 MT_BINOP_SELECT(subtract)
 
 #ifdef USE_GCC_VECTOR
-MT_BINVOP(subtract_int8,minus,int8_t)
-MT_BINVOP(subtract_int16,minus,int16_t)
-MT_BINVOP(subtract_int32,minus,int32_t)
-MT_BINVOP(subtract_int64,minus,int64_t)
-MT_BINVOP(subtract_float32,minus,float32_t)
-MT_BINVOP(subtract_float64,minus,float64_t)
-MT_BINVOP_SELECT(subtract)
+MTV_BINOP(subtract_int8,minus,int8_t)
+MTV_BINOP(subtract_int16,minus,int16_t)
+MTV_BINOP(subtract_int32,minus,int32_t)
+MTV_BINOP(subtract_int64,minus,int64_t)
+MTV_BINOP(subtract_float32,minus,float32_t)
+MTV_BINOP(subtract_float64,minus,float64_t)
+MTV_BINOP_SELECT(subtract)
 #endif
 
 MT_UNOP(negate_int8,unary_minus,int8_t)
@@ -646,13 +647,13 @@ MT_UNOP(negate_float64,unary_minus,float64_t)
 MT_UNOP_SELECT(negate)
 
 #ifdef USE_GCC_VECTOR
-MT_UNVOP(negate_int8,unary_minus,int8_t)
-MT_UNVOP(negate_int16,unary_minus,int16_t)
-MT_UNVOP(negate_int32,unary_minus,int32_t)
-MT_UNVOP(negate_int64,unary_minus,int64_t)
-MT_UNVOP(negate_float32,unary_minus,float32_t)
-MT_UNVOP(negate_float64,unary_minus,float64_t)
-MT_UNVOP_SELECT(negate)
+MTV_UNOP(negate_int8,unary_minus,int8_t)
+MTV_UNOP(negate_int16,unary_minus,int16_t)
+MTV_UNOP(negate_int32,unary_minus,int32_t)
+MTV_UNOP(negate_int64,unary_minus,int64_t)
+MTV_UNOP(negate_float32,unary_minus,float32_t)
+MTV_UNOP(negate_float64,unary_minus,float64_t)
+MTV_UNOP_SELECT(negate)
 #endif
 
 MT_UNOP1I(scale_int8_int64,mul,int8_t)
@@ -672,23 +673,23 @@ MT_UNOP1F(scale_float64_float64,mul,float64_t)
 MT_UNOP1F_SELECT(scale)
 
 #ifdef USE_GCC_VECTOR
-MT_UNVOP1I(scale_int8_int64,mul,int8_t)
-MT_UNVOP1I(scale_int16_int64,mul,int16_t)
-MT_UNVOP1I(scale_int32_int64,mul,int32_t)
-MT_UNVOP1I(scale_int64_int64,mul,int64_t)
-MT_UNVOP1I(scale_float32_int64,mul,float32_t)
-MT_UNVOP1I(scale_float64_int64,mul,float64_t)
-MT_UNVOP1I_SELECT(scale)
+MTV_UNOP1I(scale_int8_int64,mul,int8_t)
+MTV_UNOP1I(scale_int16_int64,mul,int16_t)
+MTV_UNOP1I(scale_int32_int64,mul,int32_t)
+MTV_UNOP1I(scale_int64_int64,mul,int64_t)
+MTV_UNOP1I(scale_float32_int64,mul,float32_t)
+MTV_UNOP1I(scale_float64_int64,mul,float64_t)
+MTV_UNOP1I_SELECT(scale)
 #endif
 
 #ifdef USE_GCC_VECTOR
-MT_UNVOP1F(scale_int8_float64,mul,int8_t)
-MT_UNVOP1F(scale_int16_float64,mul,int16_t)
-MT_UNVOP1F(scale_int32_float64,mul,int32_t)
-MT_UNVOP1F(scale_int64_float64,mul,int64_t)
-MT_UNVOP1F(scale_float32_float64,mul,float32_t)
-MT_UNVOP1F(scale_float64_float64,mul,float64_t)
-MT_UNVOP1F_SELECT(scale)
+MTV_UNOP1F(scale_int8_float64,mul,int8_t)
+MTV_UNOP1F(scale_int16_float64,mul,int16_t)
+MTV_UNOP1F(scale_int32_float64,mul,int32_t)
+MTV_UNOP1F(scale_int64_float64,mul,int64_t)
+MTV_UNOP1F(scale_float32_float64,mul,float32_t)
+MTV_UNOP1F(scale_float64_float64,mul,float64_t)
+MTV_UNOP1F_SELECT(scale)
 #endif
 
 
@@ -709,9 +710,9 @@ MT_UNOP(sigmoid_prime_float64,sigm_prime,float64_t)
 MT_UNOP_SELECT(sigmoid_prime)
 
 #define MT_MULOP(name,type,atype)				      \
-    static void mt_##name##_(type* ap,size_t as,size_t an, size_t am,	\
-			     type* bp,size_t bs,size_t bn, size_t bm,	\
-			     type* cp,size_t cs)			\
+static void mt_##name##_(type* ap,size_t as,size_t an, size_t am,	\
+			 type* bp,size_t bs,size_t bn, size_t bm,	\
+			 type* cp,size_t cs)				\
 { \
     size_t i, j, k;		    \
     (void) bn;			    \
@@ -895,8 +896,8 @@ static void add(matrix_type_t at, byte_t* ap, size_t as,
 	    while(m1--) {
 		float64_t a = read_float(at, ap1);
 		float64_t b = read_float(bt, bp1);
-		ap += elem_size_a;
-		bp += elem_size_b;
+		ap1 += elem_size_a;
+		bp1 += elem_size_b;
 		write_float(ct, cp1, a+b);
 		cp1 += elem_size_c;
 	    }
@@ -957,8 +958,8 @@ static void subtract(matrix_type_t at, byte_t* ap, size_t as,
 	    while(m1--) {
 		float64_t a = read_float(at, ap1);
 		float64_t b = read_float(bt, bp1);
-		ap += elem_size_a;
-		bp += elem_size_b;
+		ap1 += elem_size_a;
+		bp1 += elem_size_b;
 		write_float(ct, cp1, a-b);
 		cp1 += elem_size_c;
 	    }
@@ -980,8 +981,8 @@ static void subtract(matrix_type_t at, byte_t* ap, size_t as,
 	    while(m1--) {
 		int64_t a = read_int(at, ap1);
 		int64_t b = read_int(bt, bp1);
-		ap += elem_size_a;
-		bp += elem_size_b;
+		ap1 += elem_size_a;
+		bp1 += elem_size_b;
 		write_int(ct, cp1, a-b);
 		cp1 += elem_size_c;
 	    }
@@ -1020,8 +1021,8 @@ static void times(matrix_type_t at, byte_t* ap, size_t as,
 	    while(m1--) {
 		float64_t a = read_float(at, ap1);
 		float64_t b = read_float(bt, bp1);
-		ap += elem_size_a;
-		bp += elem_size_b;
+		ap1 += elem_size_a;
+		bp1 += elem_size_b;
 		write_float(ct, cp1, a*b);
 		cp1 += elem_size_c;
 	    }
@@ -1043,8 +1044,8 @@ static void times(matrix_type_t at, byte_t* ap, size_t as,
 	    while(m1--) {
 		int64_t a = read_int(at, ap1);
 		int64_t b = read_int(bt, bp1);
-		ap += elem_size_a;
-		bp += elem_size_b;
+		ap1 += elem_size_a;
+		bp1 += elem_size_b;
 		write_int(ct, cp1, a*b);
 		cp1 += elem_size_c;
 	    }
@@ -1084,8 +1085,8 @@ static void apply1(int func,
 		write_float(ct, cp1, c);
 		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}
     }
     else {
@@ -1107,8 +1108,8 @@ static void apply1(int func,
 		write_int(ct, cp1, c);
 		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}
     }
 }
@@ -1134,13 +1135,13 @@ static void negate(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_float(at, ap);
-		ap += elem_size_a;
-		write_float(ct, cp, -a);
-		cp += elem_size_c;
+		float64_t a = read_float(at, ap1);
+		ap1 += elem_size_a;
+		write_float(ct, cp1, -a);
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}
     }
     else {
@@ -1152,13 +1153,13 @@ static void negate(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		int64_t a = read_int(at, ap);
-		ap += elem_size_a;
-		write_int(ct, cp, -a);
-		cp += elem_size_c;
+		int64_t a = read_int(at, ap1);
+		ap1 += elem_size_a;
+		write_int(ct, cp1, -a);
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}	
     }    
 }
@@ -1185,13 +1186,13 @@ static void scale_i(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_float(at, ap);
-		ap += elem_size_a;
-		write_float(ct, cp, a*factor);
-		cp += elem_size_c;
+		float64_t a = read_float(at, ap1);
+		ap1 += elem_size_a;
+		write_float(ct, cp1, a*factor);
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}
     }
     else {
@@ -1203,13 +1204,13 @@ static void scale_i(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		int64_t a = read_int(at, ap);
-		ap += elem_size_a;
-		write_int(ct, cp, a*factor);
-		cp += elem_size_c;
+		int64_t a = read_int(at, ap1);
+		ap1 += elem_size_a;
+		write_int(ct, cp1, a*factor);
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}	
     }    
 }
@@ -1235,13 +1236,13 @@ static void scale_f(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_float(at, ap);
-		ap += elem_size_a;
-		write_float(ct, cp, a*factor);
-		cp += elem_size_c;
+		float64_t a = read_float(at, ap1);
+		ap1 += elem_size_a;
+		write_float(ct, cp1, a*factor);
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}
     }
     else {
@@ -1253,13 +1254,13 @@ static void scale_f(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		int64_t a = read_int(at, ap);
-		ap += elem_size_a;
-		write_int(ct, cp, a*factor);
-		cp += elem_size_c;
+		int64_t a = read_int(at, ap1);
+		ap1 += elem_size_a;
+		write_int(ct, cp1, a*factor);
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}	
     }    
 }
@@ -1281,13 +1282,13 @@ static void sigmoid(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_float(at, ap);
-		ap += elem_size_a;
-		write_float(ct, cp, sigm(a));
-		cp += elem_size_c;
+		float64_t a = read_float(at, ap1);
+		ap1 += elem_size_a;
+		write_float(ct, cp1, sigm(a));
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}
     }
     else {
@@ -1299,13 +1300,13 @@ static void sigmoid(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_int(at, ap);
-		ap += elem_size_a;
-		write_int(ct, cp, sigm(a));
-		cp += elem_size_c;
+		float64_t a = read_int(at, ap1);
+		ap1 += elem_size_a;
+		write_int(ct, cp1, sigm(a));
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}	
     }    
 }
@@ -1326,13 +1327,13 @@ static void sigmoid_prime(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_float(at, ap);
-		ap += elem_size_a;
-		write_float(ct, cp, sigm_prime(a));
-		cp += elem_size_c;
+		float64_t a = read_float(at, ap1);
+		ap1 += elem_size_a;
+		write_float(ct, cp1, sigm_prime(a));
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}
     }
     else {
@@ -1344,13 +1345,13 @@ static void sigmoid_prime(matrix_type_t at, byte_t* ap, size_t as,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_int(at, ap);
-		ap += elem_size_a;
-		write_int(ct, cp, sigm_prime(a));
-		cp += elem_size_c;
+		float64_t a = read_int(at, ap1);
+		ap1 += elem_size_a;
+		write_int(ct, cp1, sigm_prime(a));
+		cp1 += elem_size_c;
 	    }
-	    ap1 += as*elem_size_a;
-	    cp1 += cs*elem_size_c;
+	    ap += as*elem_size_a;
+	    cp += cs*elem_size_c;
 	}	
     }    
 }
@@ -1626,6 +1627,15 @@ ERL_NIF_TERM matrix_new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 }
 
 // add two matrices
+//   A  B
+//   A  A
+//
+//   A  B  C
+//   A  A  C
+//   A  C  C
+//   C  B  C
+//   C  C  C
+//
 ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     matrix_t a, b;
@@ -1634,7 +1644,6 @@ ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     ERL_NIF_TERM c_bin_term;
     ERL_NIF_TERM c_matrix;
     matrix_t* cp;
-    (void) argc;
     
     if (!get_matrix(env, argv[0], &a))
 	return enif_make_badarg(env);
@@ -1642,22 +1651,39 @@ ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	return enif_make_badarg(env);
     if ((a.n != b.n) || (a.m != b.m))
 	return enif_make_badarg(env);
+    if (argc == 2) {
+	c_t = combine_type(a.type, b.type);
+	if (!make_matrix_resource(env,a.n,a.m,c_t,&c_bin_term,&c_data,&cp))
+	    return enif_make_badarg(env);
+	enif_rwlock_rlock(a.rw_lock);
+	enif_rwlock_rlock(b.rw_lock);
+	add(a.type, a.data+a.byte_offset, a.stride,
+	    b.type, b.data+b.byte_offset, b.stride,
+	    c_t, c_data, cp->stride, a.n, a.m);
+	enif_rwlock_runlock(b.rw_lock);    
+	enif_rwlock_runlock(a.rw_lock);
 
-    c_t = combine_type(a.type, b.type);
-    if (!make_matrix_resource(env, a.n, a.m, c_t, &c_bin_term, &c_data, &cp))
-	return enif_make_badarg(env);
-    
-    enif_rwlock_rlock(a.rw_lock);
-    enif_rwlock_rlock(b.rw_lock);
-    add(a.type, a.data+a.byte_offset, a.stride,
-	b.type, b.data+b.byte_offset, b.stride,
-	c_t, c_data, cp->stride, a.n, a.m);
-    enif_rwlock_runlock(b.rw_lock);    
-    enif_rwlock_runlock(a.rw_lock);
+	c_matrix = make_matrix(env, a.n, a.m, c_t, cp, c_bin_term);
+	return c_matrix;
+    }
+    else {  // argc == 3
+	matrix_t c;
+	if (!get_matrix(env, argv[2], &c))
+	    return enif_make_badarg(env);
+	if ((a.n != c.n) || (a.m != c.m))
+	    return enif_make_badarg(env);
 
-
-    c_matrix = make_matrix(env, a.n, a.m, c_t, cp, c_bin_term);
-    return c_matrix;
+	if (c.rw_lock != a.rw_lock) enif_rwlock_rlock(a.rw_lock);
+	if (c.rw_lock != b.rw_lock) enif_rwlock_rlock(b.rw_lock);
+	enif_rwlock_rwlock(c.rw_lock);
+	add(a.type, a.data+a.byte_offset, a.stride,
+	    b.type, b.data+b.byte_offset, b.stride,
+	    c.type, c.data+c.byte_offset, c.stride, c.n, c.m);
+	enif_rwlock_rwunlock(c.rw_lock);
+	if (c.rw_lock != b.rw_lock) enif_rwlock_runlock(b.rw_lock);
+	if (c.rw_lock != a.rw_lock) enif_rwlock_runlock(a.rw_lock);
+	return argv[2];
+    }
 }
 
 // subtract two matrices
