@@ -10,10 +10,10 @@
 -compile(export_all).
 -export([test_add/0]).
 -export([test_sub/0]).
-
--export([bench_mul/1, bench_mul/2, bench_mul/3]).
+-export([bench_multiply/1]).
 -export([bench_add/1]).
--export([bench_neg/1]).
+-export([bench_times/1]).
+-export([bench_negate/1]).
 
 %% test basic operation
 
@@ -44,12 +44,25 @@ test_sub(N,M,T) ->
     Ref = matrix:to_list(C),
     ok.
 
-test_neg() ->
-    test_neg(4,4,int8),
-    test_neg(24,24,int16),
-    test_neg(128,128,int32).
+test_times() ->
+    test_times(4,4,int16),
+    test_times(24,24,int32),
+    test_times(128,128,int32).
 
-test_neg(N,M,T) ->
+test_times(N,M,T) ->
+    A = make(N,M,T),
+    B = make(N,M,T),
+    C = matrix:times(A,B),
+    Ref = [[J*J || J <- lists:seq(I,I+M-1)] || I <- lists:seq(1,N*M,M)],
+    Ref = matrix:to_list(C),
+    ok.
+
+test_negate() ->
+    test_negate(4,4,int8),
+    test_negate(24,24,int16),
+    test_negate(128,128,int32).
+
+test_negate(N,M,T) ->
     A = make(N,M,T),
     C = matrix:negate(A),
     Ref = [[-J || J <- lists:seq(I,I+M-1)] || I <- lists:seq(1,N*M,M)],
@@ -351,9 +364,8 @@ make(N,M,T) ->
 %%%
 %%%  multiply(float32): PLAIN   NATIVE   NIF(-O3)/PAR
 %%%              32x32  144     285      66666
-%%%            100x100  5                4048
-%%%            128x128                   1785
-%%%            256x256                   255  / 393
+%%%            128x128                   2016
+%%%            256x256                   257  / 393
 %%%            512x512                   30
 %%%          1024x1024                   3
 %%%          2048x2048                   0.36
@@ -363,37 +375,17 @@ make(N,M,T) ->
 %%%              32x32  3048    5714     250000
 %%%            100x100   296    518      34482
 
-bench_mul(N) ->
-    bench_mul(N,float32,1000).
-
-bench_mul(N,T) ->
-    bench_mul(N,T,1000).
-
-bench_mul(N,T,L) ->
-    spawn(
-      fun() ->
-	      A = matrix:uniform(N,N,T),
-	      B = matrix:uniform(N,N,T),
-	      T0 = erlang:system_time(milli_seconds),
-	      bench_mul_loop(L,A,B,undefined),
-	      T1 = erlang:system_time(milli_seconds),
-	      io:format("~s: mult~wx~w/s = ~.2f time=~.f\n",
-			[?MODULE, N, N, 1000*(L / (T1-T0)), (T1-T0)/1000])
-      end).
-
-bench_mul_loop(0, _, _, _) ->
-    ok;
-bench_mul_loop(I, A, B, _) ->
-    C = matrix:multiply(A, B),
-    bench_mul_loop(I-1,A,B,C).
+bench_multiply(N) -> bench_multiply(N,float32,1000).
+bench_multiply(N,T) -> bench_multiply(N,T,1000).
+bench_multiply(N,T,L) -> bench(N,fun(A,B) -> matrix:multiply(A,B) end, T, L).
+bench_multiply_table() ->
+    bench_table("matrix:multiply/2",
+		fun(A,B) -> matrix:multiply(A,B) end).
 
 %% parallell version using parlists
 %
-bench_pmul(N) ->
-    bench_pmul(N,float32,1000).
-
-bench_pmul(N,T) ->
-    bench_pmul(N,T,1000).
+bench_pmul(N) -> bench_pmul(N,float32,1000).
+bench_pmul(N,T) -> bench_pmul(N,T,1000).
 
 bench_pmul(N,T,L) ->
     spawn(
@@ -414,40 +406,97 @@ bench_pmul_loop(I, A, B, _) ->
     bench_pmul_loop(I-1,A,B,C).
 
 
-bench_add(N) ->
-    spawn(
-      fun() ->
-	      A = matrix:uniform(N,N,float32),
-	      B = matrix:uniform(N,N,float32),
-	      L = 1000,
-	      T0 = erlang:system_time(milli_seconds),
-	      bench_add_loop(L,A,B,undefined),
-	      T1 = erlang:system_time(milli_seconds),
-	      io:format("~s: mult~wx~w/s = ~.2f\n",
-			[?MODULE, N, N, 1000*(L / (T1-T0))])
-      end).
+bench_add(N) -> bench_add(N,float32,1000).
+bench_add(N,T) -> bench_add(N,T,1000).
+bench_add(N,T,L) -> bench(N,fun(A,B) -> matrix:add(A,B) end, T, L).
+bench_add_table() ->
+    bench_table("matrix:add/2",
+		fun(A,B) -> matrix:add(A,B) end).
+    
+%%
+%%  T=float32
+%%  N            NIF
+%%  32           500000
+%%  64           333333
+%%  128          83333
+%%  256          20833
+%%  512          4201
+%%  1024         684
+%%  2048         176
+%%  4096         37
+%%
 
-bench_add_loop(0, _, _, _) ->
-    ok;
-bench_add_loop(I, A, B, _) ->
-    C = matrix:add(A, B),
-    bench_add_loop(I-1,A,B,C).
+bench_times(N) -> bench_times(N,float32,1000).
+bench_times(N,T) -> bench_times(N,T,1000).
+bench_times(N,T,L) -> bench(N,fun(A,B) -> matrix:times(A,B) end, T, L).
+bench_times_table() -> 
+    bench_table("matrix:times/2", 
+		fun(A,B) -> matrix:times(A,B) end).
+
+bench_negate(N) -> bench_negate(N,float32,1000).
+bench_negate(N,T) -> bench_negate(N,T,1000).
+bench_negate(N,T,L) -> bench(N,fun(A,_) -> matrix:negate(A) end, T, L).
+bench_negate_table() -> bench_table("matrix:negate/1", 
+				    fun(A,_) -> matrix:negate(A) end).
+
+    
+
+%%
+%% Bench loop / table
+%%
+bench_table(Name,F) ->
+    bench_table(Name,F,float32).
+
+bench_table(Name,F,T) ->
+    io:format("~s / ~w\n\n", [Name,T]),
+    io:format("| NxN        | op/s   |\n"),
+    io:format("|------------|--------|\n"),
+    bench(32,F,T,  131072),
+    bench(64,F,T,  65536),
+    bench(128,F,T, 65536),
+    bench(256,F,T, 256),
+    bench(512,F,T, 64),
+    bench(1024,F,T,8),
+    bench(2048,F,T,4),
+    bench(4096,F,T,2).
+
+bench(N,F,T,L) ->
+    SELF = self(),
+    {Pid,Mon} =
+	spawn_monitor(
+	  fun() ->
+		  A = matrix:uniform(N,N,T),
+		  B = matrix:uniform(N,N,T),
+		  T0 = os:timestamp(),
+		  R = bench_loop(L,F,A,B,undefined),
+		  erlang:yield(),
+		  T1 = os:timestamp(),
+		  Ts = timer:now_diff(T1,T0)/1000000,
+		  SELF ! {self(),R,Ts}
+	  end),
+    receive
+	{'DOWN',Mon,process,Pid,_Reason} ->
+	    io:format("|   ~wx~w   | CRASH  |  r=~ps\n",
+		      [N,N, _Reason]);
+	{Pid,_R,Ts} ->
+	    io:format("|   ~wx~w   | ~.2f  |  t=~fs\n",
+		      [N, N, (L/Ts), Ts]),
+	    receive
+		{'DOWN',Mon,process,Pid,normal} ->
+		    ok;
+		{'DOWN',Mon,process,Pid,_Reason} ->
+		    io:format("Reason = ~w\n", [_Reason]),
+		    ok
+	    end
+    end.
 
 
-bench_neg(N) ->
-    spawn(
-      fun() ->
-	      A = matrix:uniform(N,N,float32),
-	      L = 1000,
-	      T0 = erlang:system_time(milli_seconds),
-	      bench_neg_loop(L,A,undefined),
-	      T1 = erlang:system_time(milli_seconds),
-	      io:format("~s: mult~wx~w/s = ~.2f\n",
-			[?MODULE, N, N, 1000*(L / (T1-T0))])
-      end).
+%% loop that keeps the latest result
+bench_loop(0, _F, _, _, _) ->
+    0;
+bench_loop(I, F, A, B, _) ->
+    C = F(A,B),
+    bench_loop(I-1,F,A,B,C).
 
-bench_neg_loop(0, _, _) ->
-    ok;
-bench_neg_loop(I, A, _) ->
-    C = matrix:negate(A),
-    bench_neg_loop(I-1,A,C).
+
+

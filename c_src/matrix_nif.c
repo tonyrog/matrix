@@ -86,9 +86,21 @@ typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
 #define LOAD_ATOM(name)			\
     atm_##name = enif_make_atom(env,#name)
 
-#define LOAD_ATOM_STRING(name,string)			\
+#define LOAD_ATOM_STRING(name,string)		\
     atm_##name = enif_make_atom(env,string)
 
+#define CAT_HELPER3(p,x,y) p ## x ## y
+#define CAT3(p,x,y) CAT_HELPER3(p,x,y)
+
+#define CAT_HELPER2(x,y) x ## y
+#define CAT2(x,y) CAT_HELPER2(x,y)
+
+#define MT_NAME(p,x) CAT3(p,NAME,x)
+#define VTYPE        CAT2(v,TYPE)
+#define VTYPE_ZERO   CAT3(v,TYPE,_zero)
+#define VTYPE_CONST(name) CAT3(v,TYPE,_const)(name)
+
+    
 // FIXME: each row MUST be vector aligned!!!
 // this means that rows must be padded with zeros
 typedef struct {
@@ -133,7 +145,10 @@ static ERL_NIF_TERM matrix_sigmoid(ErlNifEnv* env, int argc,
 static ERL_NIF_TERM matrix_sigmoid_prime(ErlNifEnv* env, int argc, 
 					 const ERL_NIF_TERM argv[]);
 
-#if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 7))
+#if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 12))
+#warning "DIRTY"
+#define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
+#elif (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 7))
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(0)}
 #else
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr)}
@@ -233,641 +248,963 @@ static void write_float(matrix_type_t type, byte_t* ptr, float64_t v)
 // supported vector operators: +, -, *, /, unary minus, ^, |, &, ~, %.
 // shift operators: << and >> for integer vectors
 // comparison operators: ==, !=, <, <=, >, >=
-#define plus(x,y)  ((x)+(y))
-#define minus(x,y) ((x)-(y))
-#define mul(x,y)   ((x)*(y))
-#define div(x,y)   ((x)/(y))
-#define rem(x,y)   ((x)%(y))
-#define bxor(x,y)  ((x)^(y))
-#define bor(x,y)   ((x)|(y))
-#define band(x,y)  ((x)&(y))
-#define unary_minus(x) (-(x))
-#define bnot(x)        (~(x))
-#define bsl(x,y)   ((x)<<(y))
-#define bsr(x,y)   ((x)>>(y))
-#define eq(x,y)    ((x)==(y))
-#define neq(x,y)   ((x)!=(y))
-#define lt(x,y)    ((x)<(y))
-#define lte(x,y)   ((x)<=(y))
-#define gt(x,y)    ((x)>(y))
-#define gte(x,y)   ((x)>=(y))
+#define op_plus(x,y)  ((x)+(y))
+#define op_minus(x,y) ((x)-(y))
+#define op_mul(x,y)   ((x)*(y))
+#define op_div(x,y)   ((x)/(y))
+#define op_rem(x,y)   ((x)%(y))
+#define op_bxor(x,y)  ((x)^(y))
+#define op_bor(x,y)   ((x)|(y))
+#define op_band(x,y)  ((x)&(y))
+#define op_negate(x)  (-(x))
+#define op_bnot(x)    (~(x))
+#define op_bsl(x,y)   ((x)<<(y))
+#define op_bsr(x,y)   ((x)>>(y))
+#define op_eq(x,y)    ((x)==(y))
+#define op_neq(x,y)   ((x)!=(y))
+#define op_lt(x,y)    ((x)<(y))
+#define op_lte(x,y)   ((x)<=(y))
+#define op_gt(x,y)    ((x)>(y))
+#define op_gte(x,y)   ((x)>=(y))
 // special...
 //  vector versions of max and min are possible to 
 //  construct by a little bit fiddel, max for example:
 //  m = (x > y)
 //  r = (x & m) | (y & ~m)
 //
-#define rectify(x) (((x)>0) & (x))
-#define min(x,y)   (((x)<(y))?(x):(y))
-#define max(x,y)   (((x)>(y))?(x):(y))
-#define sigm(x)    (1.0/(1.0 + exp(-(x))))
+#define op_rectify(x) (((x)>0) & (x))
+#define op_min(x,y)   (((x)<(y))?(x):(y))
+#define op_max(x,y)   (((x)>(y))?(x):(y))
+#define op_sigmoid(x)    (1.0/(1.0 + exp(-(x))))
 
-static inline float64_t sigm_prime(float64_t x)
+static inline float64_t op_sigmoid_prime(float64_t x)
 {
-    double z = sigm(x);
+    double z = op_sigmoid(x);
     return z*(1-z);
 }
 
-#define MT_BINOP(name,fun,type)						\
-static void mt_##name##_(type* ap, size_t as, type* bp, size_t bs, type* cp, size_t cs, size_t n, size_t m) \
-{									\
-    while(n--) {							\
-	type* ap1 = ap;							\
-	type* bp1 = bp;							\
-	type* cp1 = cp;							\
-	size_t m1 = m;							\
-	while(m1--) {							\
-	    type a = *ap1++;						\
-	    type b = *bp1++;						\
-	    *cp1++ = fun(a,b);						\
-	}								\
-        ap += as;							\
-        bp += bs;							\
-        cp += cs;							\
-    }									\
-}
+/////////////////////////////////////////////////////////////////////////////
+//   ADD
+/////////////////////////////////////////////////////////////////////////////
 
-// declare a binop that expand operators for each instance
-// only use if all vectors are VSIZE aligned
-#ifdef USE_GCC_VECTOR
-#define MTV_BINOP(name,fun,type)					\
-static void mtv_##name##_(type* ap, size_t as, type* bp, size_t bs, type* cp, size_t cs, size_t n, size_t m) \
-{									\
-    while(n--) {							\
-	type* ap1 = ap;							\
-	type* bp1 = bp;							\
-	type* cp1 = cp;							\
-	size_t m1 = m;							\
-	while(m1 >= VELEMS(type)) {					\
-	    v##type a = *(v##type*)ap1;					\
-	    v##type b = *(v##type*)bp1;					\
-	    ap1 += VELEMS(type);					\
-	    bp1 += VELEMS(type);					\
-	    *(v##type*)cp1 = fun(a,b);					\
-	    cp1 += VELEMS(type);					\
-	    m1  -= VELEMS(type);					\
-	}								\
-	while(m1--) {							\
-	    type a = *ap1++;						\
-	    type b = *bp1++;						\
-	    *cp1++ = fun(a,b);						\
-	}								\
-        ap += as;							\
-        bp += bs;							\
-        cp += cs;							\
-    }									\
-}
-#endif
+// add: int8 x int8 -> int8
+#define NAME           mt_add_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mt_binary_op.i"
 
+// add: int16 x int16 -> int16
+#define NAME           mt_add_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mt_binary_op.i"
 
-#define MT_BINOP_SELECT(name)						\
-static void mt_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* bp, size_t bs, byte_t* cp, size_t cs, size_t n, size_t m) \
-{ \
-  switch(type) { \
-  case INT8: mt_##name##_int8_((int8_t*)ap,as,(int8_t*)bp,bs,(int8_t*)cp,cs,n,m); break; \
-  case INT16: mt_##name##_int16_((int16_t*)ap,as,(int16_t*)bp,bs,(int16_t*)cp,cs,n,m); break; \
-  case INT32: mt_##name##_int32_((int32_t*)ap,as,(int32_t*)bp,bs,(int32_t*)cp,cs,n,m); break; \
-  case INT64: mt_##name##_int64_((int64_t*)ap,as,(int64_t*)bp,bs,(int64_t*)cp,cs,n,m); break; \
-  case FLOAT32: mt_##name##_float32_((float32_t*)ap,as,(float32_t*)bp,bs,(float32_t*)cp,cs,n,m); break; \
-  case FLOAT64: mt_##name##_float64_((float64_t*)ap,as,(float64_t*)bp,bs,(float64_t*)cp,cs,n,m); break; \
-  default: break;  \
-  }  \
-}
+// add: int32 x int32 -> int32
+#define NAME           mt_add_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mt_binary_op.i"
 
-#ifdef USE_GCC_VECTOR
-#define MTV_BINOP_SELECT(name)						\
-static void mtv_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* bp, size_t bs, byte_t* cp, size_t cs, size_t n, size_t m) \
-{ \
-  switch(type) { \
-  case INT8: mtv_##name##_int8_((int8_t*)ap,as,(int8_t*)bp,bs,(int8_t*)cp,cs,n,m); break; \
-  case INT16: mtv_##name##_int16_((int16_t*)ap,as,(int16_t*)bp,bs,(int16_t*)cp,cs,n,m); break; \
-  case INT32: mtv_##name##_int32_((int32_t*)ap,as,(int32_t*)bp,bs,(int32_t*)cp,cs,n,m); break; \
-  case INT64: mtv_##name##_int64_((int64_t*)ap,as,(int64_t*)bp,bs,(int64_t*)cp,cs,n,m); break; \
-  case FLOAT32: mtv_##name##_float32_((float32_t*)ap,as,(float32_t*)bp,bs,(float32_t*)cp,cs,n,m); break; \
-  case FLOAT64: mtv_##name##_float64_((float64_t*)ap,as,(float64_t*)bp,bs,(float64_t*)cp,cs,n,m); break; \
-  default: break;  \
-  }  \
-}
-#endif
+// add: int64 x int64 -> int64
+#define NAME           mt_add_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mt_binary_op.i"
 
+// add: float32 x float32 -> float32
+#define NAME           mt_add_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mt_binary_op.i"
 
-#define MT_BINOP_FUN(name,ype)						\
-static void mt_##name##_(type (*fun)(type, type),type* ap, size_t as, type* bp, size_t bs, type* cp, size_t cs, size_t n, size_t m) \
-{									\
-    while(n--) {							\
-	type* ap1 = ap;							\
-	type* bp1 = bp;							\
-	type* cp1 = cp;							\
-	size_t m1 = m;							\
-	while(m1--) {							\
-	    type a = *ap1++;						\
-	    type b = *bp1++;						\
-	    *cp1++ = fun(a,b);						\
-	}								\
-        ap += as;							\
-        bp += bs;							\
-        cp += cs;							\
-    }									\
-}
+// add: float64 x float64 -> float64
+#define NAME           mt_add_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mt_binary_op.i"
 
-#define MT_UNOP(name,fun,type)						\
-static void mt_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m) \
-{									\
-    while(n--) {							\
-	type* ap1 = ap;							\
-	type* cp1 = cp;							\
-	size_t m1 = m;							\
-	while(m1--) {							\
-	    type a = *ap1++;						\
-	    *cp1++ = fun(a);						\
-	}								\
-        ap += as;							\
-        cp += cs;							\
-    }									\
-}
+//----------------------------------------------------------------------------
+//  add(int8/int16/int32/int64/float32/float64)
+//----------------------------------------------------------------------------
+#define SELECT mt_add_
+#define NAME add
+#include "mt_binary_op_select.i"
 
-// declare a binop that expand operators for each instance
-// only use if all vectors are VSIZE aligned
-#ifdef USE_GCC_VECTOR
-#define MTV_UNOP(name,fun,type)						\
-static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m) \
-{									\
-    while(n--) {							\
-	type* ap1 = ap;							\
-	type* cp1 = cp;							\
-	size_t m1 = m;							\
-	while(m1 >= VELEMS(type)) {					\
-	    v##type a = *(v##type*)ap1;					\
-	    ap1 += VELEMS(type);					\
-	    *(v##type*)cp1 = fun(a);					\
-	    cp1 += VELEMS(type);					\
-	    m1  -= VELEMS(type);					\
-	}								\
-	while(m1--) {							\
-	    type a = *ap1++;						\
-	    *cp1++ = fun(a);						\
-	}								\
-        ap += as;							\
-        cp += cs;							\
-    }									\
-}
-
-#define MTV_UNOP1F(name,fun,type)					\
-static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,float64_t arg) \
-{									\
-    type sarg = arg;							\
-    v##type varg = v##type##_const(sarg);				\
-    while(n--) {							\
-	type* ap1 = ap;							\
-	type* cp1 = cp;							\
-	size_t m1 = m;							\
-	while(m1 >= VELEMS(type)) {					\
-	    v##type a = *(v##type*)ap1;					\
-	    ap1 += VELEMS(type);					\
-	    *(v##type*)cp1 = fun(a,varg);				\
-	    cp1 += VELEMS(type);					\
-	    m1  -= VELEMS(type);					\
-	}								\
-	while(m1--) {							\
-	    type a = *ap1++;						\
-	    *cp1++ = fun(a,arg);					\
-	}								\
-        ap += as;							\
-        cp += cs;							\
-    }									\
-}
-
-#define MTV_UNOP1I(name,fun,type)					\
-static void mtv_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,int64_t arg) \
-{									\
-    type sarg = arg;							\
-    v##type varg = v##type##_const(sarg);				\
-    while(n--) {							\
-	type* ap1 = ap;							\
-	type* cp1 = cp;							\
-	size_t m1 = m;							\
-	while(m1 >= VELEMS(type)) {					\
-	    v##type a = *(v##type*)ap1;					\
-	    ap1 += VELEMS(type);					\
-	    *(v##type*)cp1 = fun(a,varg);				\
-	    cp1 += VELEMS(type);					\
-	    m1  -= VELEMS(type);					\
-	}								\
-	while(m1--) {							\
-	    type a = *ap1++;						\
-	    *cp1++ = fun(a,arg);					\
-	}								\
-        ap += as;							\
-        cp += cs;							\
-    }									\
-}
-#endif
-
-#define MT_UNOP1F(name,fun,type)					\
-static void mt_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,float64_t arg) \
-{									\
-    while(n--) {							\
-	type* ap1 = ap;							\
-	type* cp1 = cp;							\
-	size_t m1 = m;							\
-	while(m1--) {							\
-	    type a = *ap1++;						\
-	    *cp1++ = fun(a,arg);					\
-	}								\
-        ap += as;							\
-        cp += cs;							\
-    }									\
-}
-
-#define MT_UNOP1I(name,fun,type)					\
-static void mt_##name##_(type* ap, size_t as, type* cp, size_t cs, size_t n, size_t m,int64_t arg) \
-{									\
-    while(n--) {							\
-	type* ap1 = ap;							\
-	type* cp1 = cp;							\
-	size_t m1 = m;							\
-	while(m1--) {							\
-	    type a = *ap1++;						\
-	    *cp1++ = fun(a,arg);					\
-	}								\
-        ap += as;							\
-        cp += cs;							\
-    }									\
-}
-
-#define MT_UNOP_SELECT(name) \
-static void mt_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m) \
-{ \
-  switch(type) { \
-  case INT8: mt_##name##_int8_((int8_t*)ap,as,(int8_t*)cp,cs,n,m); break; \
-  case INT16: mt_##name##_int16_((int16_t*)ap,as,(int16_t*)cp,cs,n,m); break; \
-  case INT32: mt_##name##_int32_((int32_t*)ap,as,(int32_t*)cp,cs,n,m); break; \
-  case INT64: mt_##name##_int64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m); break; \
-  case FLOAT32: mt_##name##_float32_((float32_t*)ap,as,(float32_t*)cp,cs,n,m); break; \
-  case FLOAT64: mt_##name##_float64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m); break; \
-  default: break;  \
-  }  \
-}
-
-// Unary op with one floating point parameter
-#define MT_UNOP1F_SELECT(name) \
-static void mt_##name##_f_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, float64_t arg) \
-{ \
-  switch(type) { \
-  case INT8: mt_##name##_int8_float64_((int8_t*)ap,as,(int8_t*)cp,cs,n,m,arg); break; \
-  case INT16: mt_##name##_int16_float64_((int16_t*)ap,as,(int16_t*)cp,cs,n,m,arg); break; \
-  case INT32: mt_##name##_int32_float64_((int32_t*)ap,as,(int32_t*)cp,cs,n,m,arg); break; \
-  case INT64: mt_##name##_int64_float64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m,arg); break; \
-  case FLOAT32: mt_##name##_float32_float64_((float32_t*)ap,as,(float32_t*)cp,cs,n,m,arg); break; \
-  case FLOAT64: mt_##name##_float64_float64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m,arg); break; \
-  default: break;  \
-  }  \
-}
-
-// Unary op with one integer parameter
-#define MT_UNOP1I_SELECT(name) \
-static void mt_##name##_i_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, int64_t arg) \
-{ \
-  switch(type) { \
-  case INT8: mt_##name##_int8_int64_((int8_t*)ap,as,(int8_t*)cp,cs,n,m,arg); break; \
-  case INT16: mt_##name##_int16_int64_((int16_t*)ap,as,(int16_t*)cp,cs,n,m,arg); break; \
-  case INT32: mt_##name##_int32_int64_((int32_t*)ap,as,(int32_t*)cp,cs,n,m,arg); break; \
-  case INT64: mt_##name##_int64_int64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m,arg); break; \
-  case FLOAT32: mt_##name##_float32_int64_((float32_t*)ap,as,(float32_t*)cp,cs,n,m,arg); break; \
-  case FLOAT64: mt_##name##_float64_int64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m,arg); break; \
-  default: break;  \
-  }  \
-}
-
-#ifdef USE_GCC_VECTOR
-#define MTV_UNOP_SELECT(name) \
-static void mtv_##name##_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m) \
-{ \
-  switch(type) { \
-  case INT8: mtv_##name##_int8_((int8_t*)ap,as,(int8_t*)cp,cs,n,m); break; \
-  case INT16: mtv_##name##_int16_((int16_t*)ap,as,(int16_t*)cp,cs,n,m); break; \
-  case INT32: mtv_##name##_int32_((int32_t*)ap,as,(int32_t*)cp,cs,n,m); break; \
-  case INT64: mtv_##name##_int64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m); break; \
-  case FLOAT32: mtv_##name##_float32_((float32_t*)ap,as,(float32_t*)cp,cs,n,m); break; \
-  case FLOAT64: mtv_##name##_float64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m); break; \
-  default: break;  \
-  }  \
-}
-
-#define MTV_UNOP1F_SELECT(name) \
-static void mtv_##name##_f_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, float64_t arg) \
-{ \
-  switch(type) { \
-  case INT8: mtv_##name##_int8_float64_((int8_t*)ap,as,(int8_t*)cp,cs,n,m,arg); break; \
-  case INT16: mtv_##name##_int16_float64_((int16_t*)ap,as,(int16_t*)cp,cs,n,m,arg); break; \
-  case INT32: mtv_##name##_int32_float64_((int32_t*)ap,as,(int32_t*)cp,cs,n,m,arg); break; \
-  case INT64: mtv_##name##_int64_float64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m,arg); break; \
-  case FLOAT32: mtv_##name##_float32_float64_((float32_t*)ap,as,(float32_t*)cp,cs,n,m,arg); break; \
-  case FLOAT64: mtv_##name##_float64_float64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m,arg); break; \
-  default: break;  \
-  }  \
-}
-
-#define MTV_UNOP1I_SELECT(name) \
-static void mtv_##name##_i_(matrix_type_t type, byte_t* ap, size_t as, byte_t* cp, size_t cs, size_t n, size_t m, int64_t arg) \
-{ \
-  switch(type) { \
-  case INT8: mtv_##name##_int8_int64_((int8_t*)ap,as,(int8_t*)cp,cs,n,m,arg); break; \
-  case INT16: mtv_##name##_int16_int64_((int16_t*)ap,as,(int16_t*)cp,cs,n,m,arg); break; \
-  case INT32: mtv_##name##_int32_int64_((int32_t*)ap,as,(int32_t*)cp,cs,n,m,arg); break; \
-  case INT64: mtv_##name##_int64_int64_((int64_t*)ap,as,(int64_t*)cp,cs,n,m,arg); break; \
-  case FLOAT32: mtv_##name##_float32_int64_((float32_t*)ap,as,(float32_t*)cp,cs,n,m,arg); break; \
-  case FLOAT64: mtv_##name##_float64_int64_((float64_t*)ap,as,(float64_t*)cp,cs,n,m,arg); break; \
-  default: break;  \
-  }  \
-}
-#endif
-
-
-MT_BINOP(add_int8,plus,int8_t)
-MT_BINOP(add_int16,plus,int16_t)
-MT_BINOP(add_int32,plus,int32_t)
-MT_BINOP(add_int64,plus,int64_t)
-MT_BINOP(add_float32,plus,float32_t)
-MT_BINOP(add_float64,plus,float64_t)
-MT_BINOP_SELECT(add)
-
-#ifdef USE_GCC_VECTOR
-MTV_BINOP(add_int8,plus,int8_t)
-MTV_BINOP(add_int16,plus,int16_t)
-MTV_BINOP(add_int32,plus,int32_t)
-MTV_BINOP(add_int64,plus,int64_t)
-MTV_BINOP(add_float32,plus,float32_t)
-MTV_BINOP(add_float64,plus,float64_t)
-MTV_BINOP_SELECT(add)
-#endif
-
-MT_BINOP(times_int8,mul,int8_t)
-MT_BINOP(times_int16,mul,int16_t)
-MT_BINOP(times_int32,mul,int32_t)
-MT_BINOP(times_int64,mul,int64_t)
-MT_BINOP(times_float32,mul,float32_t)
-MT_BINOP(times_float64,mul,float64_t)
-MT_BINOP_SELECT(times)
-
-#ifdef USE_GCC_VECTOR
-MTV_BINOP(times_int8,mul,int8_t)
-MTV_BINOP(times_int16,mul,int16_t)
-MTV_BINOP(times_int32,mul,int32_t)
-MTV_BINOP(times_int64,mul,int64_t)
-MTV_BINOP(times_float32,mul,float32_t)
-MTV_BINOP(times_float64,mul,float64_t)
-MTV_BINOP_SELECT(times)
-#endif
-
-MT_BINOP(subtract_int8,minus,int8_t)
-MT_BINOP(subtract_int16,minus,int16_t)
-MT_BINOP(subtract_int32,minus,int32_t)
-MT_BINOP(subtract_int64,minus,int64_t)
-MT_BINOP(subtract_float32,minus,float32_t)
-MT_BINOP(subtract_float64,minus,float64_t)
-MT_BINOP_SELECT(subtract)
-
-#ifdef USE_GCC_VECTOR
-MTV_BINOP(subtract_int8,minus,int8_t)
-MTV_BINOP(subtract_int16,minus,int16_t)
-MTV_BINOP(subtract_int32,minus,int32_t)
-MTV_BINOP(subtract_int64,minus,int64_t)
-MTV_BINOP(subtract_float32,minus,float32_t)
-MTV_BINOP(subtract_float64,minus,float64_t)
-MTV_BINOP_SELECT(subtract)
-#endif
-
-MT_UNOP(negate_int8,unary_minus,int8_t)
-MT_UNOP(negate_int16,unary_minus,int16_t)
-MT_UNOP(negate_int32,unary_minus,int32_t)
-MT_UNOP(negate_int64,unary_minus,int64_t)
-MT_UNOP(negate_float32,unary_minus,float32_t)
-MT_UNOP(negate_float64,unary_minus,float64_t)
-MT_UNOP_SELECT(negate)
-
-#ifdef USE_GCC_VECTOR
-MTV_UNOP(negate_int8,unary_minus,int8_t)
-MTV_UNOP(negate_int16,unary_minus,int16_t)
-MTV_UNOP(negate_int32,unary_minus,int32_t)
-MTV_UNOP(negate_int64,unary_minus,int64_t)
-MTV_UNOP(negate_float32,unary_minus,float32_t)
-MTV_UNOP(negate_float64,unary_minus,float64_t)
-MTV_UNOP_SELECT(negate)
-#endif
-
-MT_UNOP1I(scale_int8_int64,mul,int8_t)
-MT_UNOP1I(scale_int16_int64,mul,int16_t)
-MT_UNOP1I(scale_int32_int64,mul,int32_t)
-MT_UNOP1I(scale_int64_int64,mul,int64_t)
-MT_UNOP1I(scale_float32_int64,mul,float32_t)
-MT_UNOP1I(scale_float64_int64,mul,float64_t)
-MT_UNOP1I_SELECT(scale)
-
-MT_UNOP1F(scale_int8_float64,mul,int8_t)
-MT_UNOP1F(scale_int16_float64,mul,int16_t)
-MT_UNOP1F(scale_int32_float64,mul,int32_t)
-MT_UNOP1F(scale_int64_float64,mul,int64_t)
-MT_UNOP1F(scale_float32_float64,mul,float32_t)
-MT_UNOP1F(scale_float64_float64,mul,float64_t)
-MT_UNOP1F_SELECT(scale)
-
-#ifdef USE_GCC_VECTOR
-MTV_UNOP1I(scale_int8_int64,mul,int8_t)
-MTV_UNOP1I(scale_int16_int64,mul,int16_t)
-MTV_UNOP1I(scale_int32_int64,mul,int32_t)
-MTV_UNOP1I(scale_int64_int64,mul,int64_t)
-MTV_UNOP1I(scale_float32_int64,mul,float32_t)
-MTV_UNOP1I(scale_float64_int64,mul,float64_t)
-MTV_UNOP1I_SELECT(scale)
-#endif
-
-#ifdef USE_GCC_VECTOR
-MTV_UNOP1F(scale_int8_float64,mul,int8_t)
-MTV_UNOP1F(scale_int16_float64,mul,int16_t)
-MTV_UNOP1F(scale_int32_float64,mul,int32_t)
-MTV_UNOP1F(scale_int64_float64,mul,int64_t)
-MTV_UNOP1F(scale_float32_float64,mul,float32_t)
-MTV_UNOP1F(scale_float64_float64,mul,float64_t)
-MTV_UNOP1F_SELECT(scale)
-#endif
-
-
-MT_UNOP(sigmoid_int8,sigm,int8_t)
-MT_UNOP(sigmoid_int16,sigm,int16_t)
-MT_UNOP(sigmoid_int32,sigm,int32_t)
-MT_UNOP(sigmoid_int64,sigm,int64_t)
-MT_UNOP(sigmoid_float32,sigm,float32_t)
-MT_UNOP(sigmoid_float64,sigm,float64_t)
-MT_UNOP_SELECT(sigmoid)
-
-MT_UNOP(sigmoid_prime_int8,sigm_prime,int8_t)
-MT_UNOP(sigmoid_prime_int16,sigm_prime,int16_t)
-MT_UNOP(sigmoid_prime_int32,sigm_prime,int32_t)
-MT_UNOP(sigmoid_prime_int64,sigm_prime,int64_t)
-MT_UNOP(sigmoid_prime_float32,sigm_prime,float32_t)
-MT_UNOP(sigmoid_prime_float64,sigm_prime,float64_t)
-MT_UNOP_SELECT(sigmoid_prime)
-
-#define MT_MULOP(name,type,atype)				      \
-static void mt_##name##_(type* ap,size_t as,size_t an, size_t am,	\
-			 type* bp,size_t bs,size_t bn, size_t bm,	\
-			 type* cp,size_t cs)				\
-{ \
-    size_t i, j, k;		    \
-    (void) bn;			    \
-    for (i=0; i<an; i++) {	    \
-        type* cp1 = cp;		    \
-	for (j=0; j<bm; j++) {	    \
-	    atype sum = 0;	    \
-	    type* bp1 = bp + j;		\
-	    type* ap1 = ap;		\
-	    for (k = 0; k < am; k++) { \
-		sum += (*ap1)*(*bp1);	\
-		ap1 += 1;		\
-		bp1 += bs;		\
-	    }				\
-	    *cp1++ = sum;		\
-	}				\
-	ap += as;			\
-	cp += cs;			\
-    } \
-}
-
-#define MT_MULOP_SELECT(name)						\
-static void mt_##name##_(matrix_type_t type, byte_t* ap,size_t as,size_t an, size_t am, byte_t* bp,size_t bs,size_t bn, size_t bm, byte_t* cp,size_t cs) \
-{									\
-    switch(type) {							\
-    case INT8: mt_##name##_int8_((int8_t*)ap,as,an,am,(int8_t*)bp,bs,bn,bm,(int8_t*)cp,cs); break; \
-    case INT16: mt_##name##_int16_((int16_t*)ap,as,an,am,(int16_t*)bp,bs,bn,bm,(int16_t*)cp,cs); break; \
-    case INT32: mt_##name##_int32_((int32_t*)ap,as,an,am,(int32_t*)bp,bs,bn,bm,(int32_t*)cp,cs); break; \
-    case INT64: mt_##name##_int64_((int64_t*)ap,as,an,am,(int64_t*)bp,bs,bn,bm,(int64_t*)cp,cs); break; \
-    case FLOAT32: mt_##name##_float32_((float32_t*)ap,as,an,am,(float32_t*)bp,bs,bn,bm,(float32_t*)cp,cs); break; \
-    case FLOAT64: mt_##name##_float64_((float64_t*)ap,as,an,am,(float64_t*)bp,bs,bn,bm,(float64_t*)cp,cs); break; \
-    default: break;							\
-    }									\
-}
-
-MT_MULOP(multiply_int8,int8_t,int32_t)
-MT_MULOP(multiply_int16,int16_t,int32_t)
-MT_MULOP(multiply_int32,int32_t,int64_t)
-MT_MULOP(multiply_int64,int64_t,int64_t)
-MT_MULOP(multiply_float32,float32_t,float64_t)
-MT_MULOP(multiply_float64,float64_t,float64_t)
-MT_MULOP_SELECT(multiply)
 
 #ifdef USE_GCC_VECTOR
 
-#if 0
-// Load column reversed
-#define MT_VRLOADCOL(type)					\
-v##type mtv_load_column_##type(type* ap, size_t as, size_t n)	\
-{								\
-    v##type r;							\
-    size_t i = VELEMS(type);					\
-    while(n--) {						\
-        r[--i] = *ap;						\
-	ap += as;						\
-    }								\
-    while(i) {							\
-	r[--i] = 0;						\
-    }								\
-    return r;							\
-}
-#endif
+// addv: int8 x int8 -> int8
+#define NAME           mtv_add_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_plus((a),(b))
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mtv_binary_op.i"
 
-#define MT_VLOADCOL(type)					\
-static inline v##type mtv_load_column_##type(type* ap, size_t as, size_t n) \
-{								\
-    v##type r;							\
-    size_t i = 0;						\
-    while(n--) {						\
-        r[i++] = *ap;						\
-	ap += as;						\
-    }								\
-    while(i < VELEMS(type)) {					\
-	r[i++] = 0;						\
-    }								\
-    return r;							\
-}
+// addv: int16 x int16 -> int16
+#define NAME           mtv_add_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_plus((a),(b))
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mtv_binary_op.i"
 
-MT_VLOADCOL(int8_t)
-MT_VLOADCOL(int16_t)
-MT_VLOADCOL(int32_t)
-MT_VLOADCOL(int64_t)
-MT_VLOADCOL(float32_t)
-MT_VLOADCOL(float64_t)
+// addv: int32 x int32 -> int32
+#define NAME           mtv_add_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_plus((a),(b))
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mtv_binary_op.i"
 
-#define MT_VMULOP(name,type,atype)					\
-static void mtv_##name##_(type* ap,size_t as,size_t an, size_t am, type* bp,size_t bs,size_t bn, size_t bm, type* cp,size_t cs) \
-{									\
-    while (bm--) {							\
-        v##type col[(bn+VELEMS(type)-1)/VELEMS(type)];			\
-	type* ap1 = ap;							\
-	type* bp1 = bp;							\
-	type* cp1 = cp;							\
-	size_t n = bn;							\
-	size_t j = 0;							\
-	while(n >= VELEMS(type)){					\
-	    col[j++] = mtv_load_column_##type(bp1,bs,VELEMS(type));	\
-	    n -= VELEMS(type);						\
-	    bp1 += bs*VELEMS(type);					\
-        }								\
-	if(n) {								\
-	    col[j++] = mtv_load_column_##type(bp1,bs,n);		\
-	}								\
-	bp++;								\
-	n = an;								\
-	while(n--) {							\
-	    atype sum = 0;						\
-	    v##type vsum = v##type##_zero;				\
-	    size_t m = am;						\
-	    type* ap2 = ap1;						\
-	    type* tp = (type*) &col[0];					\
-	    size_t i;							\
-	    while(m >= VELEMS(type)) {					\
-		v##type r = (*(v##type*)tp) * (*(v##type*)ap2);		\
-		vsum = vsum + r;					\
-		tp += VELEMS(type);					\
-		ap2 += VELEMS(type);					\
-		m -= VELEMS(type);					\
-	    }								\
-	    for (i = 0; i < VELEMS(type); i++)				\
-		sum += vsum[i];						\
-	    while(m--) {						\
-		sum += (*tp++ * *ap2++);				\
-	    }								\
-	    *cp1 = sum;							\
-	    cp1 += cs;							\
-	    ap1 += as;							\
-	}								\
-	cp++;								\
-    }									\
-}
+// addv: int64 x int64 -> int64
+#define NAME           mtv_add_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_plus((a),(b))
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mtv_binary_op.i"
 
-#define MT_VMULOP_SELECT(name)						\
-static void mtv_##name##_(matrix_type_t type, byte_t* ap,size_t as,size_t an, size_t am, byte_t* bp,size_t bs,size_t bn, size_t bm, byte_t* cp,size_t cs) \
-{									\
-    switch(type) {							\
-    case INT8: mtv_##name##_int8_((int8_t*)ap,as,an,am,(int8_t*)bp,bs,bn,bm,(int8_t*)cp,cs); break; \
-    case INT16: mtv_##name##_int16_((int16_t*)ap,as,an,am,(int16_t*)bp,bs,bn,bm,(int16_t*)cp,cs); break; \
-    case INT32: mtv_##name##_int32_((int32_t*)ap,as,an,am,(int32_t*)bp,bs,bn,bm,(int32_t*)cp,cs); break; \
-    case INT64: mtv_##name##_int64_((int64_t*)ap,as,an,am,(int64_t*)bp,bs,bn,bm,(int64_t*)cp,cs); break; \
-    case FLOAT32: mtv_##name##_float32_((float32_t*)ap,as,an,am,(float32_t*)bp,bs,bn,bm,(float32_t*)cp,cs); break; \
-    case FLOAT64: mtv_##name##_float64_((float64_t*)ap,as,an,am,(float64_t*)bp,bs,bn,bm,(float64_t*)cp,cs); break; \
-    default: break;							\
-    }									\
-}
+// addv: float32 x float32 -> float32
+#define NAME           mtv_add_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_plus((a),(b))
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mtv_binary_op.i"
 
-MT_VMULOP(multiply_int8,int8_t,int32_t)
-MT_VMULOP(multiply_int16,int16_t,int32_t)
-MT_VMULOP(multiply_int32,int32_t,int64_t)
-MT_VMULOP(multiply_int64,int64_t,int64_t)
-MT_VMULOP(multiply_float32,float32_t,float64_t)
-MT_VMULOP(multiply_float64,float64_t,float64_t)
-MT_VMULOP_SELECT(multiply)
+// addv: float64 x float64 -> float64
+#define NAME           mtv_add_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_plus((a),(b))
+#define OPERATION(a,b) op_plus((a),(b))
+#include "mtv_binary_op.i"
+
+#define SELECT mtv_add_
+#define NAME add
+#include "mtv_binary_op_select.i"
 
 #endif
+
+/////////////////////////////////////////////////////////////////////////////
+//   SUBTRACT
+/////////////////////////////////////////////////////////////////////////////
+
+// subtract: int8 x int8 -> int8
+#define NAME           mt_subtract_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mt_binary_op.i"
+
+// subtract: int16 x int16 -> int16
+#define NAME           mt_subtract_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mt_binary_op.i"
+
+// subtract: int32 x int32 -> int32
+#define NAME           mt_subtract_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mt_binary_op.i"
+
+// subtract: int64 x int64 -> int64
+#define NAME           mt_subtract_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mt_binary_op.i"
+
+// subtract: float32 x float32 -> float32
+#define NAME           mt_subtract_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mt_binary_op.i"
+
+// subtract: float64 x float64 -> float64
+#define NAME           mt_subtract_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mt_binary_op.i"
+
+//----------------------------------------------------------------------------
+//  subtract(int8/int16/int32/int64/float32/float64)
+//----------------------------------------------------------------------------
+#define SELECT mt_subtract_
+#define NAME subtract
+#include "mt_binary_op_select.i"
+
+
+#ifdef USE_GCC_VECTOR
+
+// subtractv: int8 x int8 -> int8
+#define NAME           mtv_subtract_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_minus((a),(b))
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mtv_binary_op.i"
+
+// subtractv: int16 x int16 -> int16
+#define NAME           mtv_subtract_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_minus((a),(b))
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mtv_binary_op.i"
+
+// subtractv: int32 x int32 -> int32
+#define NAME           mtv_subtract_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_minus((a),(b))
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mtv_binary_op.i"
+
+// subtractv: int64 x int64 -> int64
+#define NAME           mtv_subtract_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_minus((a),(b))
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mtv_binary_op.i"
+
+// subtractv: float32 x float32 -> float32
+#define NAME           mtv_subtract_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_minus((a),(b))
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mtv_binary_op.i"
+
+// subtractv: float64 x float64 -> float64
+#define NAME           mtv_subtract_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_minus((a),(b))
+#define OPERATION(a,b) op_minus((a),(b))
+#include "mtv_binary_op.i"
+
+#define SELECT mtv_subtract_
+#define NAME subtract
+#include "mtv_binary_op_select.i"
+
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+//   TIMES
+/////////////////////////////////////////////////////////////////////////////
+
+// times: int8 x int8 -> int8
+#define NAME           mt_times_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mt_binary_op.i"
+
+// times: int16 x int16 -> int16
+#define NAME           mt_times_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mt_binary_op.i"
+
+// times: int32 x int32 -> int32
+#define NAME           mt_times_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mt_binary_op.i"
+
+// times: int64 x int64 -> int64
+#define NAME           mt_times_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mt_binary_op.i"
+
+// times: float32 x float32 -> float32
+#define NAME           mt_times_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mt_binary_op.i"
+
+// times: float64 x float64 -> float64
+#define NAME           mt_times_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mt_binary_op.i"
+
+//----------------------------------------------------------------------------
+//  times(int8/int16/int32/int64/float32/float64)
+//----------------------------------------------------------------------------
+#define SELECT mt_times_
+#define NAME times
+#include "mt_binary_op_select.i"
+
+
+#ifdef USE_GCC_VECTOR
+
+// timesv: int8 x int8 -> int8
+#define NAME           mtv_times_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mtv_binary_op.i"
+
+// timesv: int16 x int16 -> int16
+#define NAME           mtv_times_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mtv_binary_op.i"
+
+// timesv: int32 x int32 -> int32
+#define NAME           mtv_times_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mtv_binary_op.i"
+
+// timesv: int64 x int64 -> int64
+#define NAME           mtv_times_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mtv_binary_op.i"
+
+// timesv: float32 x float32 -> float32
+#define NAME           mtv_times_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mtv_binary_op.i"
+
+// timesv: float64 x float64 -> float64
+#define NAME           mtv_times_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_mul((a),(b))
+#include "mtv_binary_op.i"
+
+#define SELECT mtv_times_
+#define NAME times
+#include "mtv_binary_op_select.i"
+
+#endif
+
+
+/////////////////////////////////////////////////////////////////////////////
+//   NEGATE
+/////////////////////////////////////////////////////////////////////////////
+
+#define NAME           mt_negate_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_negate((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_negate_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_negate((a))
+#include "mt_unary_op.i"
+
+
+#define NAME           mt_negate_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_negate((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_negate_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_negate((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_negate_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_negate((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_negate_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_negate((a))
+#include "mt_unary_op.i"
+
+#define SELECT mt_negate_
+#define NAME negate
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define PARAMS
+#include "mt_unary_op_select.i"
+
+#ifdef USE_GCC_VECTOR
+#define NAME           mtv_negate_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a)  op_negate((a))
+#define OPERATION(a)   op_negate((a))
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_negate_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a)  op_negate((a))
+#define OPERATION(a)   op_negate((a))
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_negate_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a)  op_negate((a))
+#define OPERATION(a)   op_negate((a))
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_negate_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a)  op_negate((a))
+#define OPERATION(a)   op_negate((a))
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_negate_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a)  op_negate((a))
+#define OPERATION(a)   op_negate((a))
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_negate_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a)  op_negate((a))
+#define OPERATION(a)   op_negate((a))
+#include "mtv_unary_op.i"
+
+#define SELECT mtv_negate_
+#define NAME negate
+#define PARAMS_DECL
+#define PARAMS
+#include "mtv_unary_op_select.i"
+
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+//   SCALE * int64
+/////////////////////////////////////////////////////////////////////////////
+
+#define NAME           mt_scale_int64_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL    ,int64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_int64_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL    ,int64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_int64_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL    ,int64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_int64_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL    ,int64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_int64_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL    ,int64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_int64_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL    ,int64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define SELECT mt_scale_i_
+#define NAME scale_int64
+#define PARAMS_DECL ,int64_t arg
+#define PARAMS      ,arg
+#include "mt_unary_op_select.i"
+
+// vector version
+#ifdef USE_GCC_VECTOR
+
+#define NAME           mtv_scale_int64_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL    ,int64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_int64_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL    ,int64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_int64_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL    ,int64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_int64_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL    ,int64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_int64_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL    ,int64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_int64_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL    ,int64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define SELECT mtv_scale_i_
+#define NAME scale_int64
+#define PARAMS_DECL ,int64_t arg
+#define PARAMS      ,arg
+#include "mtv_unary_op_select.i"
+
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+//   SCALE * float64
+/////////////////////////////////////////////////////////////////////////////
+
+#define NAME           mt_scale_float64_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL    ,float64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_float64_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL    ,float64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_float64_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL    ,float64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_float64_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL    ,float64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_float64_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL    ,float64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define NAME           mt_scale_float64_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL    ,float64_t factor
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),factor)
+#include "mt_unary_op.i"
+
+#define SELECT mt_scale_f_
+#define NAME scale_float64
+#define PARAMS_DECL ,float64_t arg
+#define PARAMS      ,arg
+#include "mt_unary_op_select.i"
+
+
+// vector version
+#ifdef USE_GCC_VECTOR
+
+#define NAME           mtv_scale_float64_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL    ,float64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_float64_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL    ,float64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_float64_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL    ,float64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_float64_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL    ,float64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_float64_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL    ,float64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define NAME           mtv_scale_float64_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL    ,float64_t arg
+#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
+#define VOPERATION(a)  op_mul((a),varg)
+#define OPERATION(a)   op_mul((a),sarg)
+#include "mtv_unary_op.i"
+
+#define SELECT mtv_scale_f_
+#define NAME scale_float64
+#define PARAMS_DECL ,float64_t arg
+#define PARAMS      ,arg
+#include "mtv_unary_op_select.i"
+
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+//   SIGMOID
+/////////////////////////////////////////////////////////////////////////////
+
+#define NAME           mt_sigmoid_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_sigmoid_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid((a))
+#include "mt_unary_op.i"
+
+
+#define NAME           mt_sigmoid_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_sigmoid_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_sigmoid_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_sigmoid_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid((a))
+#include "mt_unary_op.i"
+
+#define SELECT mt_sigmoid_
+#define NAME sigmoid
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define PARAMS
+#include "mt_unary_op_select.i"
+
+/////////////////////////////////////////////////////////////////////////////
+//   SIGMOID_PRIME
+/////////////////////////////////////////////////////////////////////////////
+
+#define NAME           mt_sigmoid_prime_int8_
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid_prime((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_sigmoid_prime_int16_
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid_prime((a))
+#include "mt_unary_op.i"
+
+
+#define NAME           mt_sigmoid_prime_int32_
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid_prime((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_sigmoid_prime_int64_
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid_prime((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_sigmoid_prime_float32_
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid_prime((a))
+#include "mt_unary_op.i"
+
+#define NAME           mt_sigmoid_prime_float64_
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_sigmoid_prime((a))
+#include "mt_unary_op.i"
+
+#define SELECT mt_sigmoid_prime_
+#define NAME sigmoid_prime
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define PARAMS
+#include "mt_unary_op_select.i"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//   MULTIPLY
+/////////////////////////////////////////////////////////////////////////////
+
+#define NAME           mt_multiply_int8_
+#define TYPE           int8_t
+#define TYPE2          int16_t
+#define PARAMS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mt_mulop.i"
+
+#define NAME           mt_multiply_int16_
+#define TYPE           int16_t
+#define TYPE2          int32_t
+#define PARAMS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mt_mulop.i"
+
+#define NAME           mt_multiply_int32_
+#define TYPE           int32_t
+#define TYPE2          int64_t
+#define PARAMS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mt_mulop.i"
+
+#define NAME           mt_multiply_int64_
+#define TYPE           int64_t
+#define TYPE2          int64_t
+#define PARAMS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mt_mulop.i"
+
+#define NAME           mt_multiply_float32_
+#define TYPE           float32_t
+#define TYPE2          float64_t
+#define PARAMS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mt_mulop.i"
+
+#define NAME           mt_multiply_float64_
+#define TYPE           float64_t
+#define TYPE2          float64_t
+#define PARAMS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mt_mulop.i"
+
+#define SELECT mt_multiply_
+#define NAME multiply
+#include "mt_mulop_select.i"
+
+#ifdef USE_GCC_VECTOR
+
+#define NAME           mtv_multiply_int8_
+#define TYPE           int8_t
+#define TYPE2          int16_t
+#define PARAMS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mtv_mulop.i"
+
+#define NAME           mtv_multiply_int16_
+#define TYPE           int16_t
+#define TYPE2          int32_t
+#define PARAMS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mtv_mulop.i"
+
+#define NAME           mtv_multiply_int32_
+#define TYPE           int32_t
+#define TYPE2          int64_t
+#define PARAMS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mtv_mulop.i"
+
+#define NAME           mtv_multiply_int64_
+#define TYPE           int64_t
+#define TYPE2          int64_t
+#define PARAMS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mtv_mulop.i"
+
+#define NAME           mtv_multiply_float32_
+#define TYPE           float32_t
+#define TYPE2          float64_t
+#define PARAMS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mtv_mulop.i"
+
+#define NAME           mtv_multiply_float64_
+#define TYPE           float64_t
+#define TYPE2          float64_t
+#define PARAMS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_plus((a),(b))
+#include "mtv_mulop.i"
+
+#define SELECT mtv_multiply_
+#define NAME multiply
+#include "mtv_mulop_select.i"
+
+#endif
+
 
 static void add(matrix_type_t at, byte_t* ap, size_t as, 
 		matrix_type_t bt, byte_t* bp, size_t bs,
@@ -1076,8 +1413,8 @@ static void apply1(int func,
 		float64_t c;
 		ap1 += elem_size_a;
 		switch(func) {
-		case SIGMOID:   c = sigm(a); break;
-		case RECTIFIER: c = max(0,a); break;
+		case SIGMOID:   c = op_sigmoid(a); break;
+		case RECTIFIER: c = op_max(0,a); break;
 		case TANH:      c = tanh(a); break;		
 		case NEGATE:    c = -a; break;
 		default:        c = 0; break;
@@ -1099,8 +1436,8 @@ static void apply1(int func,
 		int64_t c;
 		ap1 += elem_size_a;
 		switch(func) {
-		case SIGMOID:   c = sigm(a); break;
-		case RECTIFIER: c = max(0,a); break;
+		case SIGMOID:   c = op_sigmoid(a); break;
+		case RECTIFIER: c = op_max(0,a); break;
 		case TANH:      c = tanh(a); break;		
 		case NEGATE:    c = -a; break;
 		default:        c = 0; break;		    
@@ -1284,7 +1621,7 @@ static void sigmoid(matrix_type_t at, byte_t* ap, size_t as,
 	    while(m1--) {
 		float64_t a = read_float(at, ap1);
 		ap1 += elem_size_a;
-		write_float(ct, cp1, sigm(a));
+		write_float(ct, cp1, op_sigmoid(a));
 		cp1 += elem_size_c;
 	    }
 	    ap += as*elem_size_a;
@@ -1302,7 +1639,7 @@ static void sigmoid(matrix_type_t at, byte_t* ap, size_t as,
 	    while(m1--) {
 		float64_t a = read_int(at, ap1);
 		ap1 += elem_size_a;
-		write_int(ct, cp1, sigm(a));
+		write_int(ct, cp1, op_sigmoid(a));
 		cp1 += elem_size_c;
 	    }
 	    ap += as*elem_size_a;
@@ -1329,7 +1666,7 @@ static void sigmoid_prime(matrix_type_t at, byte_t* ap, size_t as,
 	    while(m1--) {
 		float64_t a = read_float(at, ap1);
 		ap1 += elem_size_a;
-		write_float(ct, cp1, sigm_prime(a));
+		write_float(ct, cp1, op_sigmoid_prime(a));
 		cp1 += elem_size_c;
 	    }
 	    ap += as*elem_size_a;
@@ -1347,7 +1684,7 @@ static void sigmoid_prime(matrix_type_t at, byte_t* ap, size_t as,
 	    while(m1--) {
 		float64_t a = read_int(at, ap1);
 		ap1 += elem_size_a;
-		write_int(ct, cp1, sigm_prime(a));
+		write_int(ct, cp1, op_sigmoid_prime(a));
 		cp1 += elem_size_c;
 	    }
 	    ap += as*elem_size_a;
@@ -1627,15 +1964,6 @@ ERL_NIF_TERM matrix_new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 }
 
 // add two matrices
-//   A  B
-//   A  A
-//
-//   A  B  C
-//   A  A  C
-//   A  C  C
-//   C  B  C
-//   C  C  C
-//
 ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     matrix_t a, b;
