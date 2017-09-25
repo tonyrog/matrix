@@ -15,17 +15,12 @@
  *
  ***************************************************************************/
 
-// Common BINOP functions
-// #define NAME
-// #define TYPE
-// #define PARAMS_DECL
-// #define OPERATION
-
-static void NAME(TYPE* ap, size_t as, size_t an, size_t am,
+static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 		 TYPE* bp, size_t bs, size_t bn, size_t bm,
 		 TYPE* cp, size_t cs
 		 PARAMS_DECL)
 {
+    LOCALS_DECL
     size_t i, j, k;
     (void) bn;
     for (i=0; i<an; i++) {
@@ -47,9 +42,10 @@ static void NAME(TYPE* ap, size_t as, size_t an, size_t am,
     }
 }
 
-#undef NAME
+#undef PROCEDURE
 #undef TYPE
 #undef TYPE2
 #undef PARAMS_DECL
+#undef LOCALS_DECL
 #undef OPERATION
 #undef OPERATION2

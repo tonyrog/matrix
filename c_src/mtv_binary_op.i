@@ -15,10 +15,10 @@
  *
  ***************************************************************************/
 
-static void NAME(TYPE* ap, size_t as, TYPE* bp, size_t bs,
-		 TYPE* cp, size_t cs,
-		 size_t n, size_t m
-		 PARAMS_DECL)
+static void PROCEDURE(TYPE* ap, size_t as, TYPE* bp, size_t bs,
+		      TYPE* cp, size_t cs,
+		      size_t n, size_t m
+		      PARAMS_DECL)
 {
     LOCALS_DECL
     while(n--) {
@@ -46,7 +46,7 @@ static void NAME(TYPE* ap, size_t as, TYPE* bp, size_t bs,
     }
 }
 
-#undef NAME
+#undef PROCEDURE
 #undef TYPE
 #undef PARAMS_DECL
 #undef LOCALS_DECL

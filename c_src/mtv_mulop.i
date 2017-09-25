@@ -15,12 +15,12 @@
  *
  ***************************************************************************/
 
-static void NAME(TYPE* ap, size_t as, size_t an, size_t am,
-		 TYPE* bp, size_t bs, size_t bn, size_t bm,
-		 TYPE* cp, size_t cs
-		 PARAMS_DECL)
+static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
+		      TYPE* bp, size_t bs, size_t bn, size_t bm,
+		      TYPE* cp, size_t cs
+		      PARAMS_DECL)
 {
-
+    LOCALS_DECL
     while (bm--) {
         VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
 	TYPE* ap1 = ap;
@@ -89,10 +89,11 @@ static void NAME(TYPE* ap, size_t as, size_t an, size_t am,
     }
 }
 
-#undef NAME
+#undef PROCEDURE
 #undef TYPE
 #undef TYPE2
 #undef PARAMS_DECL
+#undef LOCALS_DECL
 #undef OPERATION
 #undef OPERATION2
 

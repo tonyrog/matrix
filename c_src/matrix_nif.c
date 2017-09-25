@@ -31,10 +31,17 @@ typedef enum {
 
 typedef enum {
     SIGMOID,
+    SIGMOID_PRIME,
     RECTIFIER,
     TANH,
     NEGATE
 } unary_operation_t;
+
+typedef enum {
+    PLUS,
+    MINUS,
+    TIMES
+} binary_operation_t;
 
 typedef unsigned char byte_t;
 typedef float  float32_t;   // fixme: configure
@@ -146,7 +153,6 @@ static ERL_NIF_TERM matrix_sigmoid_prime(ErlNifEnv* env, int argc,
 					 const ERL_NIF_TERM argv[]);
 
 #if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 12))
-#warning "DIRTY"
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
 #elif (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 7))
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(0)}
@@ -250,7 +256,7 @@ static void write_float(matrix_type_t type, byte_t* ptr, float64_t v)
 // comparison operators: ==, !=, <, <=, >, >=
 #define op_plus(x,y)  ((x)+(y))
 #define op_minus(x,y) ((x)-(y))
-#define op_mul(x,y)   ((x)*(y))
+#define op_times(x,y)   ((x)*(y))
 #define op_div(x,y)   ((x)/(y))
 #define op_rem(x,y)   ((x)%(y))
 #define op_bxor(x,y)  ((x)^(y))
@@ -288,7 +294,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 /////////////////////////////////////////////////////////////////////////////
 
 // add: int8 x int8 -> int8
-#define NAME           mt_add_int8_
+#define PROCEDURE      mt_add_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -296,7 +302,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // add: int16 x int16 -> int16
-#define NAME           mt_add_int16_
+#define PROCEDURE      mt_add_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -304,7 +310,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // add: int32 x int32 -> int32
-#define NAME           mt_add_int32_
+#define PROCEDURE      mt_add_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -312,7 +318,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // add: int64 x int64 -> int64
-#define NAME           mt_add_int64_
+#define PROCEDURE      mt_add_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -320,7 +326,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // add: float32 x float32 -> float32
-#define NAME           mt_add_float32_
+#define PROCEDURE      mt_add_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -328,7 +334,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // add: float64 x float64 -> float64
-#define NAME           mt_add_float64_
+#define PROCEDURE      mt_add_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -338,7 +344,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 //----------------------------------------------------------------------------
 //  add(int8/int16/int32/int64/float32/float64)
 //----------------------------------------------------------------------------
-#define SELECT mt_add_
+#define SELECT mt_add
 #define NAME add
 #include "mt_binary_op_select.i"
 
@@ -346,7 +352,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #ifdef USE_GCC_VECTOR
 
 // addv: int8 x int8 -> int8
-#define NAME           mtv_add_int8_
+#define PROCEDURE      mtv_add_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -355,7 +361,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // addv: int16 x int16 -> int16
-#define NAME           mtv_add_int16_
+#define PROCEDURE      mtv_add_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -364,7 +370,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // addv: int32 x int32 -> int32
-#define NAME           mtv_add_int32_
+#define PROCEDURE      mtv_add_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -373,7 +379,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // addv: int64 x int64 -> int64
-#define NAME           mtv_add_int64_
+#define PROCEDURE      mtv_add_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -382,7 +388,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // addv: float32 x float32 -> float32
-#define NAME           mtv_add_float32_
+#define PROCEDURE      mtv_add_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -391,7 +397,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // addv: float64 x float64 -> float64
-#define NAME           mtv_add_float64_
+#define PROCEDURE      mtv_add_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -399,7 +405,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #define OPERATION(a,b) op_plus((a),(b))
 #include "mtv_binary_op.i"
 
-#define SELECT mtv_add_
+#define SELECT mtv_add
 #define NAME add
 #include "mtv_binary_op_select.i"
 
@@ -410,7 +416,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 /////////////////////////////////////////////////////////////////////////////
 
 // subtract: int8 x int8 -> int8
-#define NAME           mt_subtract_int8_
+#define PROCEDURE           mt_subtract_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -418,7 +424,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // subtract: int16 x int16 -> int16
-#define NAME           mt_subtract_int16_
+#define PROCEDURE           mt_subtract_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -426,7 +432,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // subtract: int32 x int32 -> int32
-#define NAME           mt_subtract_int32_
+#define PROCEDURE           mt_subtract_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -434,7 +440,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // subtract: int64 x int64 -> int64
-#define NAME           mt_subtract_int64_
+#define PROCEDURE           mt_subtract_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -442,7 +448,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // subtract: float32 x float32 -> float32
-#define NAME           mt_subtract_float32_
+#define PROCEDURE           mt_subtract_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -450,7 +456,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_binary_op.i"
 
 // subtract: float64 x float64 -> float64
-#define NAME           mt_subtract_float64_
+#define PROCEDURE           mt_subtract_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -460,7 +466,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 //----------------------------------------------------------------------------
 //  subtract(int8/int16/int32/int64/float32/float64)
 //----------------------------------------------------------------------------
-#define SELECT mt_subtract_
+#define SELECT mt_subtract
 #define NAME subtract
 #include "mt_binary_op_select.i"
 
@@ -468,7 +474,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #ifdef USE_GCC_VECTOR
 
 // subtractv: int8 x int8 -> int8
-#define NAME           mtv_subtract_int8_
+#define PROCEDURE           mtv_subtract_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -477,7 +483,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // subtractv: int16 x int16 -> int16
-#define NAME           mtv_subtract_int16_
+#define PROCEDURE           mtv_subtract_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -486,7 +492,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // subtractv: int32 x int32 -> int32
-#define NAME           mtv_subtract_int32_
+#define PROCEDURE           mtv_subtract_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -495,7 +501,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // subtractv: int64 x int64 -> int64
-#define NAME           mtv_subtract_int64_
+#define PROCEDURE           mtv_subtract_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -504,7 +510,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // subtractv: float32 x float32 -> float32
-#define NAME           mtv_subtract_float32_
+#define PROCEDURE           mtv_subtract_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -513,7 +519,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mtv_binary_op.i"
 
 // subtractv: float64 x float64 -> float64
-#define NAME           mtv_subtract_float64_
+#define PROCEDURE           mtv_subtract_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -521,7 +527,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #define OPERATION(a,b) op_minus((a),(b))
 #include "mtv_binary_op.i"
 
-#define SELECT mtv_subtract_
+#define SELECT mtv_subtract
 #define NAME subtract
 #include "mtv_binary_op_select.i"
 
@@ -532,57 +538,57 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 /////////////////////////////////////////////////////////////////////////////
 
 // times: int8 x int8 -> int8
-#define NAME           mt_times_int8_
+#define PROCEDURE      mt_times_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mt_binary_op.i"
 
 // times: int16 x int16 -> int16
-#define NAME           mt_times_int16_
+#define PROCEDURE      mt_times_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mt_binary_op.i"
 
 // times: int32 x int32 -> int32
-#define NAME           mt_times_int32_
+#define PROCEDURE      mt_times_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mt_binary_op.i"
 
 // times: int64 x int64 -> int64
-#define NAME           mt_times_int64_
+#define PROCEDURE      mt_times_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mt_binary_op.i"
 
 // times: float32 x float32 -> float32
-#define NAME           mt_times_float32_
+#define PROCEDURE      mt_times_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mt_binary_op.i"
 
 // times: float64 x float64 -> float64
-#define NAME           mt_times_float64_
+#define PROCEDURE      mt_times_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mt_binary_op.i"
 
 //----------------------------------------------------------------------------
 //  times(int8/int16/int32/int64/float32/float64)
 //----------------------------------------------------------------------------
-#define SELECT mt_times_
+#define SELECT mt_times
 #define NAME times
 #include "mt_binary_op_select.i"
 
@@ -590,60 +596,60 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #ifdef USE_GCC_VECTOR
 
 // timesv: int8 x int8 -> int8
-#define NAME           mtv_times_int8_
+#define PROCEDURE      mtv_times_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define VOPERATION(a,b) op_mul((a),(b))
-#define OPERATION(a,b) op_mul((a),(b))
+#define VOPERATION(a,b) op_times((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mtv_binary_op.i"
 
 // timesv: int16 x int16 -> int16
-#define NAME           mtv_times_int16_
+#define PROCEDURE           mtv_times_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define VOPERATION(a,b) op_mul((a),(b))
-#define OPERATION(a,b) op_mul((a),(b))
+#define VOPERATION(a,b) op_times((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mtv_binary_op.i"
 
 // timesv: int32 x int32 -> int32
-#define NAME           mtv_times_int32_
+#define PROCEDURE           mtv_times_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define VOPERATION(a,b) op_mul((a),(b))
-#define OPERATION(a,b) op_mul((a),(b))
+#define VOPERATION(a,b) op_times((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mtv_binary_op.i"
 
 // timesv: int64 x int64 -> int64
-#define NAME           mtv_times_int64_
+#define PROCEDURE           mtv_times_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define VOPERATION(a,b) op_mul((a),(b))
-#define OPERATION(a,b) op_mul((a),(b))
+#define VOPERATION(a,b) op_times((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mtv_binary_op.i"
 
 // timesv: float32 x float32 -> float32
-#define NAME           mtv_times_float32_
+#define PROCEDURE           mtv_times_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define VOPERATION(a,b) op_mul((a),(b))
-#define OPERATION(a,b) op_mul((a),(b))
+#define VOPERATION(a,b) op_times((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mtv_binary_op.i"
 
 // timesv: float64 x float64 -> float64
-#define NAME           mtv_times_float64_
+#define PROCEDURE           mtv_times_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define VOPERATION(a,b) op_mul((a),(b))
-#define OPERATION(a,b) op_mul((a),(b))
+#define VOPERATION(a,b) op_times((a),(b))
+#define OPERATION(a,b) op_times((a),(b))
 #include "mtv_binary_op.i"
 
-#define SELECT mtv_times_
+#define SELECT mtv_times
 #define NAME times
 #include "mtv_binary_op_select.i"
 
@@ -654,14 +660,14 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 //   NEGATE
 /////////////////////////////////////////////////////////////////////////////
 
-#define NAME           mt_negate_int8_
+#define PROCEDURE           mt_negate_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_negate((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_negate_int16_
+#define PROCEDURE           mt_negate_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -669,35 +675,35 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_unary_op.i"
 
 
-#define NAME           mt_negate_int32_
+#define PROCEDURE           mt_negate_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_negate((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_negate_int64_
+#define PROCEDURE           mt_negate_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_negate((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_negate_float32_
+#define PROCEDURE           mt_negate_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_negate((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_negate_float64_
+#define PROCEDURE           mt_negate_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_negate((a))
 #include "mt_unary_op.i"
 
-#define SELECT mt_negate_
+#define SELECT mt_negate
 #define NAME negate
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -705,7 +711,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_unary_op_select.i"
 
 #ifdef USE_GCC_VECTOR
-#define NAME           mtv_negate_int8_
+#define PROCEDURE      mtv_negate_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -713,7 +719,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #define OPERATION(a)   op_negate((a))
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_negate_int16_
+#define PROCEDURE      mtv_negate_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -721,7 +727,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #define OPERATION(a)   op_negate((a))
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_negate_int32_
+#define PROCEDURE           mtv_negate_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -729,7 +735,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #define OPERATION(a)   op_negate((a))
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_negate_int64_
+#define PROCEDURE           mtv_negate_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -737,7 +743,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #define OPERATION(a)   op_negate((a))
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_negate_float32_
+#define PROCEDURE           mtv_negate_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -745,7 +751,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #define OPERATION(a)   op_negate((a))
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_negate_float64_
+#define PROCEDURE           mtv_negate_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -753,7 +759,7 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #define OPERATION(a)   op_negate((a))
 #include "mtv_unary_op.i"
 
-#define SELECT mtv_negate_
+#define SELECT mtv_negate
 #define NAME negate
 #define PARAMS_DECL
 #define PARAMS
@@ -765,49 +771,49 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 //   SCALE * int64
 /////////////////////////////////////////////////////////////////////////////
 
-#define NAME           mt_scale_int64_int8_
+#define PROCEDURE           mt_scale_int64_int8
 #define TYPE           int8_t
 #define PARAMS_DECL    ,int64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_int64_int16_
+#define PROCEDURE           mt_scale_int64_int16
 #define TYPE           int16_t
 #define PARAMS_DECL    ,int64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_int64_int32_
+#define PROCEDURE           mt_scale_int64_int32
 #define TYPE           int32_t
 #define PARAMS_DECL    ,int64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_int64_int64_
+#define PROCEDURE           mt_scale_int64_int64
 #define TYPE           int64_t
 #define PARAMS_DECL    ,int64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_int64_float32_
+#define PROCEDURE           mt_scale_int64_float32
 #define TYPE           float32_t
 #define PARAMS_DECL    ,int64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_int64_float64_
+#define PROCEDURE           mt_scale_int64_float64
 #define TYPE           float64_t
 #define PARAMS_DECL    ,int64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define SELECT mt_scale_i_
+#define SELECT mt_scale_i
 #define NAME scale_int64
 #define PARAMS_DECL ,int64_t arg
 #define PARAMS      ,arg
@@ -816,55 +822,55 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 // vector version
 #ifdef USE_GCC_VECTOR
 
-#define NAME           mtv_scale_int64_int8_
+#define PROCEDURE           mtv_scale_int64_int8
 #define TYPE           int8_t
 #define PARAMS_DECL    ,int64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_int64_int16_
+#define PROCEDURE           mtv_scale_int64_int16
 #define TYPE           int16_t
 #define PARAMS_DECL    ,int64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_int64_int32_
+#define PROCEDURE           mtv_scale_int64_int32
 #define TYPE           int32_t
 #define PARAMS_DECL    ,int64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_int64_int64_
+#define PROCEDURE           mtv_scale_int64_int64
 #define TYPE           int64_t
 #define PARAMS_DECL    ,int64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_int64_float32_
+#define PROCEDURE           mtv_scale_int64_float32
 #define TYPE           float32_t
 #define PARAMS_DECL    ,int64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_int64_float64_
+#define PROCEDURE           mtv_scale_int64_float64
 #define TYPE           float64_t
 #define PARAMS_DECL    ,int64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define SELECT mtv_scale_i_
+#define SELECT mtv_scale_i
 #define NAME scale_int64
 #define PARAMS_DECL ,int64_t arg
 #define PARAMS      ,arg
@@ -876,49 +882,49 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 //   SCALE * float64
 /////////////////////////////////////////////////////////////////////////////
 
-#define NAME           mt_scale_float64_int8_
+#define PROCEDURE           mt_scale_float64_int8
 #define TYPE           int8_t
 #define PARAMS_DECL    ,float64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_float64_int16_
+#define PROCEDURE           mt_scale_float64_int16
 #define TYPE           int16_t
 #define PARAMS_DECL    ,float64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_float64_int32_
+#define PROCEDURE           mt_scale_float64_int32
 #define TYPE           int32_t
 #define PARAMS_DECL    ,float64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_float64_int64_
+#define PROCEDURE           mt_scale_float64_int64
 #define TYPE           int64_t
 #define PARAMS_DECL    ,float64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_float64_float32_
+#define PROCEDURE           mt_scale_float64_float32
 #define TYPE           float32_t
 #define PARAMS_DECL    ,float64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define NAME           mt_scale_float64_float64_
+#define PROCEDURE           mt_scale_float64_float64
 #define TYPE           float64_t
 #define PARAMS_DECL    ,float64_t factor
 #define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
+#define OPERATION(a)   op_times((a),factor)
 #include "mt_unary_op.i"
 
-#define SELECT mt_scale_f_
+#define SELECT mt_scale_f
 #define NAME scale_float64
 #define PARAMS_DECL ,float64_t arg
 #define PARAMS      ,arg
@@ -928,55 +934,55 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 // vector version
 #ifdef USE_GCC_VECTOR
 
-#define NAME           mtv_scale_float64_int8_
+#define PROCEDURE           mtv_scale_float64_int8
 #define TYPE           int8_t
 #define PARAMS_DECL    ,float64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_float64_int16_
+#define PROCEDURE           mtv_scale_float64_int16
 #define TYPE           int16_t
 #define PARAMS_DECL    ,float64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_float64_int32_
+#define PROCEDURE           mtv_scale_float64_int32
 #define TYPE           int32_t
 #define PARAMS_DECL    ,float64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_float64_int64_
+#define PROCEDURE           mtv_scale_float64_int64
 #define TYPE           int64_t
 #define PARAMS_DECL    ,float64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_float64_float32_
+#define PROCEDURE           mtv_scale_float64_float32
 #define TYPE           float32_t
 #define PARAMS_DECL    ,float64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define NAME           mtv_scale_float64_float64_
+#define PROCEDURE           mtv_scale_float64_float64
 #define TYPE           float64_t
 #define PARAMS_DECL    ,float64_t arg
 #define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
+#define VOPERATION(a)  op_times((a),varg)
+#define OPERATION(a)   op_times((a),sarg)
 #include "mtv_unary_op.i"
 
-#define SELECT mtv_scale_f_
+#define SELECT mtv_scale_f
 #define NAME scale_float64
 #define PARAMS_DECL ,float64_t arg
 #define PARAMS      ,arg
@@ -988,14 +994,14 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 //   SIGMOID
 /////////////////////////////////////////////////////////////////////////////
 
-#define NAME           mt_sigmoid_int8_
+#define PROCEDURE           mt_sigmoid_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_sigmoid_int16_
+#define PROCEDURE           mt_sigmoid_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -1003,35 +1009,35 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_unary_op.i"
 
 
-#define NAME           mt_sigmoid_int32_
+#define PROCEDURE      mt_sigmoid_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_sigmoid_int64_
+#define PROCEDURE      mt_sigmoid_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_sigmoid_float32_
+#define PROCEDURE           mt_sigmoid_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_sigmoid_float64_
+#define PROCEDURE           mt_sigmoid_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid((a))
 #include "mt_unary_op.i"
 
-#define SELECT mt_sigmoid_
+#define SELECT mt_sigmoid
 #define NAME sigmoid
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -1042,14 +1048,14 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 //   SIGMOID_PRIME
 /////////////////////////////////////////////////////////////////////////////
 
-#define NAME           mt_sigmoid_prime_int8_
+#define PROCEDURE           mt_sigmoid_prime_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid_prime((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_sigmoid_prime_int16_
+#define PROCEDURE           mt_sigmoid_prime_int16
 #define TYPE           int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -1057,35 +1063,35 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "mt_unary_op.i"
 
 
-#define NAME           mt_sigmoid_prime_int32_
+#define PROCEDURE           mt_sigmoid_prime_int32
 #define TYPE           int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid_prime((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_sigmoid_prime_int64_
+#define PROCEDURE           mt_sigmoid_prime_int64
 #define TYPE           int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid_prime((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_sigmoid_prime_float32_
+#define PROCEDURE           mt_sigmoid_prime_float32
 #define TYPE           float32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid_prime((a))
 #include "mt_unary_op.i"
 
-#define NAME           mt_sigmoid_prime_float64_
+#define PROCEDURE           mt_sigmoid_prime_float64
 #define TYPE           float64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define OPERATION(a)   op_sigmoid_prime((a))
 #include "mt_unary_op.i"
 
-#define SELECT mt_sigmoid_prime_
+#define SELECT mt_sigmoid_prime
 #define NAME sigmoid_prime
 #define PARAMS_DECL
 #define LOCALS_DECL
@@ -1097,304 +1103,127 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 //   MULTIPLY
 /////////////////////////////////////////////////////////////////////////////
 
-#define NAME           mt_multiply_int8_
+#define PROCEDURE           mt_multiply_int8
 #define TYPE           int8_t
 #define TYPE2          int16_t
 #define PARAMS_DECL
-#define OPERATION(a,b)  op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mt_mulop.i"
 
-#define NAME           mt_multiply_int16_
+#define PROCEDURE           mt_multiply_int16
 #define TYPE           int16_t
 #define TYPE2          int32_t
 #define PARAMS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b) op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mt_mulop.i"
 
-#define NAME           mt_multiply_int32_
+#define PROCEDURE           mt_multiply_int32
 #define TYPE           int32_t
 #define TYPE2          int64_t
 #define PARAMS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b) op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mt_mulop.i"
 
-#define NAME           mt_multiply_int64_
+#define PROCEDURE           mt_multiply_int64
 #define TYPE           int64_t
 #define TYPE2          int64_t
 #define PARAMS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b) op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mt_mulop.i"
 
-#define NAME           mt_multiply_float32_
+#define PROCEDURE           mt_multiply_float32
 #define TYPE           float32_t
 #define TYPE2          float64_t
 #define PARAMS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b) op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mt_mulop.i"
 
-#define NAME           mt_multiply_float64_
+#define PROCEDURE           mt_multiply_float64
 #define TYPE           float64_t
 #define TYPE2          float64_t
 #define PARAMS_DECL
-#define OPERATION(a,b) op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b) op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mt_mulop.i"
 
-#define SELECT mt_multiply_
+#define SELECT mt_multiply
 #define NAME multiply
 #include "mt_mulop_select.i"
 
 #ifdef USE_GCC_VECTOR
 
-#define NAME           mtv_multiply_int8_
+#define PROCEDURE           mtv_multiply_int8
 #define TYPE           int8_t
 #define TYPE2          int16_t
 #define PARAMS_DECL
-#define OPERATION(a,b)  op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mtv_mulop.i"
 
-#define NAME           mtv_multiply_int16_
+#define PROCEDURE           mtv_multiply_int16
 #define TYPE           int16_t
 #define TYPE2          int32_t
 #define PARAMS_DECL
-#define OPERATION(a,b)  op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mtv_mulop.i"
 
-#define NAME           mtv_multiply_int32_
+#define PROCEDURE           mtv_multiply_int32
 #define TYPE           int32_t
 #define TYPE2          int64_t
 #define PARAMS_DECL
-#define OPERATION(a,b)  op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mtv_mulop.i"
 
-#define NAME           mtv_multiply_int64_
+#define PROCEDURE           mtv_multiply_int64
 #define TYPE           int64_t
 #define TYPE2          int64_t
 #define PARAMS_DECL
-#define OPERATION(a,b)  op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mtv_mulop.i"
 
-#define NAME           mtv_multiply_float32_
+#define PROCEDURE           mtv_multiply_float32
 #define TYPE           float32_t
 #define TYPE2          float64_t
 #define PARAMS_DECL
-#define OPERATION(a,b)  op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mtv_mulop.i"
 
-#define NAME           mtv_multiply_float64_
+#define PROCEDURE           mtv_multiply_float64
 #define TYPE           float64_t
 #define TYPE2          float64_t
 #define PARAMS_DECL
-#define OPERATION(a,b)  op_mul((a),(b))
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_times((a),(b))
 #define OPERATION2(a,b) op_plus((a),(b))
 #include "mtv_mulop.i"
 
-#define SELECT mtv_multiply_
+#define SELECT mtv_multiply
 #define NAME multiply
 #include "mtv_mulop_select.i"
 
 #endif
 
-
-static void add(matrix_type_t at, byte_t* ap, size_t as, 
-		matrix_type_t bt, byte_t* bp, size_t bs,
-		matrix_type_t ct, byte_t* cp, size_t cs,
-		size_t n, size_t m)
-{
-    if ((at == bt) && (bt == ct)) {
-#ifdef USE_GCC_VECTOR
-	if (is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
-	    mtv_add_(at, ap, as, bp, bs, cp, cs, n, m);
-	else
-#endif
-	    mt_add_(at, ap, as, bp, bs, cp, cs, n, m);
-    }
-    else if (element_is_float(at) || element_is_float(bt) ||
-	     element_is_float(ct)) {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_b = element_size(bt);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* bp1 = bp;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		float64_t a = read_float(at, ap1);
-		float64_t b = read_float(bt, bp1);
-		ap1 += elem_size_a;
-		bp1 += elem_size_b;
-		write_float(ct, cp1, a+b);
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    bp += bs*elem_size_b;
-	    cp += cs*elem_size_c;
-	}
-    }
-    else {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_b = element_size(bt);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* bp1 = bp;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		int64_t a = read_int(at, ap1);
-		int64_t b = read_int(bt, bp1);
-		ap += elem_size_a;
-		bp += elem_size_b;
-		write_int(ct, cp1, a+b);
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    bp += bs*elem_size_b;
-	    cp += cs*elem_size_c;
-	}	
-    }
-}
-
-static void subtract(matrix_type_t at, byte_t* ap, size_t as, 
-		     matrix_type_t bt, byte_t* bp, size_t bs,
-		     matrix_type_t ct, byte_t* cp, size_t cs,
-		     size_t n, size_t m)
-{
-    if ((at == bt) && (bt == ct)) {
-#ifdef USE_GCC_VECTOR	
-	if (is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
-	    mtv_subtract_(at, ap, as, bp, bs, cp, cs, n, m);
-	else
-#endif	    
-	    mt_subtract_(at, ap, as, bp, bs, cp, cs, n, m);
-    }
-    else if (element_is_float(at) || element_is_float(bt) ||
-	     element_is_float(ct)) {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_b = element_size(bt);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* bp1 = bp;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		float64_t a = read_float(at, ap1);
-		float64_t b = read_float(bt, bp1);
-		ap1 += elem_size_a;
-		bp1 += elem_size_b;
-		write_float(ct, cp1, a-b);
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    bp += bs*elem_size_b;
-	    cp += cs*elem_size_c;
-	}
-    }
-    else {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_b = element_size(bt);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* bp1 = bp;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		int64_t a = read_int(at, ap1);
-		int64_t b = read_int(bt, bp1);
-		ap1 += elem_size_a;
-		bp1 += elem_size_b;
-		write_int(ct, cp1, a-b);
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    bp += bs*elem_size_b;
-	    cp += cs*elem_size_c;
-	}	
-    }
-}
-
-
-static void times(matrix_type_t at, byte_t* ap, size_t as, 
-		  matrix_type_t bt, byte_t* bp, size_t bs,
-		  matrix_type_t ct, byte_t* cp, size_t cs,
-		  size_t n, size_t m)
-{
-    if ((at == bt) && (bt == ct)) {
-#ifdef USE_GCC_VECTOR
-	if (is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
-	    mtv_times_(at, ap, as, bp, bs, cp, cs, n, m);
-	else
-#endif
-	    mt_times_(at, ap, as, bp, bs, cp, cs, n, m);
-    }
-    else if (element_is_float(at) || element_is_float(bt) ||
-	     element_is_float(ct)) {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_b = element_size(bt);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* bp1 = bp;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		float64_t a = read_float(at, ap1);
-		float64_t b = read_float(bt, bp1);
-		ap1 += elem_size_a;
-		bp1 += elem_size_b;
-		write_float(ct, cp1, a*b);
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    bp += bs*elem_size_b;
-	    cp += cs*elem_size_c;
-	}
-    }
-    else {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_b = element_size(bt);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* bp1 = bp;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		int64_t a = read_int(at, ap1);
-		int64_t b = read_int(bt, bp1);
-		ap1 += elem_size_a;
-		bp1 += elem_size_b;
-		write_int(ct, cp1, a*b);
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    bp += bs*elem_size_b;
-	    cp += cs*elem_size_c;
-	}	
-    }
-}
-
-
-// a more general function for unary operations but slower
+// a more general function for unary operations but a lot slower
 static void apply1(int func,
 		   matrix_type_t at, byte_t* ap, size_t as,
 		   matrix_type_t ct, byte_t* cp, size_t cs,
@@ -1403,7 +1232,7 @@ static void apply1(int func,
     size_t elem_size_a = element_size(at);
     size_t elem_size_c = element_size(ct);
 
-    if (element_is_float(at)) {
+    if (element_is_float(at) || element_is_float(ct)) {
 	while(n--) {
 	    byte_t* ap1 = ap;
 	    byte_t* cp1 = cp;
@@ -1414,6 +1243,7 @@ static void apply1(int func,
 		ap1 += elem_size_a;
 		switch(func) {
 		case SIGMOID:   c = op_sigmoid(a); break;
+		case SIGMOID_PRIME: c = op_sigmoid_prime(a); break;
 		case RECTIFIER: c = op_max(0,a); break;
 		case TANH:      c = tanh(a); break;		
 		case NEGATE:    c = -a; break;
@@ -1432,11 +1262,12 @@ static void apply1(int func,
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {	    
-		int64_t a = read_float(at, ap1);
+		int64_t a = read_int(at, ap1);
 		int64_t c;
 		ap1 += elem_size_a;
 		switch(func) {
 		case SIGMOID:   c = op_sigmoid(a); break;
+		case SIGMOID_PRIME: c = op_sigmoid_prime(a); break;
 		case RECTIFIER: c = op_max(0,a); break;
 		case TANH:      c = tanh(a); break;		
 		case NEGATE:    c = -a; break;
@@ -1451,6 +1282,127 @@ static void apply1(int func,
     }
 }
 
+// a more general function for unary operations but a lot slower
+static void apply2(int func,
+		   matrix_type_t at, byte_t* ap, size_t as,
+		   matrix_type_t bt, byte_t* bp, size_t bs,
+		   matrix_type_t ct, byte_t* cp, size_t cs,
+		   size_t n, size_t m)
+{
+    size_t elem_size_a = element_size(at);
+    size_t elem_size_b = element_size(bt);
+    size_t elem_size_c = element_size(ct);
+
+    if (element_is_float(at) || element_is_float(bt) || element_is_float(ct)) {
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* bp1 = bp;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {	    
+		float64_t a = read_float(at, ap1);
+		float64_t b = read_float(bt, bp1);
+		float64_t c;
+		ap1 += elem_size_a;
+		bp1 += elem_size_b;
+		switch(func) {
+		case PLUS:   c = op_plus(a,b); break;
+		case MINUS:  c = op_minus(a,b); break;
+		case TIMES:  c = op_times(a,b); break;
+		default:     c = 0; break;
+		}
+		write_float(ct, cp1, c);
+		cp1 += elem_size_c;
+	    }
+	    ap += as*elem_size_a;
+	    bp += bs*elem_size_b;
+	    cp += cs*elem_size_c;
+	}
+    }
+    else {
+	while(n--) {
+	    byte_t* ap1 = ap;
+	    byte_t* bp1 = bp;
+	    byte_t* cp1 = cp;
+	    size_t m1 = m;
+	    while(m1--) {
+		int64_t a = read_int(at, ap1);
+		int64_t b = read_int(bt, bp1);
+		int64_t c;
+		ap1 += elem_size_a;
+		bp1 += elem_size_b;
+		switch(func) {
+		case PLUS:   c = op_plus(a,b); break;
+		case MINUS:  c = op_minus(a,b); break;
+		case TIMES:  c = op_times(a,b); break;
+		default:     c = 0; break;		    
+		}
+		write_int(ct, cp1, c);
+		cp1 += elem_size_c;
+	    }
+	    ap += as*elem_size_a;
+	    bp += bs*elem_size_b;
+	    cp += cs*elem_size_c;
+	}
+    }
+}
+
+
+
+static void add(matrix_type_t at, byte_t* ap, size_t as, 
+		matrix_type_t bt, byte_t* bp, size_t bs,
+		matrix_type_t ct, byte_t* cp, size_t cs,
+		size_t n, size_t m)
+{
+    if ((at == bt) && (bt == ct)) {
+#ifdef USE_GCC_VECTOR
+	if (is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
+	    mtv_add(at, ap, as, bp, bs, cp, cs, n, m);
+	else
+#endif
+	    mt_add(at, ap, as, bp, bs, cp, cs, n, m);
+    }
+    else {
+	apply2(PLUS, at, ap, as, bt, bp, bs, ct, cp, cs, n, m);
+    }
+}
+
+static void subtract(matrix_type_t at, byte_t* ap, size_t as, 
+		     matrix_type_t bt, byte_t* bp, size_t bs,
+		     matrix_type_t ct, byte_t* cp, size_t cs,
+		     size_t n, size_t m)
+{
+    if ((at == bt) && (bt == ct)) {
+#ifdef USE_GCC_VECTOR	
+	if (is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
+	    mtv_subtract(at, ap, as, bp, bs, cp, cs, n, m);
+	else
+#endif	    
+	    mt_subtract(at, ap, as, bp, bs, cp, cs, n, m);
+    }
+    else {
+	apply2(MINUS, at, ap, as, bt, bp, bs, ct, cp, cs, n, m);
+    }
+}
+
+static void times(matrix_type_t at, byte_t* ap, size_t as, 
+		  matrix_type_t bt, byte_t* bp, size_t bs,
+		  matrix_type_t ct, byte_t* cp, size_t cs,
+		  size_t n, size_t m)
+{
+    if ((at == bt) && (bt == ct)) {
+#ifdef USE_GCC_VECTOR
+	if (is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
+	    mtv_times(at, ap, as, bp, bs, cp, cs, n, m);
+	else
+#endif
+	    mt_times(at, ap, as, bp, bs, cp, cs, n, m);
+    }
+    else {
+	apply2(TIMES, at, ap, as, bt, bp, bs, ct, cp, cs, n, m);
+    }
+}
+
 static void negate(matrix_type_t at, byte_t* ap, size_t as,
 		   matrix_type_t ct, byte_t* cp, size_t cs,
 		   size_t n, size_t m)
@@ -1458,49 +1410,15 @@ static void negate(matrix_type_t at, byte_t* ap, size_t as,
     if (at == ct) {
 #ifdef USE_GCC_VECTOR
 	if (is_aligned(ap) && is_aligned(cp))
-	    mtv_negate_(at, ap, as, cp, cs, n, m);
+	    mtv_negate(at, ap, as, cp, cs, n, m);
 	else
 #endif
-	    mt_negate_(at, ap, as, cp, cs, n, m);
-    }
-    else if (element_is_float(at)) {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		float64_t a = read_float(at, ap1);
-		ap1 += elem_size_a;
-		write_float(ct, cp1, -a);
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    cp += cs*elem_size_c;
-	}
+	    mt_negate(at, ap, as, cp, cs, n, m);
     }
     else {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		int64_t a = read_int(at, ap1);
-		ap1 += elem_size_a;
-		write_int(ct, cp1, -a);
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    cp += cs*elem_size_c;
-	}	
-    }    
+	apply1(NEGATE, at, ap, as, ct, cp, cs, n, m);
+    }
 }
-
 
 static void scale_i(matrix_type_t at, byte_t* ap, size_t as,
 		    matrix_type_t ct, byte_t* cp, size_t cs,
@@ -1509,10 +1427,10 @@ static void scale_i(matrix_type_t at, byte_t* ap, size_t as,
     if (at == ct) {
 #ifdef USE_GCC_VECTOR
 	if (is_aligned(ap) && is_aligned(cp))
-	    mtv_scale_i_(at, ap, as, cp, cs, n, m, factor);
+	    mtv_scale_i(at, ap, as, cp, cs, n, m, factor);
 	else
 #endif	
-	    mt_scale_i_(at, ap, as, cp, cs, n, m, factor);
+	    mt_scale_i(at, ap, as, cp, cs, n, m, factor);
     }
     else if (element_is_float(at)) {
 	size_t elem_size_a = element_size(at);
@@ -1559,10 +1477,10 @@ static void scale_f(matrix_type_t at, byte_t* ap, size_t as,
     if (at == ct) {
 #ifdef USE_GCC_VECTOR
 	if (is_aligned(ap) && is_aligned(cp))
-	    mtv_scale_f_(at, ap, as, cp, cs, n, m, factor);
+	    mtv_scale_f(at, ap, as, cp, cs, n, m, factor);
 	else
 #endif		
-	    mt_scale_f_(at, ap, as, cp, cs, n, m, factor);
+	    mt_scale_f(at, ap, as, cp, cs, n, m, factor);
     }
     else if (element_is_float(at)) {
 	size_t elem_size_a = element_size(at);
@@ -1608,88 +1526,23 @@ static void sigmoid(matrix_type_t at, byte_t* ap, size_t as,
 		    size_t n, size_t m)
 {
     if (at == ct) {
-	mt_sigmoid_(at, ap, as, cp, cs, n, m);
-    }
-    else if (element_is_float(at)) {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		float64_t a = read_float(at, ap1);
-		ap1 += elem_size_a;
-		write_float(ct, cp1, op_sigmoid(a));
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    cp += cs*elem_size_c;
-	}
+	mt_sigmoid(at, ap, as, cp, cs, n, m);
     }
     else {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		float64_t a = read_int(at, ap1);
-		ap1 += elem_size_a;
-		write_int(ct, cp1, op_sigmoid(a));
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    cp += cs*elem_size_c;
-	}	
-    }    
+	apply1(SIGMOID, at, ap, as, ct, cp, cs, n, m);
+    }
 }
+
 
 static void sigmoid_prime(matrix_type_t at, byte_t* ap, size_t as,
 			  matrix_type_t ct, byte_t* cp, size_t cs,
 			  size_t n, size_t m)
 {
     if (at == ct) {
-	mt_sigmoid_prime_(at, ap, as, cp, cs, n, m);
-    }
-    else if (element_is_float(at)) {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		float64_t a = read_float(at, ap1);
-		ap1 += elem_size_a;
-		write_float(ct, cp1, op_sigmoid_prime(a));
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    cp += cs*elem_size_c;
-	}
+	mt_sigmoid_prime(at, ap, as, cp, cs, n, m);
     }
     else {
-	size_t elem_size_a = element_size(at);
-	size_t elem_size_c = element_size(ct);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		float64_t a = read_int(at, ap1);
-		ap1 += elem_size_a;
-		write_int(ct, cp1, op_sigmoid_prime(a));
-		cp1 += elem_size_c;
-	    }
-	    ap += as*elem_size_a;
-	    cp += cs*elem_size_c;
-	}	
+	apply1(SIGMOID_PRIME, at, ap, as, ct, cp, cs, n, m);
     }    
 }
 
@@ -1700,10 +1553,10 @@ static void multiply(matrix_type_t at,byte_t* ap,size_t as,size_t an,size_t am,
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_GCC_VECTOR	
 	if (is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
-	    mtv_multiply_(at,ap,as,an,am,bp,bs,bn,bm,cp,cs);
+	    mtv_multiply(at,ap,as,an,am,bp,bs,bn,bm,cp,cs);
 	else
 #endif	    
-	    mt_multiply_(at,ap,as,an,am,bp,bs,bn,bm,cp,cs);
+	    mt_multiply(at,ap,as,an,am,bp,bs,bn,bm,cp,cs);
 
     }
     else if (element_is_float(at) || element_is_float(bt) ||
@@ -2134,14 +1987,10 @@ ERL_NIF_TERM matrix_negate(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     if (!make_matrix_resource(env, a.n, a.m, c_t, &c_bin_term, &c_data, &cp))
 	return enif_make_badarg(env);
     enif_rwlock_rlock(a.rw_lock);
-#if 1
+
     negate(a.type, a.data+a.byte_offset, a.stride,
 	   c_t, c_data+cp->byte_offset, cp->stride, a.n, a.m);
-#else
-    apply1(NEGATE,
-	   a.type, a.data+a.byte_offset, a.stride,
-	   c_t, c_data+cp->byte_offset, cp->stride, a.n, a.m);
-#endif
+
     enif_rwlock_runlock(a.rw_lock);
     c_matrix = make_matrix(env, a.n, a.m, c_t, cp, c_bin_term);
     return c_matrix;

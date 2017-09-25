@@ -15,7 +15,7 @@
  *
  ***************************************************************************/
 
-static void NAME(TYPE* ap, size_t as,
+static void PROCEDURE(TYPE* ap, size_t as,
 		 TYPE* cp, size_t cs,
 		 size_t n, size_t m
 		 PARAMS_DECL)
@@ -34,7 +34,7 @@ static void NAME(TYPE* ap, size_t as,
     }
 }
 
-#undef NAME
+#undef PROCEDURE
 #undef TYPE
 #undef PARAMS_DECL
 #undef LOCALS_DECL
