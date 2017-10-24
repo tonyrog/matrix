@@ -8,7 +8,7 @@
 -module(matrix).
 
 %% -compile(native).
-%% -on_load(init/0).
+-on_load(init/0).
 -export([new/4]).
 -export([new_/4]).
 -export([copy/2, copy/4]).
@@ -71,14 +71,18 @@ nif_stub_error(Line) ->
 -define(int16,      1).
 -define(int32,      2).
 -define(int64,      3).
--define(float32,    4).
--define(float64,    5).
--define(complex64,  6).
--define(complex128, 7).
+-define(int128,     4).
+-define(float32,    5).
+-define(float64,    6).
+-define(float128,   7).
+-define(complex64,  8).
+-define(complex128, 9).
+
+-define(is_complex(X), (is_number(element(1,(X))) andalso is_number(element(2,(X))))).
 
 -type unsigned() :: non_neg_integer().
 -type matrix_type() :: complex128|complex64|
-		       float32|float64|
+		       float32|float64|float128|
 		       int64|int32|int16|int8.
 
 -record(matrix,
@@ -181,7 +185,7 @@ type_lists([], T) ->
 
 type_list(_, T) when T >= ?float32 ->
     T;
-type_list([{_R,_I}|_Es], _T) ->
+type_list([E|_Es], _T) when ?is_complex(E) ->
     ?complex128;
 type_list([E|Es], T) ->
     if is_integer(E) ->
@@ -196,6 +200,8 @@ type_list([E|Es], T) ->
 	    end;
        is_float(E) ->
 	    type_list(Es, ?float64)
+	    %% type_list(Es, ?float128)
+
     end;
 type_list([], T) ->
     T.
@@ -323,7 +329,10 @@ type(#matrix{type=T}) ->
 	?int32 -> int32;
 	?int64 -> int64;
 	?float32 -> float32;
-	?float64 -> float64
+	?float64 -> float64;
+	?float128 -> float128;
+	?complex64 -> complex64;
+	?complex128 -> complex128
     end.
 
 -spec element(I::unsigned(),J::unsigned(),X::matrix()) -> number().
@@ -336,12 +345,16 @@ element(I,J,#matrix{n=N,m=M,offset=Offs,stride=Stride,type=T,data=Bin}) when
 %% P is element position not byte position
 element_(P, T, Bin) ->
     case T of
-	?complex128 -> 
-	    <<_:P/binary-unit:64,R:64/native-float,I:64/native-float,
+	?complex128 ->
+	    <<_:P/binary-unit:128,R:64/native-float,I:64/native-float,
 	      _/binary>> = Bin, {R,I};
-	?complex64 -> 
+	?complex64 ->
 	    <<_:P/binary-unit:64,R:32/native-float,I:32/native-float,
 	      _/binary>> = Bin, {R,I};
+	?float128 ->
+	    %%<<_:P/binary-unit:128,X:128/native-float,_/binary>> = Bin, X;
+	    <<_:P/binary-unit:128,X:16/binary,_/binary>> = Bin, 
+	    binary_to_float128(X);
 	?float64 -> 
 	    <<_:P/binary-unit:64,X:64/native-float,_/binary>> = Bin, X;
 	?float32 -> 
@@ -362,6 +375,9 @@ map(F, #matrix{type=T,data=Bin}) ->
 	    [F({R,I}) || <<R:64/native-float,I:64/native-float>> <= Bin ];
 	?complex64 ->
 	    [F({R,I}) || <<R:32/native-float,I:32/native-float>> <= Bin ];
+	?float128 ->
+	    %% [F(X) || <<X:128/native-float>> <= Bin ];
+	    [F(binary_to_float128(X)) || <<X:128/binary>> <= Bin ];
 	?float64 ->
 	    [F(X) || <<X:64/native-float>> <= Bin ];
 	?float32 ->
@@ -382,6 +398,9 @@ elements_to_list(T, Bin) ->
 	    [{R,I} || <<R:64/native-float,I:64/native-float>> <= Bin ];
 	?complex64 ->
 	    [{R,I} || <<R:32/native-float,I:32/native-float>> <= Bin ];
+	?float128 ->
+	    %% [X || <<X:128/native-float>> <= Bin ];
+	    [binary_to_float128(X) || <<X:16/binary>> <= Bin ];
 	?float64 ->
 	    [X || <<X:64/native-float>> <= Bin ];
 	?float32 ->
@@ -1006,8 +1025,8 @@ split_row(_I, [], Acc) ->
     {lists:reverse(Acc), []}.
 
 
-is_integer_matrix(#matrix{type=T}) -> T < ?float32.
-is_float_matrix(#matrix{type=T}) -> T >= ?float32 andalso T =< ?float64.
+is_integer_matrix(#matrix{type=T}) -> T =< ?float128.
+is_float_matrix(#matrix{type=T}) -> T >= ?float32 andalso T =< ?float128.
 is_complex_matrix(#matrix{type=T}) -> T >= ?complex64 andalso T =< ?complex128.
 
 format_element({R,I},0) when is_float(R),is_float(I) ->
@@ -1039,10 +1058,15 @@ number_to_bin(?complex64, {R,I}) ->
     <<(float(R)):32/native-float,(float(I)):32/native-float>>;
 number_to_bin(?complex64, R) ->
     <<(float(R)):32/native-float,0.0:32/native-float>>;
+number_to_bin(?float128, X) ->
+    %%<<(float(X)):128/native-float>>;
+    float128_to_binary(float(X));
 number_to_bin(?float64, X) ->
     <<(float(X)):64/native-float>>;
 number_to_bin(?float32, X) ->
     <<(float(X)):32/native-float>>;
+number_to_bin(?int128, X) ->
+    <<(trunc(X)):128/native-signed-integer>>;
 number_to_bin(?int64, X) ->
     <<(trunc(X)):64/native-signed-integer>>;
 number_to_bin(?int32, X) ->
@@ -1052,10 +1076,47 @@ number_to_bin(?int16, X) ->
 number_to_bin(?int8, X) ->
     <<(trunc(X)):8/native-signed-integer>>.
 
+native_binary_to_float32(<<F:32/native>>) ->
+    binary_to_float32(<<F:32>>).
+native_binary_to_float64(<<F:64/native>>) ->
+    binary_to_float64(<<F:64>>).
+native_binary_to_float128(<<F:128/native>>) ->
+    binary_to_float128(<<F:128>>).
+
+binary_to_float32(<<S:1,E:8,F:23>>) ->
+    to_float(S,E,F,23,(1 bsl (8-1))-1).
+
+binary_to_float64(<<S:1,E:11,F:52>>) ->
+    to_float(S,E,F,52,(1 bsl (11-1))-1).
+
+binary_to_float128(<<S:1,E:15,F:112>>) ->
+    to_float(S,E,F,112,(1 bsl (15-1))-1).
+
+to_float(S,E,F,Fn,Bn) ->
+    F1 = (1 + F/(1 bsl Fn)),
+    E1 = E-Bn,
+    EF = if E1 < 0 -> F1/(1 bsl -E1);
+	    E1 =:= 0 -> F1;
+	    true -> F1*(1 bsl E1)
+	 end,
+    if S=:= 1 -> -EF;
+       true -> EF
+    end.
+
+%% simulate float128 binary
+float128_to_binary(X) ->
+    <<S:1,E:11,F:52>> = <<(float(X)):64/float>>, %% first 64 bit
+    E1 = E-1023,
+    <<Xi:128>> = <<S:1,(E1+16383):15,F:52,0:60>>,  %% endian
+    <<Xi:128/native>>.
+
+
 element_bits(?complex128) -> 128;
 element_bits(?complex64) -> 64;
+element_bits(?float128) -> 128;
 element_bits(?float64) -> 64;
 element_bits(?float32) -> 32;
+element_bits(?int128) -> 128;
 element_bits(?int64) -> 64;
 element_bits(?int32) -> 32;
 element_bits(?int16) -> 16;
@@ -1063,8 +1124,10 @@ element_bits(?int8) -> 8.
 
 element_bytes(?complex128) -> 16;
 element_bytes(?complex64) -> 8;
+element_bytes(?float128) -> 16;
 element_bytes(?float64) -> 8;
 element_bytes(?float32) -> 4;
+element_bytes(?int128) -> 16;
 element_bytes(?int64) -> 8;
 element_bytes(?int32) -> 4;
 element_bytes(?int16) -> 2;
@@ -1074,7 +1137,9 @@ encode_type(int8) -> ?int8;
 encode_type(int16) -> ?int16;
 encode_type(int32) -> ?int32;
 encode_type(int64) -> ?int64;
+encode_type(int128) -> ?int128;
 encode_type(float32) -> ?float32;
 encode_type(float64) -> ?float64;
+encode_type(float128) -> ?float128;
 encode_type(complex64) -> ?complex64;
 encode_type(complex128) -> ?complex128.

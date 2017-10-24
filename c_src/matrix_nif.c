@@ -1,10 +1,6 @@
 //
 // Matrix operations
 //
-// defined for int8, int16, int32, int64, float32, float64
-// both mixed and non mixed operations
-// FIXME use vector ops if possible
-//
 #include <stdio.h>
 #include <stdint.h>
 #include <memory.h>
@@ -28,8 +24,12 @@ typedef enum {
     INT16   = 1,
     INT32   = 2,
     INT64   = 3,
-    FLOAT32 = 4,
-    FLOAT64 = 5
+//    INT128  = 4,
+    FLOAT32 = 5,
+    FLOAT64 = 6,
+//    FLOAT128 = 7,
+//    COMPLEX64 = 8,
+//    COMPLEX128 = 9
 } matrix_type_t;
 
 typedef enum {
@@ -54,6 +54,8 @@ typedef enum {
 typedef unsigned char byte_t;
 typedef float  float32_t;   // fixme: configure
 typedef double float64_t;   // fixme: configure
+
+#define VOIDPTR(x) ((void*)&(x))
 
 #define USE_GCC_VECTOR
 
@@ -198,8 +200,8 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("apply1",        3, matrix_apply1),
 };
 
-size_t element_size_exp_[6] = { 0, 1, 2, 3, 2, 3 };
-size_t element_size_[6] = { 1, 2, 4, 8, 4, 8 };
+size_t element_size_exp_[10] = { 0, 1, 2, 3, 4,  2, 3, 4,  3, 4 };
+size_t element_size_[10]     = { 1, 2, 4, 8, 16, 4, 8, 16, 8, 16 };
 
 typedef enum {
     XOR_SHIFT_32,
@@ -218,7 +220,6 @@ typedef struct _rand_state_t {
     int p;
     uint64_t s[16];
 } rand_state_t;
-
 
 DECL_ATOM(matrix);
 DECL_ATOM(sigmoid);
@@ -391,15 +392,15 @@ uint64_t rand_64_(rand_state_t* sp)
 float32_t uniform_32_(rand_state_t* sp)
 {
     uint32_t x;
-    float xf;
+    union { float32_t xf; uint32_t  xi; } uf;
     if (sp->size == 32)
 	x = sp->rand_32(sp);
     else if (sp->size == 64)
 	x = sp->rand_64(sp);
     else
 	return 0.0;
-    *((uint32_t*)&xf) = (UINT32_C(0x7f)<<23)|(x&UINT64_C(0x7fffff));
-    return xf-1;
+    uf.xi = (UINT32_C(0x7f)<<23)|(x&UINT64_C(0x7fffff));
+    return uf.xf-1;
 }
 
 float32_t normal_32_(rand_state_t* sp, float m, float s)
@@ -412,7 +413,7 @@ float32_t normal_32_(rand_state_t* sp, float m, float s)
 float64_t uniform_64_(rand_state_t* sp)
 {
     uint64_t x;
-    float64_t xf;
+    union { float64_t xf; uint64_t  xi; } uf;
     if (sp->size == 32) {
 	x = sp->rand_32(sp);
 	x <<= 32;
@@ -421,8 +422,8 @@ float64_t uniform_64_(rand_state_t* sp)
     else {
 	x = sp->rand_64(sp);
     }
-    *((uint64_t*)&xf) = (UINT64_C(0x3ff)<<52)|(x&UINT64_C(0xfffffffffffff));
-    return xf-1;
+    uf.xi = (UINT64_C(0x3ff)<<52)|(x&UINT64_C(0xfffffffffffff));
+    return uf.xf-1;
 }
 
 float64_t normal_64_(rand_state_t* state, float64_t m, float64_t s)
