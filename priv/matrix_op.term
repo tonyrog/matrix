@@ -1,0 +1,92 @@
+%% -*- erlang -*-
+
+{type, [int8,int16,int32,int64,float32,float64]}.
+
+{{proc,operation},[{add,plus},{subtract,minus},{times,times}]}.
+
+%% BINARY operations
+
+{text,"
+#define PROCEDURE      mt_${proc}_${type}
+#define TYPE           ${type}_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_${operation}((a),(b))
+#include \"mt_binary_op.i\"
+"}.
+
+{text,"
+#define SELECT mt_${proc}
+#define NAME ${proc}
+#include \"mt_binary_op_select.i\"
+"}.
+
+%% BINARY vector operations
+{text,"
+#ifdef USE_GCC_VECTOR
+#define PROCEDURE      mtv_${proc}_${type}
+#define TYPE           ${type}_t
+#define LOCALS_DECL
+#define PARAMS_DECL
+#define VOPERATION(a,b) op_${operation}((a),(b))
+#define OPERATION(a,b) op_${operation}((a),(b))
+#include \"mtv_binary_op.i\"
+#endif
+"}.
+
+{text,"
+#ifdef USE_GCC_VECTOR
+#define SELECT mtv_${proc}
+#define NAME ${proc}
+#define LOCALS_DECL
+#define PARAMS_DECL
+#define PARAMS
+#include \"mtv_binary_op_select.i\"
+#endif
+"}.
+
+%% UNARY operations
+
+{{proc,operation},[{negate,negate}]}.
+
+{text,"
+#define PROCEDURE      mt_${proc}_${type}
+#define TYPE           ${type}_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_${operation}((a))
+#include \"mt_unary_op.i\"
+"}.
+
+{text,"
+#define SELECT mt_${proc}
+#define NAME ${proc}
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define PARAMS
+#include \"mt_unary_op_select.i\"
+"}.
+
+%% UNARY vector operations
+{text,"
+#ifdef USE_GCC_VECTOR
+#define PROCEDURE      mtv_${proc}_${type}
+#define TYPE           ${type}_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define VOPERATION(a)  op_${operation}((a))
+#define OPERATION(a)   op_${operation}((a))
+#include \"mtv_unary_op.i\"
+#endif
+"}.
+
+{text,"
+#ifdef USE_GCC_VECTOR
+#define SELECT mtv_${proc}
+#define NAME ${proc}
+#define LOCALS_DECL
+#define PARAMS_DECL
+#define PARAMS
+#include \"mtv_unary_op_select.i\"
+#endif
+"}.

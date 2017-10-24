@@ -11,6 +11,8 @@
 %% -on_load(init/0).
 -export([new/4]).
 -export([new_/4]).
+-export([copy/2, copy/4]).
+-export([copy_data/2]).
 -export([from_list/1, from_list/2, from_list/3, from_list/4]).
 -export([to_list/1]).
 -export([normal/1, uniform/1, zero/1, one/1, identity/1]).
@@ -19,10 +21,14 @@
 -export([constant/4]).
 -export([add/2,add/3]).
 -export([subtract/2]).
+-export([multiply/2]).
 -export([times/2]).
--export([negate/1]).
--export([multiply/2, scale/2, square/1, pow/2]).
--export([size/1, type/1]).
+-export([scale/2]).
+-export([square/1]).
+-export([pow/2]).
+-export([negate/1, negate/2]).
+-export([size/1]).
+-export([type/1]).
 -export([element/3]).
 -export([sigmoid/1]).
 -export([sigmoid_prime/1]).
@@ -39,6 +45,20 @@
 -export([filter/3, filter/5]).
 -export([fold_elems/8]).
 -export([rfold_elems/8]).
+-export([load_column_as_row/4]).
+
+%% internal nifs
+-export([add_/2,add_/3]).
+-export([multiply_/2, multiply_/3]).
+-export([multiply_transposed_/2, multiply_transposed_/3]).
+-export([multiply_large/2, multiply_large/3]).
+-export([apply1/3]).
+
+%% maximum numbr of elements for add/sub/times/negate...
+%% -define(MAX_NM, (256*4096)).
+-define(MAX_ADD_NM, (10*10)).
+-define(MAX_MUL_NM, (10*10)).
+
 -compile(export_all).
 
 -compile({no_auto_import,[size/1]}).
@@ -47,16 +67,19 @@
 nif_stub_error(Line) ->
     erlang:nif_error({nif_not_loaded,module,?MODULE,line,Line}).
 
-
--define(int8,    0).
--define(int16,   1).
--define(int32,   2).
--define(int64,   3).
--define(float32, 4).
--define(float64, 5).
+-define(int8,       0).
+-define(int16,      1).
+-define(int32,      2).
+-define(int64,      3).
+-define(float32,    4).
+-define(float64,    5).
+-define(complex64,  6).
+-define(complex128, 7).
 
 -type unsigned() :: non_neg_integer().
--type matrix_type() :: float32|float64|int64|int32|int16|int8.
+-type matrix_type() :: complex128|complex64|
+		       float32|float64|
+		       int64|int32|int16|int8.
 
 -record(matrix,
 	{
@@ -78,11 +101,32 @@ init() ->
 -spec new(N::unsigned(), M::unsigned(), T::matrix_type(), Es::iolist()) ->
 		 matrix().
 new(N,M,T,Es) when is_integer(N), N>0,
-		   is_integer(M), N>0,
+		   is_integer(M), M>0,
 		   is_atom(T),
 		   is_list(Es) ->
     Type = encode_type(T),
     new_(N,M,Type,Es).
+
+-spec copy(Src::matrix(), Dst::matrix()) ->
+		  matrix().
+copy(Src, Dst) ->
+    copy(Src, Dst, 0, 0).
+
+-spec copy(Src::matrix(), Dst::matrix(), 
+	   RepeatHorizontal::unsigned(),
+	   RepeatVertical::unsigned()) ->
+		  matrix().
+
+%% DESTRUCTIVE
+copy(_Src, _Dst, _Repeat_h, _Rpeat_v) ->
+    ?nif_stub.
+
+-spec copy_data(Src::matrix(), Dst::matrix()) ->
+		       matrix().
+
+%% DESTRUCTIVE
+copy_data(_Src, _Dst) ->
+    ?nif_stub.
 
 %% FIXME: new_ is normally a nif, but we may use the library without nifs,
 %% to allow for interop betweeen we should calculate the stride in 
@@ -137,6 +181,8 @@ type_lists([], T) ->
 
 type_list(_, T) when T >= ?float32 ->
     T;
+type_list([{_R,_I}|_Es], _T) ->
+    ?complex128;
 type_list([E|Es], T) ->
     if is_integer(E) ->
 	    if E >= -16#80, E < 16#80 ->
@@ -184,8 +230,8 @@ normal({N,M},T) ->
 normal(N,M,T) when is_integer(N), N >= 1,
 		   is_integer(M), M >= 1 ->
     Type = encode_type(T),
-    Es = [normal_bin(0.0,1.0,Type) || _ <- lists:seq(1,N*M)],
-    new_(N,M,Type,Es).
+    A = new_(N,M,Type,[]),
+    apply1(A, A, normal).
 
 -spec uniform({N::unsigned(), M::unsigned()}) -> matrix().
 uniform({N,M}) ->
@@ -199,8 +245,8 @@ uniform({N,M},T) ->
 uniform(N,M,T) when is_integer(N), N >= 1,
 		    is_integer(M), M >= 1 ->
     Type = encode_type(T),
-    Es = [uniform_bin(Type) || _ <- lists:seq(1,N*M)],
-    new_(N,M,Type,Es).
+    A = new_(N,M,Type,[]),
+    apply1(A, A, uniform).
 
 -spec zero({N::unsigned(), M::unsigned()}) -> matrix().
 zero({N,M}) -> zero(N,M,float64).
@@ -209,9 +255,11 @@ zero({N,M}) -> zero(N,M,float64).
 zero({N,M},T) -> zero(N,M,T).
 
 -spec zero(N::unsigned(), M::unsigned(), T::matrix_type()) -> matrix().
-zero(N,M,T) when is_integer(N), N >= 1,
-		 is_integer(M), M >= 1 ->
-    constant(N,M,T,0).
+zero(N,M,Type) when is_integer(N), N >= 1,
+		    is_integer(M), M >= 1 ->
+    T = encode_type(Type),
+    A = new_(N,M,T,[]),
+    apply1(A, A, zero).
 
 -spec one({N::unsigned(), M::unsigned()}) -> matrix().
 one({N,M}) -> one(N,M,float64).
@@ -220,11 +268,13 @@ one({N,M}) -> one(N,M,float64).
 one({N,M},T) -> one(N,M,T).
 
 -spec one(N::unsigned(), M::unsigned(), T::matrix_type()) -> matrix().
-one(N,M,T) when is_integer(N), N >= 1,
+one(N,M,Type) when is_integer(N), N >= 1,
 		 is_integer(M), M >= 1 ->
-    constant(N,M,T,1).
+    T = encode_type(Type),
+    A = new_(N,M,T,[]),
+    apply1(A, A, one).
 
-
+%% fixme: nif
 -spec constant(N::unsigned(), M::unsigned(), T::matrix_type(), C::number()) ->
 		      matrix().
 constant(N,M,T,C) when is_integer(N), N >= 1,
@@ -245,14 +295,22 @@ identity({N,M},T) ->
     identity(N,M,T).
 
 -spec identity(N::unsigned(), M::unsigned(), T::matrix_type()) -> matrix().
-identity(N,M,T) when is_integer(N), N >= 1,
-		   is_integer(M), M >= 1 ->
-    Type = encode_type(T),
-    Bv = {number_to_bin(Type, 0),number_to_bin(Type, 1)},
-    Data = [[element(X+1,Bv) ||
-		<<X:1>> <= <<(1 bsl ((M-1)-I)):M>>] ||
-	       I <- lists:seq(0, N-1)],
-    new_(N,M,Type,Data).
+identity(N,M,Type) when is_integer(N), N >= 1,
+			is_integer(M), M >= 1 ->
+    T = encode_type(Type),
+    A = new_(N,M,T,[]),
+    apply1(A, A, identity).
+
+%%     Type = encode_type(T),
+%%    Bv = {number_to_bin(Type, 0),number_to_bin(Type, 1)},
+%%    Data = [[element(X+1,Bv) ||
+%%		<<X:1>> <= <<(1 bsl ((M-1)-I)):M>>] ||
+%%	       I <- lists:seq(0, N-1)],
+%%    new_(N,M,Type,Data).
+
+-spec apply1(A::matrix(), Dst::matrix(), Op::atom()) -> matrix().
+apply1(_A, _Dst, _Op) ->
+    ?nif_stub.    
 
 -spec size(M::matrix()) -> {unsigned(), unsigned()}.
 size(#matrix{n=N,m=M}) ->
@@ -278,6 +336,12 @@ element(I,J,#matrix{n=N,m=M,offset=Offs,stride=Stride,type=T,data=Bin}) when
 %% P is element position not byte position
 element_(P, T, Bin) ->
     case T of
+	?complex128 -> 
+	    <<_:P/binary-unit:64,R:64/native-float,I:64/native-float,
+	      _/binary>> = Bin, {R,I};
+	?complex64 -> 
+	    <<_:P/binary-unit:64,R:32/native-float,I:32/native-float,
+	      _/binary>> = Bin, {R,I};
 	?float64 -> 
 	    <<_:P/binary-unit:64,X:64/native-float,_/binary>> = Bin, X;
 	?float32 -> 
@@ -294,6 +358,10 @@ element_(P, T, Bin) ->
 
 map(F, #matrix{type=T,data=Bin}) ->
     case T of
+	?complex128 ->
+	    [F({R,I}) || <<R:64/native-float,I:64/native-float>> <= Bin ];
+	?complex64 ->
+	    [F({R,I}) || <<R:32/native-float,I:32/native-float>> <= Bin ];
 	?float64 ->
 	    [F(X) || <<X:64/native-float>> <= Bin ];
 	?float32 ->
@@ -310,6 +378,10 @@ map(F, #matrix{type=T,data=Bin}) ->
 
 elements_to_list(T, Bin) ->
     case T of
+	?complex128 ->
+	    [{R,I} || <<R:64/native-float,I:64/native-float>> <= Bin ];
+	?complex64 ->
+	    [{R,I} || <<R:32/native-float,I:32/native-float>> <= Bin ];
 	?float64 ->
 	    [X || <<X:64/native-float>> <= Bin ];
 	?float32 ->
@@ -400,23 +472,71 @@ zipfoldr_(F,A,N,J,M,
 %%
 -spec add(A::matrix(), B::matrix()) -> matrix().
 
+%% add max MAX linear elements each lap make
+%% sure submatrices, if any, always are size aligned
+
+add(A=#matrix{n=N,m=M,type=T1},
+    B=#matrix{n=N,m=M,type=T2}) when T1 =:= T2, N*M =< ?MAX_ADD_NM ->
+    add_(A,B);
 add(A=#matrix{n=N,m=M,type=T1},
     B=#matrix{n=N,m=M,type=T2}) ->
-    Type = type_combine(T1,T2),
-    Es = zipfoldr(
-	   fun(Ai,Bi,Acc) ->
-		   [number_to_bin(Type,Ai+Bi)|Acc]
-	   end, [], A, B),
-    new_(N,M,Type,Es).
+    T = type_combine(T1,T2),
+    C = new_(N,M,T,[]),
+    R = submatrix_arows(N,M),
+    add_parts_(A,B,C,1,R,N,M).
+
+add_parts_(A,B,C,I,R,N,M) when I =< N ->
+    K = erlang:min(R,N-I+1),
+    %% io:format("add: (~w,~w,~w,~w)+(~w,~w,~w,~w)\n", [I,1,K,M, I,1,K,M]),
+    Ai = submatrix(I,1,K,M,A),
+    Bi = submatrix(I,1,K,M,B),
+    Ci = submatrix(I,1,K,M,C),
+    add_(Ai,Bi,Ci),
+    add_parts_(A,B,C,I+K,R,N,M);
+add_parts_(_A,_B,C,I,_R,N,_M) when I =:= N+1 ->
+    C.
+
+add_(A,B) ->
+    add_ref(A,B).
 
 %%
 %% add two matrices and destructivly store in destination.
 %% C = A + B
-%%
--spec add(A::matrix(), B::matrix(), C::matrix()) -> matrix().
+%% DESTRUCTIVE
+-spec add(A::matrix(), B::matrix(), Dst::matrix()) -> matrix().
 
-add(_A, _B, _C) ->
-    ?nif_stub.    
+add(A, B, Dst) ->
+    add_(A, B, Dst).
+
+add_(_A, _B, _Dst) ->
+    ?nif_stub.
+
+
+add_ref(A=#matrix{n=N,m=M,type=T1},
+	B=#matrix{n=N,m=M,type=T2}) ->
+    Type = type_combine(T1,T2),
+    Es = zipfoldr(
+	   fun(Ai,Bi,Acc) ->
+		   Ci = add_element(Ai,Bi),
+		   [number_to_bin(Type,Ci)|Acc]
+	   end, [], A, B),
+    new_(N,M,Type,Es).
+
+add_element({R1,I1},{R2,I2}) -> {R1+R2,I1+I2};
+add_element({R1,I1},R2) ->  {R1+R2,I1};
+add_element(R1,{R2,I2}) -> {R1+R2,I2};
+add_element(R1,R2) -> R1+R2.
+
+%% calculate number of rows to operate over
+submatrix_arows(N,M) ->
+    N1 = ?MAX_ADD_NM div M,
+    N2 = erlang:min(N1,N),
+    erlang:max(1,N2).
+
+submatrix_mrows(N,M) ->
+    N1 = ?MAX_MUL_NM div M,
+    N2 = erlang:min(N1,N),
+    erlang:max(1,N2).
 
 %%
 %% Subtract two matrices
@@ -457,6 +577,9 @@ negate(X=#matrix{n=N,m=M,type=T}) ->
 	   end, [], X),
     new_(N,M,T,Es).
 
+-spec negate(A::matrix(),C::matrix()) -> matrix().
+negate(_A, _C) ->
+    ?nif_stub.
 %%
 %% Scale a matrix by a scalar number
 %%
@@ -509,14 +632,26 @@ pow_(A,B,P) ->
 %%
 -spec multiply(X::matrix(), Y::matrix()) -> matrix().
 
-multiply(#matrix{n=Nx,m=Mx,offset=Offs1,stride=Stride1,type=T1,data=Bin1},
-	 #matrix{n=Ny,m=My,offset=Offs2,stride=Stride2,type=T2,data=Bin2}) when
-      Mx =:= Ny ->
+multiply(A, B) ->
+    multiply_(A,B).
+
+multiply_(A, B) ->
+    multiply_ref(A,B).
+
+multiply_ref(#matrix{n=Nx,m=Mx,offset=Offs1,stride=Stride1,type=T1,data=Bin1},
+	     #matrix{n=Ny,m=My,offset=Offs2,stride=Stride2,type=T2,data=Bin2})
+  when Mx =:= Ny ->
     P1  = Offs1 + (Nx-1)*Stride1,  %% last row in X
     P2  = Offs2 + My-1,            %% last column in Y
     T = type_combine(T1,T2),
     Es = mult_(Nx,My,Mx,My,T,Bin1,P1,Stride1,T1,  Bin2,P2,Stride2,T2, []),
     new_(Nx,My,T,Es).
+
+multiply(A, B, Dst) ->
+    multiply_(A, B, Dst).
+
+multiply_(_A, _B, _Dst) ->
+    ?nif_stub.
 
 mult_(1,0,_Mx,_My,_T,_Bin1,_P1,_S1,_T1, _Bin2,_P2,_S2,_T2,Acc) ->
     Acc;
@@ -536,6 +671,53 @@ dot_(Bin1,P1,S1,T1, Bin2,P2,S2,T2, K,Sum) ->
     E2 = element_(P2,T2,Bin2),
     Sum1 = E1*E2+Sum,
     dot_(Bin1,P1+S1,S1,T1, Bin2,P2+S2,S2,T2, K-1,Sum1).
+
+%% calculate Dst = X*Yt where Yt is a transposed matrix
+-spec multiply_transposed_(X::matrix(), Yt::matrix()) -> 
+				  matrix().
+
+multiply_transposed_(_X, _Y) ->
+    ?nif_stub.
+
+%% calculate Dst = X*Yt where Yt is a transposed matrix
+-spec multiply_transposed_(X::matrix(), Y::matrix(), Dst::matrix()) ->
+				  matrix().
+
+multiply_transposed_(_X, _Y, _Dst) ->
+    ?nif_stub.
+
+%% Load column J in A into row I of Dst
+%% DESTRUCTIVE
+load_column_as_row(J, A, I, Dst) ->
+    Aj = column(J, A),
+    Di = row(I, Dst),
+    copy_data(Aj, Di).
+
+%% multiply large matrices
+multiply_large(X=#matrix{n=Nx,m=Mx,type=T1},
+	       Y=#matrix{n=Ny,m=My,type=T2}) when Mx =:= Ny ->
+    T = type_combine(T1,T2),
+    Z = new_(Nx,My,T,[]),
+    R = new_(1,Ny,T,[]),
+    mult_large_(X,Y,Z,R,1,My).
+
+multiply_large(X=#matrix{n=Nx,m=Mx},
+	       Y=#matrix{n=Ny,m=My},
+	       Z=#matrix{n=Nz,m=Mz,type=T3}) 
+  when Mx =:= Ny,
+       Nz =:= Nx,
+       Mz =:= My ->
+    T = encode_type(T3),
+    R = new_(1,Ny,T,[]),
+    mult_large_(X,Y,Z,R,1,My).
+
+mult_large_(X,Y,Z,R,J,M) when J =< M ->
+    Zj = column(J, Z),
+    load_column_as_row(J,Y,1,R),
+    multiply_transposed_(X, R, Zj),
+    mult_large_(X,Y,Z,R,J+1,M);
+mult_large_(_X,_Y,Z,_R,_J,_M) ->
+    Z.
 
 %%
 %% Transpose a matrix
@@ -825,8 +1007,17 @@ split_row(_I, [], Acc) ->
 
 
 is_integer_matrix(#matrix{type=T}) -> T < ?float32.
-is_float_matrix(#matrix{type=T}) -> T >= ?float32.
+is_float_matrix(#matrix{type=T}) -> T >= ?float32 andalso T =< ?float64.
+is_complex_matrix(#matrix{type=T}) -> T >= ?complex64 andalso T =< ?complex128.
 
+format_element({R,I},0) when is_float(R),is_float(I) ->
+    if I == 0 ->
+	    lists:flatten([io_lib_format:fwrite_g(R)," "]);
+       I < 0 ->
+	    lists:flatten([io_lib_format:fwrite_g(R),"-",io_lib_format:fwrite_g(abs(I)),"i"]);
+       true ->
+	    lists:flatten([io_lib_format:fwrite_g(R),"+",io_lib_format:fwrite_g(I),"i"])
+    end;
 format_element(X,_) when is_integer(X) ->
     integer_to_list(X);
 format_element(X,0) when is_float(X) ->
@@ -834,67 +1025,20 @@ format_element(X,0) when is_float(X) ->
 format_element(X,Prec) when is_float(X) ->
     lists:flatten(io_lib:format("~.*f", [Prec,X])).
 
-normal_bin(M,S,T) ->
-    V = normal_(M,S),
-    case T of
-	?float64 -> <<V:64/native-float>>;
-	?float32 -> <<V:32/native-float>>
-    end.
-
-%% Generate a normal distributed random number
-%% S is the standard deviation = sqrt(CoVariance)
-normal_(M, S) when is_float(M), is_float(S), S > 0 ->
-    X1 = uniform_(),
-    X2 = uniform_(),
-    M + S*math:sqrt(-2*math:log(X1))*math:cos(2*math:pi()*X2).
-
-uniform_bin(?float64) ->
-    F = uniform_(?float64),
-    <<F:64/native-float>>;
-uniform_bin(?float32) ->
-    F = uniform_(?float32),
-    <<F:32/native-float>>;
-uniform_bin(?int64) ->
-    crypto:strong_rand_bytes(8);
-uniform_bin(?int32) ->
-    crypto:strong_rand_bytes(4);
-uniform_bin(?int16) ->
-    crypto:strong_rand_bytes(2);
-uniform_bin(?int8) ->
-    crypto:strong_rand_bytes(1).
-
-%% generate a double precision random number in [0-1)
-%% or an integer random number.
-uniform_() ->
-    uniform_(?float64).
-
-uniform_(?float64) ->
-    <<_:4,X:52>> = crypto:strong_rand_bytes(7),
-    <<F:64/float>> = <<16#3ff:12,X:52>>,
-    F - 1;
-uniform_(?float32) ->
-    <<_:1,X:23>> = crypto:strong_rand_bytes(3),
-    <<F:32/float>> = <<16#7f:9,X:23>>,
-    F - 1;
-uniform_(?int64) ->
-    <<X:64/signed>> = crypto:strong_rand_bytes(8),
-    X;
-uniform_(?int32) ->
-    <<X:32/signed>> = crypto:strong_rand_bytes(4),
-    X;
-uniform_(?int16) ->
-    <<X:16/signed>> = crypto:strong_rand_bytes(2),
-    X;
-uniform_(?int8) ->
-    <<X:8/signed>> = crypto:strong_rand_bytes(1),
-    X.
-
 typeof({_N,_M,T,_Bin}) -> T.
 typeof({N,M,T1,_Bin1},{N,M,T2,_Bin2}) -> type_combine(T1,T2).
     
 %% combine types to the more general one
 type_combine(T1,T2) -> erlang:max(T1,T2).
 
+number_to_bin(?complex128, {R,I}) ->
+    <<(float(R)):64/native-float,(float(I)):64/native-float>>;
+number_to_bin(?complex128, R) when is_number(R) ->
+    <<(float(R)):64/native-float,0.0:64/native-float>>;
+number_to_bin(?complex64, {R,I}) ->
+    <<(float(R)):32/native-float,(float(I)):32/native-float>>;
+number_to_bin(?complex64, R) ->
+    <<(float(R)):32/native-float,0.0:32/native-float>>;
 number_to_bin(?float64, X) ->
     <<(float(X)):64/native-float>>;
 number_to_bin(?float32, X) ->
@@ -908,6 +1052,8 @@ number_to_bin(?int16, X) ->
 number_to_bin(?int8, X) ->
     <<(trunc(X)):8/native-signed-integer>>.
 
+element_bits(?complex128) -> 128;
+element_bits(?complex64) -> 64;
 element_bits(?float64) -> 64;
 element_bits(?float32) -> 32;
 element_bits(?int64) -> 64;
@@ -915,6 +1061,8 @@ element_bits(?int32) -> 32;
 element_bits(?int16) -> 16;
 element_bits(?int8) -> 8.
 
+element_bytes(?complex128) -> 16;
+element_bytes(?complex64) -> 8;
 element_bytes(?float64) -> 8;
 element_bytes(?float32) -> 4;
 element_bytes(?int64) -> 8;
@@ -927,4 +1075,6 @@ encode_type(int16) -> ?int16;
 encode_type(int32) -> ?int32;
 encode_type(int64) -> ?int64;
 encode_type(float32) -> ?float32;
-encode_type(float64) -> ?float64.
+encode_type(float64) -> ?float64;
+encode_type(complex64) -> ?complex64;
+encode_type(complex128) -> ?complex128.

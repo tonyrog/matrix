@@ -15,26 +15,47 @@
  *
  ***************************************************************************/
 
-static void SELECT(matrix_type_t type,
-		   byte_t* ap, size_t as,
-		   byte_t* cp, size_t cs,
-		   size_t n, size_t m
-		   PARAMS_DECL)
+static TYPE2 CAT2(PROCEDURE,_dot_t_mulop)(TYPE* ap,  TYPE* bp,  size_t n)
+{
+    TYPE2 sum = 0;
+
+    while(n--) {
+	TYPE2 p = OPERATION(*ap,*bp);
+	sum = OPERATION2(sum, p);
+	ap += 1;
+	bp += 1;
+    }
+    return sum;
+}
+
+
+static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
+		      TYPE* bp, size_t bs, size_t bn, size_t bm,
+		      TYPE* cp, size_t cs
+		      PARAMS_DECL)
 {
     LOCALS_DECL
-    switch(type) {
-    case INT8: MT_NAME(mtv_,_int8)((int8_t*)ap,as,(int8_t*)cp,cs,n,m PARAMS); break;
-    case INT16: MT_NAME(mtv_,_int16)((int16_t*)ap,as,(int16_t*)cp,cs,n,m PARAMS); break;
-    case INT32: MT_NAME(mtv_,_int32)((int32_t*)ap,as,(int32_t*)cp,cs,n,m PARAMS); break;
-    case INT64: MT_NAME(mtv_,_int64)((int64_t*)ap,as,(int64_t*)cp,cs,n,m PARAMS); break;
-    case FLOAT32: MT_NAME(mtv_,_float32)((float32_t*)ap,as,(float32_t*)cp,cs,n,m PARAMS); break;
-    case FLOAT64: MT_NAME(mtv_,_float64)((float64_t*)ap,as,(float64_t*)cp,cs,n,m PARAMS); break;
-    default: break;
+    (void) am;
+    TYPE* bp0 = bp;
+
+    while(an--) {
+        TYPE* cp1 = cp;
+	size_t n = bn;
+
+	bp = bp0;
+	while(n--) {
+	    *cp1++ = CAT2(PROCEDURE,_dot_t_mulop)(ap, bp, bm);
+	    bp += bs;
+	}
+	ap += as;
+	cp += cs;
     }
 }
 
-#undef SELECT
-#undef NAME
-#undef LOCALS_DECL
+#undef PROCEDURE
+#undef TYPE
+#undef TYPE2
 #undef PARAMS_DECL
-#undef PARAMS
+#undef LOCALS_DECL
+#undef OPERATION
+#undef OPERATION2

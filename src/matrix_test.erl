@@ -11,6 +11,7 @@
 -export([test_add/0]).
 -export([test_sub/0]).
 -export([bench_multiply/1]).
+-export([bench_multiply_large/1]).
 -export([bench_add/1]).
 -export([bench_times/1]).
 -export([bench_negate/1]).
@@ -382,6 +383,17 @@ bench_multiply_table() ->
     bench_table("matrix:multiply/2",
 		fun(A,B) -> matrix:multiply(A,B) end).
 
+
+
+bench_multiply_large(N) -> bench_multiply_large(N,float32,1000).
+bench_multiply_large(N,T) -> bench_multiply_large(N,T,1000).
+bench_multiply_large(N,T,L) -> bench(N,fun(A,B) -> 
+					       matrix:multiply_large(A,B) 
+				       end, T, L).
+bench_multiply_large_table() ->
+    bench_table("matrix:multiply_large/2",
+		fun(A,B) -> matrix:multiply_large(A,B) end).
+
 %% parallell version using parlists
 %
 bench_pmul(N) -> bench_pmul(N,float32,1000).
@@ -467,11 +479,10 @@ bench(N,F,T,L) ->
 	  fun() ->
 		  A = matrix:uniform(N,N,T),
 		  B = matrix:uniform(N,N,T),
-		  T0 = os:timestamp(),
+		  T0 = erlang:system_time(micro_seconds),
 		  R = bench_loop(L,F,A,B,undefined),
-		  erlang:yield(),
-		  T1 = os:timestamp(),
-		  Ts = timer:now_diff(T1,T0)/1000000,
+		  T1 = erlang:system_time(micro_seconds),
+		  Ts = (T1-T0)/1000000,
 		  SELF ! {self(),R,Ts}
 	  end),
     receive

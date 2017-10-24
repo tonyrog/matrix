@@ -15,27 +15,47 @@
  *
  ***************************************************************************/
 
+static TYPE2 CAT2(PROCEDURE,_dotv_t_mulop)(TYPE* ap,  TYPE* bp,  size_t n)
+{
+    TYPE2 sum = 0;
+    VTYPE vsum = VTYPE_ZERO;
+    unsigned int i;
+    
+    while(n >= VELEMS(TYPE)) {
+	VTYPE r = OPERATION(*(VTYPE*)ap, *(VTYPE*)bp);
+	vsum = OPERATION2(vsum, r);
+	ap += VELEMS(TYPE);
+	bp += VELEMS(TYPE);		
+	n -= VELEMS(TYPE);
+    }
+    for (i = 0; i < VELEMS(TYPE); i++)
+	sum += vsum[i];
+    while(n--) {
+	TYPE p = OPERATION(*ap,*bp);
+	sum = OPERATION2(sum, p);
+	ap++;
+	bp++;
+    }
+    return sum;
+}
+
 static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 		      TYPE* bp, size_t bs, size_t bn, size_t bm,
 		      TYPE* cp, size_t cs
 		      PARAMS_DECL)
 {
     LOCALS_DECL
-    size_t i, j, k;
-    (void) bn;
-    for (i=0; i<an; i++) {
-        TYPE* cp1 = cp;
-	for (j=0; j<bm; j++) {
-	    TYPE2 sum = 0;
-	    TYPE* bp1 = bp + j;
-	    TYPE* ap1 = ap;
-	    for (k = 0; k < am; k++) {
-		TYPE2 p = OPERATION(*ap1,*bp1);
-		sum = OPERATION2(sum, p);
-		ap1 += 1;
-		bp1 += bs;
-	    }
-	    *cp1++ = sum;
+    (void) am;
+    TYPE* bp0 = bp;
+    
+    while (an--) {
+	TYPE* cp1 = cp;
+	size_t n = bn;
+
+	bp = bp0;
+	while(n--) {
+	    *cp1++ = CAT2(PROCEDURE,_dotv_t_mulop)(ap, bp, bm);
+	    bp  += bs;
 	}
 	ap += as;
 	cp += cs;
