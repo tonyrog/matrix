@@ -35,7 +35,7 @@ static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 	    size_t i;
 	    TYPE*  bp2 = bp1;
 	    for (i = 0; i < VELEMS(TYPE); i++) {
-		ce[i] = *bp2;
+		VSETELEMENT(ce,i,*bp2);
 		bp2 += bs;
 	    }
 	    col[j++] = ce;
@@ -47,12 +47,12 @@ static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 	    size_t i = 0;
 	    TYPE*  bp2 = bp1;
 	    while(i < n) {
-		ce[i] = *bp2;
+		VSETELEMENT(ce,i,*bp2);
 		bp2 += bs;
 		i++;
 	    }
 	    while(i < VELEMS(TYPE)) {
-		ce[i] = 0;
+		VSETELEMENT(ce,i,0);
 		i++;
 	    }
 	    col[j++] = ce;
@@ -67,14 +67,14 @@ static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 	    TYPE* tp = (TYPE*) &col[0];
 	    size_t i;
 	    while(m >= VELEMS(TYPE)) {
-		VTYPE r = OPERATION(*(VTYPE*)tp, *(VTYPE*)ap2);
-		vsum = OPERATION2(vsum, r);
+		VTYPE r = VOPERATION(*(VTYPE*)tp, *(VTYPE*)ap2);
+		vsum = VOPERATION2(vsum, r);
 		tp += VELEMS(TYPE);
 		ap2 += VELEMS(TYPE);
 		m -= VELEMS(TYPE);
 	    }
 	    for (i = 0; i < VELEMS(TYPE); i++)
-		sum += vsum[i];
+		sum += VELEMENT(vsum,i);
 	    while(m--) {
 		TYPE p = OPERATION(*tp,*ap2);
 		sum = OPERATION2(sum, p);
@@ -96,4 +96,7 @@ static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 #undef LOCALS_DECL
 #undef OPERATION
 #undef OPERATION2
-
+#undef VOPERATION
+#undef VOPERATION2
+#undef VELEMENT
+#undef VSETELEMENT

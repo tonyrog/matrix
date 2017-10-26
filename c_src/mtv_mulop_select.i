@@ -11,6 +11,8 @@ static void SELECT(matrix_type_t type,
     case INT64: MT_NAME(mtv_,_int64)((int64_t*)ap,as,an,am,(int64_t*)bp,bs,bn,bm,(int64_t*)cp,cs); break;
     case FLOAT32: MT_NAME(mtv_,_float32)((float32_t*)ap,as,an,am,(float32_t*)bp,bs,bn,bm,(float32_t*)cp,cs); break;
     case FLOAT64: MT_NAME(mtv_,_float64)((float64_t*)ap,as,an,am,(float64_t*)bp,bs,bn,bm,(float64_t*)cp,cs); break;
+    case COMPLEX64: MT_NAME(mtv_,_complex64)((complex64_t*)ap,as,an,am,(complex64_t*)bp,bs,bn,bm,(complex64_t*)cp,cs); break;
+    case COMPLEX128: MT_NAME(mtv_,_complex128)((complex128_t*)ap,as,an,am,(complex128_t*)bp,bs,bn,bm,(complex128_t*)cp,cs); break;
     default: break;
     }
 }

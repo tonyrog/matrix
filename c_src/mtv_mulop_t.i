@@ -22,14 +22,14 @@ static TYPE2 CAT2(PROCEDURE,_dotv_t_mulop)(TYPE* ap,  TYPE* bp,  size_t n)
     unsigned int i;
     
     while(n >= VELEMS(TYPE)) {
-	VTYPE r = OPERATION(*(VTYPE*)ap, *(VTYPE*)bp);
-	vsum = OPERATION2(vsum, r);
+	VTYPE r = VOPERATION(*(VTYPE*)ap, *(VTYPE*)bp);
+	vsum = VOPERATION2(vsum, r);
 	ap += VELEMS(TYPE);
 	bp += VELEMS(TYPE);		
 	n -= VELEMS(TYPE);
     }
     for (i = 0; i < VELEMS(TYPE); i++)
-	sum += vsum[i];
+	sum += VELEMENT(vsum,i);
     while(n--) {
 	TYPE p = OPERATION(*ap,*bp);
 	sum = OPERATION2(sum, p);
@@ -69,3 +69,7 @@ static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 #undef LOCALS_DECL
 #undef OPERATION
 #undef OPERATION2
+#undef VOPERATION
+#undef VOPERATION2
+#undef VELEMENT
+#undef VSETELEMENT

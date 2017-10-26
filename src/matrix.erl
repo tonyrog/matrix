@@ -214,13 +214,16 @@ type_list([], T) ->
 to_list(#matrix{n=N,m=M,offset=Offset,stride=Stride,type=T,data=Bin0}) ->
     Offset1 = Offset*element_bytes(T),
     <<_:Offset1/binary,Bin/binary>> = Bin0,
+    %% io:format("byte_size(Bin) = ~w\n", [byte_size(Bin)]),
     As = elements_to_list(T,Bin),
+    %% io:format("As = ~w\n", [As]),
     to_list_(N, M, Stride, As).
 
 to_list_(0, _M, _Stride, _As) ->
     [];
 to_list_(I, M, Stride, As) ->
     {Row0,As1} = split_row(Stride, As),
+    %% io:format("Row0 = ~w, As1=~w\n", [Row0,As1]),
     {Row,_}  = lists:split(M, Row0),
     [Row | to_list_(I-1,M,Stride,As1)].
 

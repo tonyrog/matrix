@@ -29,6 +29,8 @@ static void SELECT(matrix_type_t type,
     case INT64: MT_NAME(mtv_,_int64)((int64_t*)ap,as,(int64_t*)bp,bs,(int64_t*)cp,cs,n,m PARAMS); break;
     case FLOAT32: MT_NAME(mtv_,_float32)((float32_t*)ap,as,(float32_t*)bp,bs,(float32_t*)cp,cs,n,m PARAMS); break;
     case FLOAT64: MT_NAME(mtv_,_float64)((float64_t*)ap,as,(float64_t*)bp,bs,(float64_t*)cp,cs,n,m PARAMS); break;
+    case COMPLEX64: MT_NAME(mtv_,_complex64)((complex64_t*)ap,as,(complex64_t*)bp,bs,(complex64_t*)cp,cs,n,m PARAMS); break;
+    case COMPLEX128: MT_NAME(mtv_,_complex128)((complex128_t*)ap,as,(complex128_t*)bp,bs,(complex128_t*)cp,cs,n,m PARAMS); break;
     default: break;
     }
 }
