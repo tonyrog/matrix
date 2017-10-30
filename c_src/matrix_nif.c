@@ -421,14 +421,18 @@ static void write_complex(matrix_type_t type, byte_t* ptr, complex128_t v)
 #ifdef USE_GCC_VECTOR
 #ifdef __x86_64__
 
+#if defined(__SSE3__)
+#include <pmmintrin.h>
+#endif
+
 static inline vfloat32_t addsub_32(vfloat32_t x, vfloat32_t y)
 {
-    return __builtin_ia32_addsubps(x,y);
+    return (vfloat32_t) __builtin_ia32_addsubps(x,y);
 }
 
-static inline vfloat32_t addsub_64(vfloat64_t x, vfloat64_t y)
+static inline vfloat64_t addsub_64(vfloat64_t x, vfloat64_t y)
 {
-    return __builtin_ia32_addsubpd(x,y);
+    return (vfloat64_t) __builtin_ia32_addsubpd(x,y);
 }
 #else
 
@@ -462,6 +466,7 @@ static inline vfloat64_t addsub_64(vfloat64_t x, vfloat64_t y)
 #error "VSIZE = 16 assumed!!! FIXME"
 #endif
 
+#ifdef __clang__
 static inline vcomplex64_t complex64_multiply(vcomplex64_t x, vcomplex64_t y)
 {
     vcomplex64_t a, b, c, d;
@@ -475,6 +480,23 @@ static inline vcomplex64_t complex64_multiply(vcomplex64_t x, vcomplex64_t y)
     r2 = b*d;
     return addsub_32(r1,r2);
 }
+#else
+static inline vcomplex64_t complex64_multiply(vcomplex64_t x, vcomplex64_t y)
+{
+    vcomplex64_t a, b, c, d;
+    vcomplex64_t r1,r2;
+    vint32_t m1133 = {1,1,3,3};
+    vint32_t m0022 = {0,0,2,2};
+    vint32_t m1032 = {1,0,3,2};
+    a = x;
+    b = __builtin_shuffle(y, m1133);
+    c = __builtin_shuffle(y, m0022);
+    d = __builtin_shuffle(x, m1032);
+    r1 = a*c;
+    r2 = b*d;
+    return addsub_32(r1,r2);
+}
+#endif
 
 //  x = A B
 //  y = E F
@@ -489,6 +511,7 @@ static inline vcomplex64_t complex64_multiply(vcomplex64_t x, vcomplex64_t y)
 // +      AE-BF BE+AF
 //
 
+#ifdef __clang__
 static inline vcomplex128_t complex128_multiply(vcomplex128_t x,vcomplex128_t y)
 {
     vcomplex128_t a, b, c, d;
@@ -502,6 +525,24 @@ static inline vcomplex128_t complex128_multiply(vcomplex128_t x,vcomplex128_t y)
     r2 = b*d;
     return addsub_64(r1,r2);
 }
+#else
+static inline vcomplex128_t complex128_multiply(vcomplex128_t x,vcomplex128_t y)
+{
+    vcomplex128_t a, b, c, d;
+    vcomplex128_t r1,r2;
+    vint64_t m11 = {1,1};
+    vint64_t m00 = {0,0};
+    vint64_t m10 = {1,0};
+
+    a = x;
+    b = __builtin_shuffle(y, m11);
+    c = __builtin_shuffle(y, m00);
+    d = __builtin_shuffle(x, m10);
+    r1 = a*c;
+    r2 = b*d;
+    return addsub_64(r1,r2);
+}
+#endif
 
 #else  // USE_GCC_VECTOR
 
@@ -1880,6 +1921,21 @@ matrix_t* alloc_matrix_resource(size_t n, size_t m,
     return mp;
 }
 
+int create_matrix(ErlNifEnv* env, unsigned int n, unsigned int m,
+		  bool_t rowmajor, matrix_type_t type, matrix_t* mp,
+		  ERL_NIF_TERM* resp)
+{
+    matrix_t* np;
+    if ((np = alloc_matrix_resource(n, m, rowmajor, type, ALIGN)) != NULL) {
+	*resp = enif_make_resource_binary(env,np,np->data,np->size);
+	*mp = *np;
+	enif_release_resource(np);
+	return 1;
+    }
+    return 0;
+}
+
+
 int make_matrix_binary(ErlNifEnv* env, unsigned int n, unsigned int m,
 		       matrix_type_t type, size_t align,
 		       ERL_NIF_TERM* term, byte_t** data,
@@ -2020,29 +2076,18 @@ static ERL_NIF_TERM make_matrix(ErlNifEnv* env,
 				bool_t rowmajor,
 				matrix_type_t type,
 				matrix_t* mp,
-				ERL_NIF_TERM binary)
+				ERL_NIF_TERM bin)
 {
-    unsigned int stride;
-    unsigned int offset;
-
-    if (mp != NULL) {
-	stride = mp->stride;
-	offset = mp->offset;
-    }
-    else {
-	stride = m;  // fixme
-	offset = 0;  // fixme
-    }
     return enif_make_tuple9(env,
 			    ATOM(matrix),
 			    enif_make_uint(env, n),
 			    enif_make_uint(env, m),
 			    enif_make_uint(env, type),
 			    enif_make_uint64(env, (uintptr_t)mp),
-			    enif_make_uint(env, offset),
-			    enif_make_uint(env, stride),
+			    enif_make_uint(env, mp->offset),
+			    enif_make_uint(env, mp->stride),
 			    make_bool(env, rowmajor),
-			    binary);
+			    bin);
 }
 
 // new_(N, M, Type, RowMajor, Data)
@@ -2063,9 +2108,9 @@ ERL_NIF_TERM matrix_new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	return enif_make_badarg(env);
     if (!enif_get_uint(env, argv[2], &type))
 	return enif_make_badarg(env);
-    if (!get_bool(env, argv[3], &rowmajor))
+    if (type > MAX_TYPE_NUMBER)
 	return enif_make_badarg(env);    
-    if (type > COMPLEX128)
+    if (!get_bool(env, argv[3], &rowmajor))
 	return enif_make_badarg(env);
     if (!enif_inspect_iolist_as_binary(env, argv[4], &bin))
 	return enif_make_badarg(env);
@@ -2078,13 +2123,13 @@ ERL_NIF_TERM matrix_new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	    memcpy(ap, bin.data, mp->size);
 	else {
 	    byte_t* bp = bin.data;
-	    size_t  bs = mp->m*element_size(type);
-	    size_t  as = mp->stride*element_size(type);
+	    size_t  bu = mp->m*element_size(type);
+	    size_t  au = mp->byte_stride;
 	    size_t i;
 	    for (i = 0; i < n; i++) {
-		memcpy(ap, bp, bs);
-		ap += as;
-		bp += bs;
+		memcpy(ap, bp, bu);
+		ap += au;
+		bp += bu;
 	    }
 	}
     }
@@ -2092,16 +2137,134 @@ ERL_NIF_TERM matrix_new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     return a_matrix;
     
 }
+// matrix apply(func,A,B) -> C, check all rowmajor variants
+// with and without accelerations
+
+static void m_apply(
+    void (*func)(bool_t use_vector,
+		 matrix_type_t at, byte_t* ap, int au, int av,
+		 matrix_type_t bt, byte_t* bp, int bu, int bv,
+		 matrix_type_t ct, byte_t* cp, int cu, int cv,
+		 size_t n, size_t m),
+    matrix_t* ap, matrix_t* bp, matrix_t* cp)
+{
+    if (cp->rowmajor) {
+	if (ap->rowmajor && bp->rowmajor)
+	    func(TRUE,
+		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
+		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else if (!ap->rowmajor && bp->rowmajor)
+	    func(FALSE,
+		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
+		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else if (ap->rowmajor && !bp->rowmajor)
+	    func(FALSE,
+		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
+		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else
+	    func(FALSE,
+		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
+		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+    }
+    else {
+	if (ap->rowmajor && bp->rowmajor)
+	    func(FALSE,
+		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
+		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else if (!ap->rowmajor && bp->rowmajor)
+	    func(FALSE,
+		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
+		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else if (ap->rowmajor && !bp->rowmajor)
+	    func(FALSE,
+		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
+		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else
+	    func(TRUE,
+		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
+		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+    }
+}
+
+// matrix add A+B -> C, check all rowmajor variant
+// with and without accelerations
+
+static void m_add(matrix_t* ap, matrix_t* bp, matrix_t* cp)
+{
+    if (cp->rowmajor) {
+	if (ap->rowmajor && bp->rowmajor)
+	    add(TRUE,
+		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
+		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else if (!ap->rowmajor && bp->rowmajor)
+	    add(FALSE,
+		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
+		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else if (ap->rowmajor && !bp->rowmajor)
+	    add(FALSE,
+		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
+		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else
+	    add(FALSE,
+		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
+		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+    }
+    else {
+	if (ap->rowmajor && bp->rowmajor)
+	    add(FALSE,
+		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
+		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else if (!ap->rowmajor && bp->rowmajor)
+	    add(FALSE,
+		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
+		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else if (ap->rowmajor && !bp->rowmajor)
+	    add(FALSE,
+		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
+		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+	else
+	    add(TRUE,
+		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
+		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
+		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
+		cp->n, cp->m);
+    }
+}
 
 // add two matrices
 ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-    matrix_t a, b;
-    byte_t* c_data;
-    matrix_type_t c_t;
-    ERL_NIF_TERM c_bin_term;
-    ERL_NIF_TERM c_matrix;
-    matrix_t* cp;
+    matrix_t a, b, c;
     
     if (!get_matrix(env, argv[0], &a))
 	return enif_make_badarg(env);
@@ -2113,95 +2276,37 @@ ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	return enif_make_badarg(env);
     
     if (argc == 2) {
-	size_t n, m;
-	bool_t rowmajor;
-	c_t = combine_type(a.type, b.type);
+	ERL_NIF_TERM bin;
+	matrix_type_t ct;
 
-	n = a.n;
-	m = a.m;
-
-	if (!make_matrix_resource(env,n,m,a.rowmajor,
-				  c_t,&c_bin_term,&c_data,&cp))
+	ct = combine_type(a.type, b.type);
+	
+	if (!create_matrix(env,a.n,a.m,a.rowmajor,ct,&c,&bin))
 	    return enif_make_badarg(env);
+
 	enif_rwlock_rlock(a.rw_lock);
 	enif_rwlock_rlock(b.rw_lock);
 
-	if (a.rowmajor == b.rowmajor)
-	    add(TRUE,
-		a.type, a.data+a.byte_offset, a.stride, 1,
-		b.type, b.data+b.byte_offset, b.stride, 1,
-		c_t, c_data, cp->stride, 1, n, m);
-	else // a.rowmajor != b.rowmajor (but a.rowmajor==c.rowmajor)
-	    add(FALSE,
-		a.type, a.data+a.byte_offset, a.stride, 1,
-		b.type, b.data+b.byte_offset, 1, b.stride,
-		c_t, c_data, cp->stride, 1, n, m);
+	m_add(&a, &b, &c);
 	
 	enif_rwlock_runlock(b.rw_lock);
 	enif_rwlock_runlock(a.rw_lock);
 
-	rowmajor = a.rowmajor || b.rowmajor;
-	
-	c_matrix = make_matrix(env, n, m, rowmajor, c_t, cp, c_bin_term);
-	return c_matrix;
+	return make_matrix(env, c.n, c.m, c.rowmajor, c.type, &c, bin);
     }
     else {  // argc == 3
-	matrix_t c;
 	if (!get_matrix(env, argv[2], &c))
 	    return enif_make_badarg(env);
-
 	if ((a.rowmajor == c.rowmajor) && ((a.n != c.n) || (a.m != c.m)))
 	    return enif_make_badarg(env);
 	else if ((a.rowmajor != c.rowmajor) && ((a.n != c.m) || (a.m != c.n)))
 	    return enif_make_badarg(env);
-
 	if (c.rw_lock != a.rw_lock) enif_rwlock_rlock(a.rw_lock);
 	if (c.rw_lock != b.rw_lock) enif_rwlock_rlock(b.rw_lock);
 	enif_rwlock_rwlock(c.rw_lock);
-	if (c.rowmajor) {
-	    if (a.rowmajor && b.rowmajor)
-		add(TRUE,
-		    a.type, a.data+a.byte_offset, a.stride, 1,
-		    b.type, b.data+b.byte_offset, b.stride, 1,
-		    c.type, c.data+c.byte_offset, c.stride, 1, c.n, c.m);
-	    else if (!a.rowmajor && b.rowmajor)
-		add(FALSE,
-		    a.type, a.data+a.byte_offset, 1, a.stride,
-		    b.type, b.data+b.byte_offset, b.stride, 1,
-		    c.type, c.data+c.byte_offset, c.stride, 1, c.n, c.m);
-	    else if (a.rowmajor && !b.rowmajor)
-		add(FALSE,
-		    a.type, a.data+a.byte_offset, a.stride, 1,
-		    b.type, b.data+b.byte_offset, 1, b.stride,
-		    c.type, c.data+c.byte_offset, c.stride, 1, c.n, c.m);
-	    else
-		add(FALSE,
-		    a.type, a.data+a.byte_offset, 1, a.stride,
-		    b.type, b.data+b.byte_offset, 1, b.stride,
-		    c.type, c.data+c.byte_offset, c.stride, 1, c.n, c.m);
-	}
-	else {
-	    if (a.rowmajor && b.rowmajor)
-		add(FALSE,
-		    a.type, a.data+a.byte_offset, 1, a.stride,
-		    b.type, b.data+b.byte_offset, 1, b.stride,
-		    c.type, c.data+c.byte_offset, c.stride, 1, c.n, c.m);
-	    else if (!a.rowmajor && b.rowmajor)
-		add(FALSE,
-		    a.type, a.data+a.byte_offset, a.stride, 1,
-		    b.type, b.data+b.byte_offset, 1, b.stride,
-		    c.type, c.data+c.byte_offset, c.stride, 1, c.n, c.m);
-	    else if (a.rowmajor && !b.rowmajor)
-		add(FALSE,
-		    a.type, a.data+a.byte_offset, 1, a.stride,
-		    b.type, b.data+b.byte_offset, b.stride, 1,
-		    c.type, c.data+c.byte_offset, c.stride, 1, c.n, c.m);
-	    else
-		add(TRUE,
-		    a.type, a.data+a.byte_offset, a.stride, 1,
-		    b.type, b.data+b.byte_offset, b.stride, 1,
-		    c.type, c.data+c.byte_offset, c.stride, 1, c.n, c.m);
-	}
+
+	m_add(&a, &b, &c);
+
 	enif_rwlock_rwunlock(c.rw_lock);
 	if (c.rw_lock != b.rw_lock) enif_rwlock_runlock(b.rw_lock);
 	if (c.rw_lock != a.rw_lock) enif_rwlock_runlock(a.rw_lock);
@@ -2212,71 +2317,107 @@ ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 // subtract two matrices
 ERL_NIF_TERM matrix_subtract(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-    matrix_t a, b;
-    byte_t* c_data;
-    matrix_type_t c_t;
-    ERL_NIF_TERM c_bin_term;
-    ERL_NIF_TERM c_matrix;
-    matrix_t* cp;
-    UNUSED(argc);
+    matrix_t a, b, c;
     
     if (!get_matrix(env, argv[0], &a))
 	return enif_make_badarg(env);
     if (!get_matrix(env, argv[1], &b))
 	return enif_make_badarg(env);
-    if ((a.n != b.n) || (a.m != b.m))
+    if ((a.rowmajor == b.rowmajor) && ((a.n != b.n) || (a.m != b.m)))
 	return enif_make_badarg(env);
-
-    c_t = combine_type(a.type, b.type);
-    if (!make_matrix_resource(env,a.n,a.m,TRUE,c_t,&c_bin_term,&c_data,&cp))
+    else if ((a.rowmajor != b.rowmajor) && ((a.n != b.m) || (a.m != b.n)))
 	return enif_make_badarg(env);
-
-    enif_rwlock_rlock(a.rw_lock);
-    enif_rwlock_rlock(b.rw_lock);    
-    subtract(TRUE,
-	     a.type, a.data+a.byte_offset, a.stride, 1,
-	     b.type, b.data+b.byte_offset, b.stride, 1,
-	     c_t, c_data, cp->stride, 1, a.n, a.m);
-    enif_rwlock_runlock(b.rw_lock);    
-    enif_rwlock_runlock(a.rw_lock);
     
-    c_matrix = make_matrix(env, a.n, a.m, TRUE, c_t, cp, c_bin_term);
-    return c_matrix;
+    if (argc == 2) {
+	ERL_NIF_TERM bin;
+	matrix_type_t ct;
+
+	ct = combine_type(a.type, b.type);
+	
+	if (!create_matrix(env,a.n,a.m,a.rowmajor,ct,&c,&bin))
+	    return enif_make_badarg(env);
+
+	enif_rwlock_rlock(a.rw_lock);
+	enif_rwlock_rlock(b.rw_lock);
+
+	m_apply(subtract,&a, &b, &c);
+	
+	enif_rwlock_runlock(b.rw_lock);
+	enif_rwlock_runlock(a.rw_lock);
+
+	return make_matrix(env, c.n, c.m, c.rowmajor, c.type, &c, bin);
+    }
+    else {  // argc == 3
+	if (!get_matrix(env, argv[2], &c))
+	    return enif_make_badarg(env);
+	if ((a.rowmajor == c.rowmajor) && ((a.n != c.n) || (a.m != c.m)))
+	    return enif_make_badarg(env);
+	else if ((a.rowmajor != c.rowmajor) && ((a.n != c.m) || (a.m != c.n)))
+	    return enif_make_badarg(env);
+	if (c.rw_lock != a.rw_lock) enif_rwlock_rlock(a.rw_lock);
+	if (c.rw_lock != b.rw_lock) enif_rwlock_rlock(b.rw_lock);
+	enif_rwlock_rwlock(c.rw_lock);
+
+	m_apply(subtract, &a, &b, &c);
+
+	enif_rwlock_rwunlock(c.rw_lock);
+	if (c.rw_lock != b.rw_lock) enif_rwlock_runlock(b.rw_lock);
+	if (c.rw_lock != a.rw_lock) enif_rwlock_runlock(a.rw_lock);
+	return argv[2];
+    }
 }
 
 // multiply two matrices element wise
 ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
-    matrix_t a, b;
-    byte_t* c_data;
-    matrix_type_t c_t;
-    ERL_NIF_TERM c_bin_term;
-    ERL_NIF_TERM c_matrix;
-    matrix_t* cp;
-    UNUSED(argc);
+    matrix_t a, b, c;
     
     if (!get_matrix(env, argv[0], &a))
 	return enif_make_badarg(env);
     if (!get_matrix(env, argv[1], &b))
 	return enif_make_badarg(env);
-    if ((a.n != b.n) || (a.m != b.m))
+    if ((a.rowmajor == b.rowmajor) && ((a.n != b.n) || (a.m != b.m)))
 	return enif_make_badarg(env);
-
-    c_t = combine_type(a.type, b.type);
-    if (!make_matrix_resource(env,a.n,a.m,TRUE,c_t,&c_bin_term,&c_data,&cp))
+    else if ((a.rowmajor != b.rowmajor) && ((a.n != b.m) || (a.m != b.n)))
 	return enif_make_badarg(env);
     
-    enif_rwlock_rlock(a.rw_lock);
-    enif_rwlock_rlock(b.rw_lock);
-    times(TRUE,
-	  a.type, a.data+a.byte_offset, a.stride, 1,
-	  b.type, b.data+b.byte_offset, b.stride, 1,
-	  c_t, c_data, cp->stride, 1, a.n, a.m);
-    enif_rwlock_runlock(b.rw_lock);    
-    enif_rwlock_runlock(a.rw_lock);
+    if (argc == 2) {
+	ERL_NIF_TERM bin;
+	matrix_type_t ct;
 
-    c_matrix = make_matrix(env, a.n, a.m, TRUE, c_t, cp, c_bin_term);
-    return c_matrix;
+	ct = combine_type(a.type, b.type);
+	
+	if (!create_matrix(env,a.n,a.m,a.rowmajor,ct,&c,&bin))
+	    return enif_make_badarg(env);
+
+	enif_rwlock_rlock(a.rw_lock);
+	enif_rwlock_rlock(b.rw_lock);
+
+	m_apply(times,&a, &b, &c);
+	
+	enif_rwlock_runlock(b.rw_lock);
+	enif_rwlock_runlock(a.rw_lock);
+
+	return make_matrix(env, c.n, c.m, c.rowmajor, c.type, &c, bin);
+    }
+    else {  // argc == 3
+	if (!get_matrix(env, argv[2], &c))
+	    return enif_make_badarg(env);
+	if ((a.rowmajor == c.rowmajor) && ((a.n != c.n) || (a.m != c.m)))
+	    return enif_make_badarg(env);
+	else if ((a.rowmajor != c.rowmajor) && ((a.n != c.m) || (a.m != c.n)))
+	    return enif_make_badarg(env);
+	if (c.rw_lock != a.rw_lock) enif_rwlock_rlock(a.rw_lock);
+	if (c.rw_lock != b.rw_lock) enif_rwlock_rlock(b.rw_lock);
+	enif_rwlock_rwlock(c.rw_lock);
+
+	m_apply(times, &a, &b, &c);
+
+	enif_rwlock_rwunlock(c.rw_lock);
+	if (c.rw_lock != b.rw_lock) enif_rwlock_runlock(b.rw_lock);
+	if (c.rw_lock != a.rw_lock) enif_rwlock_runlock(a.rw_lock);
+	return argv[2];
+    }
 }
 
 // multiply two matrices
@@ -2402,20 +2543,18 @@ ERL_NIF_TERM matrix_negate(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	return enif_make_badarg(env);
 
     if (argc == 1) {
-	ERL_NIF_TERM c_bin_term; 
-	matrix_type_t c_t = a.type;
-	byte_t* c_data;
-	matrix_t* cp;
+	matrix_t c;
+	ERL_NIF_TERM bin;
 	
-	if (!make_matrix_resource(env,a.n,a.m,a.rowmajor,
-				  c_t,&c_bin_term,&c_data,&cp))
+	if (!create_matrix(env,a.n,a.m,a.rowmajor,a.type,&c,&bin))
 	    return enif_make_badarg(env);
+	
 	enif_rwlock_rlock(a.rw_lock);
 	negate(TRUE,
 	       a.type, a.data+a.byte_offset, a.stride, 1,
-	       c_t, c_data+cp->byte_offset, cp->stride, 1, a.n, a.m);
+	       c.type, c.data+c.byte_offset, c.stride, 1, a.n, a.m);
 	enif_rwlock_runlock(a.rw_lock);
-	return make_matrix(env,a.n,a.m,a.rowmajor,c_t,cp,c_bin_term);
+	return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
     }
     else { // args == 2
 	matrix_t c;
@@ -2510,14 +2649,9 @@ ERL_NIF_TERM matrix_copy_data(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
 ERL_NIF_TERM matrix_scale(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     matrix_t a;
-    byte_t* c_data;
-    matrix_type_t c_t;
-    ERL_NIF_TERM c_bin_term;
-    ERL_NIF_TERM c_matrix;
-    matrix_t* cp;
-    ErlNifSInt64 i_scale;
-    float64_t    f_scale;
-    complex128_t c_scale;
+    ErlNifSInt64 i_scale = 0;
+    float64_t    f_scale = 0.0;
+    complex128_t c_scale = CMPLX(0.0, 0.0);
     int arg_int=0, arg_float=0, arg_complex=0;
     UNUSED(argc);
     
@@ -2534,29 +2668,30 @@ ERL_NIF_TERM matrix_scale(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	return enif_make_badarg(env);	
 
     if (argc == 2) {
-	c_t = a.type;
-	if (!make_matrix_resource(env,a.n,a.m,a.rowmajor,
-				  c_t,&c_bin_term,&c_data,&cp))
+	matrix_t c;
+	ERL_NIF_TERM bin;
+
+	if (!create_matrix(env,a.n,a.m,a.rowmajor,a.type,&c,&bin))
 	    return enif_make_badarg(env);
+
 	enif_rwlock_rlock(a.rw_lock);
 	if (arg_int)
 	    scale_i(TRUE,
 		    a.type, a.data+a.byte_offset, a.stride, 1,
-		    c_t, c_data+cp->byte_offset, cp->stride, 1,
+		    c.type, c.data+c.byte_offset, c.stride, 1,
 		    a.n, a.m, i_scale);
 	else if (arg_float)
-	    scale_f(!is_integer(c_t),
+	    scale_f(!is_integer(c.type),
 		    a.type, a.data+a.byte_offset, a.stride, 1,
-		    c_t, c_data+cp->byte_offset, cp->stride, 1,
+		    c.type, c.data+c.byte_offset, c.stride, 1,
 		    a.n, a.m, f_scale);
 	else if (arg_complex)
-	    scale_c(!is_integer(c_t)&&!is_float(c_t),
+	    scale_c(!is_integer(c.type)&&!is_float(c.type),
 		    a.type, a.data+a.byte_offset, a.stride, 1,
-		    c_t, c_data+cp->byte_offset, cp->stride, 1,
+		    c.type, c.data+c.byte_offset, c.stride, 1,
 		    a.n, a.m, c_scale);
 	enif_rwlock_runlock(a.rw_lock);
-	c_matrix = make_matrix(env,a.n,a.m,a.rowmajor,c_t,cp,c_bin_term);
-	return c_matrix;
+	return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
     }
     else {
 	matrix_t c;
@@ -2617,26 +2752,22 @@ ERL_NIF_TERM matrix_scale(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 ERL_NIF_TERM matrix_sigmoid(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     matrix_t a;
-    byte_t* c_data;
-    matrix_type_t c_t;
-    ERL_NIF_TERM c_bin_term;    
-    ERL_NIF_TERM c_matrix;
-    matrix_t* cp;
+    matrix_t c;
+    ERL_NIF_TERM bin;
     UNUSED(argc);
     
     if (!get_matrix(env, argv[0], &a))
 	return enif_make_badarg(env);
-    c_t = a.type;
-    if (!make_matrix_resource(env,a.n,a.m,a.rowmajor,
-			      c_t,&c_bin_term,&c_data,&cp))
+
+    if (!create_matrix(env,a.n,a.m,a.rowmajor,a.type,&c,&bin))
 	return enif_make_badarg(env);
+
     enif_rwlock_rlock(a.rw_lock);
     sigmoid(a.type, a.data+a.byte_offset, a.stride, 1,
-	    c_t, c_data+cp->byte_offset, cp->stride, 1,
-	    a.n, a.m);
-    enif_rwlock_runlock(a.rw_lock);    
-    c_matrix = make_matrix(env,a.n,a.m,a.rowmajor,c_t,cp,c_bin_term);
-    return c_matrix;
+	    c.type, c.data+c.byte_offset, c.stride, 1,
+	    c.n, c.m);
+    enif_rwlock_runlock(a.rw_lock);
+    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 }
 
 // sigmoid a matrix
@@ -2644,26 +2775,22 @@ ERL_NIF_TERM matrix_sigmoid_prime(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[])
 {
     matrix_t a;
-    byte_t* c_data;
-    matrix_type_t c_t;
-    ERL_NIF_TERM c_bin_term;
-    ERL_NIF_TERM c_matrix;
-    matrix_t* cp;
+    matrix_t c;
+    ERL_NIF_TERM bin;
     UNUSED(argc);
     
     if (!get_matrix(env, argv[0], &a))
 	return enif_make_badarg(env);
-    c_t = a.type;
-    if (!make_matrix_resource(env,a.n,a.m,a.rowmajor,
-			      c_t,&c_bin_term,&c_data,&cp))
-	return enif_make_badarg(env);
+
+    if (!create_matrix(env,a.n,a.m,a.rowmajor,a.type,&c,&bin))
+	return enif_make_badarg(env);    
+    
     enif_rwlock_rlock(a.rw_lock);
     sigmoid_prime(a.type, a.data+a.byte_offset, a.stride, 1,
-		  c_t, c_data+cp->byte_offset, cp->stride, 1,
-		  a.n, a.m);
+		  c.type, c.data+c.byte_offset, c.stride, 1,
+		  c.n, c.m);
     enif_rwlock_runlock(a.rw_lock);
-    c_matrix = make_matrix(env,a.n,a.m,a.rowmajor,c_t,cp,c_bin_term);
-    return c_matrix;
+    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 }
 
 // matrix_apply1
@@ -2671,8 +2798,8 @@ ERL_NIF_TERM matrix_apply1(ErlNifEnv* env, int argc,
 			   const ERL_NIF_TERM argv[])
 {
     matrix_t a;
-    unary_operation_t op;
     matrix_t c;
+    unary_operation_t op;
     UNUSED(argc);
     
     if (!enif_is_atom(env, argv[2]))
@@ -2722,11 +2849,8 @@ ERL_NIF_TERM matrix_apply1(ErlNifEnv* env, int argc,
 ERL_NIF_TERM matrix_transpose(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     matrix_t a;
-    byte_t* c_data;
-    matrix_type_t c_t;
-    ERL_NIF_TERM c_bin_term;    
-    ERL_NIF_TERM c_matrix;    
-    matrix_t* cp;
+    matrix_t c;    
+    ERL_NIF_TERM bin;
     byte_t* ap0;
     byte_t* cp0;
     size_t  m;
@@ -2736,18 +2860,16 @@ ERL_NIF_TERM matrix_transpose(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
     if (!get_matrix(env,argv[0],&a))
 	return enif_make_badarg(env);
 
-    c_t = a.type;
-    if (!make_matrix_resource(env,a.m,a.n,a.rowmajor,
-			      c_t,&c_bin_term,&c_data,&cp))
-	return enif_make_badarg(env);
+    if (!create_matrix(env,a.m,a.n,a.rowmajor,a.type,&c,&bin))
+	return enif_make_badarg(env);        
 
     enif_rwlock_rlock(a.rw_lock);
 
     ap0 = a.data + a.byte_offset;
-    cp0 = c_data + cp->byte_offset;
+    cp0 = c.data + c.byte_offset;
     av  = element_size(a.type);
     au  = a.byte_stride;
-    cu  = cp->byte_stride;
+    cu  = c.byte_stride;
     m   = a.m;
     while(m--) {
 	byte_t* ap1 = ap0;
@@ -2762,8 +2884,7 @@ ERL_NIF_TERM matrix_transpose(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
 	ap0 += av;
     }
     enif_rwlock_runlock(a.rw_lock);
-    c_matrix = make_matrix(env, a.m, a.n, a.rowmajor, a.type, cp, c_bin_term);
-    return c_matrix;
+    return make_matrix(env, c.n, c.m, c.rowmajor, c.type, &c, bin);
 }
 
 static void matrix_dtor(ErlNifEnv* env, matrix_t* mat)
