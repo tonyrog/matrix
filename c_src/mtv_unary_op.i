@@ -15,8 +15,8 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, size_t as,
-		      TYPE* cp, size_t cs,
+static void PROCEDURE(TYPE* ap, size_t au,
+		      TYPE* cp, size_t cu,
 		      size_t n, size_t m
 		      PARAMS_DECL)
 {
@@ -36,8 +36,8 @@ static void PROCEDURE(TYPE* ap, size_t as,
 	    TYPE a = *ap1++;
 	    *cp1++ = OPERATION(a);
 	}
-        ap += as;
-        cp += cs;
+        ap += au;
+        cp += cu;
     }
 }
 

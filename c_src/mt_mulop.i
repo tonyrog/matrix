@@ -15,30 +15,32 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
-		      TYPE* bp, size_t bs, size_t bn, size_t bm,
-		      TYPE* cp, size_t cs
+static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
+		      TYPE* bp, int bu, int bv, size_t bn, size_t bm,
+		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
     LOCALS_DECL
+    (void) bn;	
     size_t i, j, k;
-    (void) bn;
+
     for (i=0; i<an; i++) {
         TYPE* cp1 = cp;
 	for (j=0; j<bm; j++) {
 	    TYPE2 sum = 0;
-	    TYPE* bp1 = bp + j;
+	    TYPE* bp1 = bp + j*bv;  // bv2!!
 	    TYPE* ap1 = ap;
 	    for (k = 0; k < am; k++) {
 		TYPE2 p = OPERATION(*ap1,*bp1);
 		sum = OPERATION2(sum, p);
-		ap1 += 1;
-		bp1 += bs;
+		ap1 += av;
+		bp1 += bu;
 	    }
-	    *cp1++ = sum;
+	    *cp1 = sum;
+	    cp1 += cv;
 	}
-	ap += as;
-	cp += cs;
+	ap += au;
+	cp += cu;
     }
 }
 

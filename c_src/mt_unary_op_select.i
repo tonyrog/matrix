@@ -16,21 +16,21 @@
  ***************************************************************************/
 
 static void SELECT(matrix_type_t type,
-		   byte_t* ap, size_t as,
-		   byte_t* cp, size_t cs,
+		   byte_t* ap, int au, int av,
+		   byte_t* cp, int cu, int cv,
 		   size_t n, size_t m
 		   PARAMS_DECL)
 {
     LOCALS_DECL
     switch(type) {
-    case INT8: MT_NAME(mt_,_int8)((int8_t*)ap,as,(int8_t*)cp,cs,n,m PARAMS); break;
-    case INT16: MT_NAME(mt_,_int16)((int16_t*)ap,as,(int16_t*)cp,cs,n,m PARAMS); break;
-    case INT32: MT_NAME(mt_,_int32)((int32_t*)ap,as,(int32_t*)cp,cs,n,m PARAMS); break;
-    case INT64: MT_NAME(mt_,_int64)((int64_t*)ap,as,(int64_t*)cp,cs,n,m PARAMS); break;
-    case FLOAT32: MT_NAME(mt_,_float32)((float32_t*)ap,as,(float32_t*)cp,cs,n,m PARAMS); break;
-    case FLOAT64: MT_NAME(mt_,_float64)((float64_t*)ap,as,(float64_t*)cp,cs,n,m PARAMS); break;
-    case COMPLEX64: MT_NAME(mt_,_complex64)((complex64_t*)ap,as,(complex64_t*)cp,cs,n,m PARAMS); break;
-    case COMPLEX128: MT_NAME(mt_,_complex128)((complex128_t*)ap,as,(complex128_t*)cp,cs,n,m PARAMS); break;
+    case INT8: MT_NAME(mt_,_int8)((int8_t*)ap,au,av,(int8_t*)cp,cu,cv,n,m PARAMS); break;
+    case INT16: MT_NAME(mt_,_int16)((int16_t*)ap,au,av,(int16_t*)cp,cu,cv,n,m PARAMS); break;
+    case INT32: MT_NAME(mt_,_int32)((int32_t*)ap,au,av,(int32_t*)cp,cu,cv,n,m PARAMS); break;
+    case INT64: MT_NAME(mt_,_int64)((int64_t*)ap,au,av,(int64_t*)cp,cu,cv,n,m PARAMS); break;
+    case FLOAT32: MT_NAME(mt_,_float32)((float32_t*)ap,au,av,(float32_t*)cp,cu,cv,n,m PARAMS); break;
+    case FLOAT64: MT_NAME(mt_,_float64)((float64_t*)ap,au,av,(float64_t*)cp,cu,cv,n,m PARAMS); break;
+    case COMPLEX64: MT_NAME(mt_,_complex64)((complex64_t*)ap,au,av,(complex64_t*)cp,cu,cv,n,m PARAMS); break;
+    case COMPLEX128: MT_NAME(mt_,_complex128)((complex128_t*)ap,au,av,(complex128_t*)cp,cu,cv,n,m PARAMS); break;
     default: break;
     }
 }

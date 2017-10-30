@@ -15,12 +15,13 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
-		      TYPE* bp, size_t bs, size_t bn, size_t bm,
-		      TYPE* cp, size_t cs
+static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
+		      TYPE* bp, int bu, size_t bn, size_t bm,
+		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
     LOCALS_DECL
+
     while (bm--) {
         VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
 	TYPE* ap1 = ap;
@@ -36,11 +37,11 @@ static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 	    TYPE*  bp2 = bp1;
 	    for (i = 0; i < VELEMS(TYPE); i++) {
 		VSETELEMENT(ce,i,*bp2);
-		bp2 += bs;
+		bp2 += bu;
 	    }
 	    col[j++] = ce;
 	    n -= VELEMS(TYPE);
-	    bp1 += bs*VELEMS(TYPE);
+	    bp1 += bu*VELEMS(TYPE);
         }
 	if (n) {  // column tail
 	    VTYPE  ce;
@@ -48,7 +49,7 @@ static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 	    TYPE*  bp2 = bp1;
 	    while(i < n) {
 		VSETELEMENT(ce,i,*bp2);
-		bp2 += bs;
+		bp2 += bu;
 		i++;
 	    }
 	    while(i < VELEMS(TYPE)) {
@@ -82,10 +83,10 @@ static void PROCEDURE(TYPE* ap, size_t as, size_t an, size_t am,
 		ap2++;
 	    }
 	    *cp1 = sum;
-	    cp1 += cs;
-	    ap1 += as;
+	    cp1 += cu;
+	    ap1 += au;
 	}
-	cp++;
+	cp += cv;
     }
 }
 

@@ -10,7 +10,7 @@
 %% -compile(native).
 -on_load(init/0).
 -export([new/4]).
--export([new_/4]).
+-export([new_/5]).
 -export([copy/2, copy/4]).
 -export([copy_data/2]).
 -export([from_list/1, from_list/2, from_list/3, from_list/4]).
@@ -21,14 +21,17 @@
 -export([constant/4]).
 -export([add/2,add/3]).
 -export([subtract/2]).
--export([multiply/2]).
+-export([multiply/2, multiply/3]).
 -export([times/2]).
--export([scale/2]).
+-export([scale/2, scale/3]).
 -export([square/1]).
 -export([pow/2]).
 -export([negate/1, negate/2]).
 -export([size/1]).
 -export([type/1]).
+-export([is_integer_matrix/1]).
+-export([is_float_matrix/1]).
+-export([is_complex_matrix/1]).
 -export([element/3]).
 -export([sigmoid/1]).
 -export([sigmoid_prime/1]).
@@ -41,25 +44,32 @@
 -export([convolve/4, convolve/6]).
 -export([rconvolve/4, rconvolve/6]).
 -export([max/3, max/5, l2/3, l2/5]).
--export([is_integer_matrix/1]).
 -export([filter/3, filter/5]).
--export([fold_elems/8]).
--export([rfold_elems/8]).
 -export([load_column_as_row/4]).
 
 %% internal nifs
 -export([add_/2,add_/3]).
+-export([transpose_/1]).
 -export([multiply_/2, multiply_/3]).
 -export([multiply_transposed_/2, multiply_transposed_/3]).
 -export([multiply_large/2, multiply_large/3]).
 -export([apply1/3]).
 
+%% debug
+-export([foldl_row/4, foldr_row/4]).
+-export([foldl_column/4, foldr_column/4]).
+-export([foldl_rows/5, foldr_rows/5]).
+-export([foldl_matrix/3, foldr_matrix/3]).
+
+%% reference for testing
+-export([negate_ref/1]).
+-export([add_ref/2]).
+-export([transpose_data/1]).
+
 %% maximum numbr of elements for add/sub/times/negate...
 %% -define(MAX_NM, (256*4096)).
 -define(MAX_ADD_NM, (10*10)).
 -define(MAX_MUL_NM, (10*10)).
-
--compile(export_all).
 
 -compile({no_auto_import,[size/1]}).
 
@@ -78,8 +88,6 @@ nif_stub_error(Line) ->
 -define(complex64,  8).
 -define(complex128, 9).
 
--define(is_complex(X), (is_number(element(1,(X))) andalso is_number(element(2,(X))))).
-
 -type unsigned() :: non_neg_integer().
 -type matrix_type() :: complex128|complex64|
 		       float32|float64|float128|
@@ -93,10 +101,22 @@ nif_stub_error(Line) ->
 	  ptr = 0 :: unsigned(),    %% 0 is binary, not 0 is resource binary
 	  offset = 0 :: unsigned(), %% offset to first element
 	  stride :: unsigned(),     %% number of elements per (padded) row
+	  rowmajor :: boolean(),    %% stored row-by-row else col-by-col
 	  data :: binary()          %% native encode raw matrix data
 	}).
 
 -type matrix() :: #matrix{}.
+
+-define(is_complex_matrix(X),
+	((X#matrix.type >= ?complex64) andalso (X#matrix.type =< ?complex128))).
+
+-define(is_float_matrix(X),
+	((X#matrix.type >= ?float32) andalso (X#matrix.type =< ?float128))).
+
+-define(is_int_matrix(X),
+	((X#matrix.type >= ?int8) andalso (X#matrix.type =< ?int128))).
+
+-define(is_complex(X), (is_number(element(1,(X))) andalso is_number(element(2,(X))))).
 
 init() ->
     Nif = filename:join(code:priv_dir(matrix), "matrix_drv"),
@@ -109,7 +129,7 @@ new(N,M,T,Es) when is_integer(N), N>0,
 		   is_atom(T),
 		   is_list(Es) ->
     Type = encode_type(T),
-    new_(N,M,Type,Es).
+    new_(N,M,Type,true,Es).
 
 -spec copy(Src::matrix(), Dst::matrix()) ->
 		  matrix().
@@ -135,9 +155,10 @@ copy_data(_Src, _Dst) ->
 %% FIXME: new_ is normally a nif, but we may use the library without nifs,
 %% to allow for interop betweeen we should calculate the stride in 
 %% number of elements per row and align row data to som vector size
-new_(N,M,Type,Es) ->
+new_(N,M,T,RowMajor,Data) ->
     Stride = M,
-    #matrix { n=N, m=M, type=Type, stride=Stride, data=iolist_to_binary(Es)}.
+    #matrix { n=N, m=M, type=T, stride=Stride, rowmajor=RowMajor,
+	      data=iolist_to_binary(Data)}.
 
 %% create matrix from list of lists
 from_list(Rows) ->
@@ -158,17 +179,17 @@ from_list(Rows, N, M, Type) ->
 
 from_list_(Rows, N, M, T) ->
     Es = from_list_(Rows, 0, N, M, T),
-    new_(N, M, T, Es).
+    new_(N, M, T, true, Es).
 
 from_list_([], N, N, _M, _T) ->
     [];
 from_list_([], I, N, M, T) when I < N ->
-    Pad = lists:duplicate(M, number_to_bin(T, 0)),
+    Pad = lists:duplicate(M, elem_to_bin(T, 0)),
     [Pad | from_list_([], I+1, N, M, T)];
 from_list_([R|Rs], I, N, M, T) ->
     L = length(R),
-    Pad = lists:duplicate(M - L, number_to_bin(T, 0)),
-    [ [ number_to_bin(T,E) || E <- R ], Pad |
+    Pad = lists:duplicate(M - L, elem_to_bin(T, 0)),
+    [ [ elem_to_bin(T,E) || E <- R ], Pad |
       from_list_(Rs, I+1, N, M, T)].
 
 %% scan elements and find a matrix type
@@ -211,21 +232,12 @@ type_list([], T) ->
 %%
 -spec to_list(X::matrix()) -> [[number()]].
 
-to_list(#matrix{n=N,m=M,offset=Offset,stride=Stride,type=T,data=Bin0}) ->
-    Offset1 = Offset*element_bytes(T),
-    <<_:Offset1/binary,Bin/binary>> = Bin0,
-    %% io:format("byte_size(Bin) = ~w\n", [byte_size(Bin)]),
-    As = elements_to_list(T,Bin),
-    %% io:format("As = ~w\n", [As]),
-    to_list_(N, M, Stride, As).
-
-to_list_(0, _M, _Stride, _As) ->
-    [];
-to_list_(I, M, Stride, As) ->
-    {Row0,As1} = split_row(Stride, As),
-    %% io:format("Row0 = ~w, As1=~w\n", [Row0,As1]),
-    {Row,_}  = lists:split(M, Row0),
-    [Row | to_list_(I-1,M,Stride,As1)].
+to_list(A=#matrix{n=N,rowmajor=true}) ->
+    [matrix:foldr_row(I, fun(Xij,Acc) -> [Xij|Acc] end, [], A) ||
+	I <- lists:seq(1,N)];
+to_list(A=#matrix{m=M,rowmajor=false}) ->
+    [matrix:foldr_row(I, fun(Xij,Acc) -> [Xij|Acc] end, [], A) ||
+	I <- lists:seq(1,M)].
 
 -spec normal({N::unsigned(), M::unsigned()}) -> matrix().
 normal({N,M}) ->
@@ -239,7 +251,7 @@ normal({N,M},T) ->
 normal(N,M,T) when is_integer(N), N >= 1,
 		   is_integer(M), M >= 1 ->
     Type = encode_type(T),
-    A = new_(N,M,Type,[]),
+    A = new_(N,M,Type,true,[]),
     apply1(A, A, normal).
 
 -spec uniform({N::unsigned(), M::unsigned()}) -> matrix().
@@ -254,7 +266,7 @@ uniform({N,M},T) ->
 uniform(N,M,T) when is_integer(N), N >= 1,
 		    is_integer(M), M >= 1 ->
     Type = encode_type(T),
-    A = new_(N,M,Type,[]),
+    A = new_(N,M,Type,true,[]),
     apply1(A, A, uniform).
 
 -spec zero({N::unsigned(), M::unsigned()}) -> matrix().
@@ -267,7 +279,7 @@ zero({N,M},T) -> zero(N,M,T).
 zero(N,M,Type) when is_integer(N), N >= 1,
 		    is_integer(M), M >= 1 ->
     T = encode_type(Type),
-    A = new_(N,M,T,[]),
+    A = new_(N,M,T,true,[]),
     apply1(A, A, zero).
 
 -spec one({N::unsigned(), M::unsigned()}) -> matrix().
@@ -280,7 +292,7 @@ one({N,M},T) -> one(N,M,T).
 one(N,M,Type) when is_integer(N), N >= 1,
 		 is_integer(M), M >= 1 ->
     T = encode_type(Type),
-    A = new_(N,M,T,[]),
+    A = new_(N,M,T,true,[]),
     apply1(A, A, one).
 
 %% fixme: nif
@@ -290,9 +302,9 @@ constant(N,M,T,C) when is_integer(N), N >= 1,
 		       is_integer(M), M >= 1,
 		       is_number(C) ->
     Type = encode_type(T),
-    Z = number_to_bin(Type, C),
+    Z = elem_to_bin(Type, C),
     BinList = lists:duplicate(N*M, Z),
-    new_(N,M,Type,BinList).
+    new_(N,M,Type,true,BinList).
 
 
 -spec identity({N::unsigned(), M::unsigned()}) -> matrix().
@@ -307,23 +319,26 @@ identity({N,M},T) ->
 identity(N,M,Type) when is_integer(N), N >= 1,
 			is_integer(M), M >= 1 ->
     T = encode_type(Type),
-    A = new_(N,M,T,[]),
+    A = new_(N,M,T,true,[]),
     apply1(A, A, identity).
 
 %%     Type = encode_type(T),
-%%    Bv = {number_to_bin(Type, 0),number_to_bin(Type, 1)},
+%%    Bv = {elem_to_bin(Type, 0),elem_to_bin(Type, 1)},
 %%    Data = [[element(X+1,Bv) ||
 %%		<<X:1>> <= <<(1 bsl ((M-1)-I)):M>>] ||
 %%	       I <- lists:seq(0, N-1)],
-%%    new_(N,M,Type,Data).
+%%    new_(N,M,Type,true,Data).
 
 -spec apply1(A::matrix(), Dst::matrix(), Op::atom()) -> matrix().
 apply1(_A, _Dst, _Op) ->
     ?nif_stub.    
 
+%% return dimension in row major order
 -spec size(M::matrix()) -> {unsigned(), unsigned()}.
-size(#matrix{n=N,m=M}) ->
-    {N,M}.
+size(#matrix{rowmajor=true,n=N,m=M}) ->
+    {N,M};
+size(#matrix{rowmajor=false,n=N,m=M}) ->
+    {M,N}.
 
 type(#matrix{type=T}) ->
     case T of
@@ -337,13 +352,29 @@ type(#matrix{type=T}) ->
 	?complex64 -> complex64;
 	?complex128 -> complex128
     end.
+-spec is_integer_matrix(X::matrix()) -> boolean().
+is_integer_matrix(X) -> ?is_int_matrix(X).
+
+-spec is_float_matrix(X::matrix()) -> boolean().
+is_float_matrix(X) -> ?is_float_matrix(X).
+
+-spec is_complex_matrix(X::matrix()) -> boolean().
+is_complex_matrix(X) -> ?is_complex_matrix(X).
 
 -spec element(I::unsigned(),J::unsigned(),X::matrix()) -> number().
-element(I,J,#matrix{n=N,m=M,offset=Offs,stride=Stride,type=T,data=Bin}) when
+%% element I,J in row/column order (i.e rowmajor)
+element(I,J,#matrix{rowmajor=true,n=N,m=M,offset=O,stride=S,type=T,data=D}) 
+  when
       is_integer(I), I > 0, I =< N, 
       is_integer(J), J > 0, J =< M ->
-    P = Offs + (I-1)*Stride+J-1,
-    element_(P, T, Bin).
+    P = O + (I-1)*S+J-1,
+    element_(P, T, D);
+element(I,J,#matrix{rowmajor=false,n=N,m=M,offset=O,stride=S,type=T,data=D})
+  when
+      is_integer(I), I > 0, I =< M, 
+      is_integer(J), J > 0, J =< N ->
+    P = O + (J-1)*S+I-1,
+    element_(P, T, D).
 
 %% P is element position not byte position
 element_(P, T, Bin) ->
@@ -372,52 +403,6 @@ element_(P, T, Bin) ->
 	    <<_:P/binary-unit:8,X:8/native-signed-integer,_/binary>> = Bin, X
     end.
 
-map(F, #matrix{type=T,data=Bin}) ->
-    case T of
-	?complex128 ->
-	    [F({R,I}) || <<R:64/native-float,I:64/native-float>> <= Bin ];
-	?complex64 ->
-	    [F({R,I}) || <<R:32/native-float,I:32/native-float>> <= Bin ];
-	?float128 ->
-	    %% [F(X) || <<X:128/native-float>> <= Bin ];
-	    [F(binary_to_float128(X)) || <<X:128/binary>> <= Bin ];
-	?float64 ->
-	    [F(X) || <<X:64/native-float>> <= Bin ];
-	?float32 ->
-	    [F(X) || <<X:32/native-float>> <= Bin ];
-	?int64 ->
-	    [F(X) || <<X:64/native-signed-integer>> <= Bin ];
-	?int32 ->
-	    [F(X) || <<X:32/native-signed-integer>> <= Bin ];
-	?int16 ->
-	    [F(X) || <<X:16/native-signed-integer>> <= Bin ];
-	?int8 ->
-	    [F(X) || <<X:8/native-signed-integer>> <= Bin ]
-    end.
-
-elements_to_list(T, Bin) ->
-    case T of
-	?complex128 ->
-	    [{R,I} || <<R:64/native-float,I:64/native-float>> <= Bin ];
-	?complex64 ->
-	    [{R,I} || <<R:32/native-float,I:32/native-float>> <= Bin ];
-	?float128 ->
-	    %% [X || <<X:128/native-float>> <= Bin ];
-	    [binary_to_float128(X) || <<X:16/binary>> <= Bin ];
-	?float64 ->
-	    [X || <<X:64/native-float>> <= Bin ];
-	?float32 ->
-	    [X || <<X:32/native-float>> <= Bin ];
-	?int64 ->
-	    [X || <<X:64/native-signed-integer>> <= Bin ];
-	?int32 ->
-	    [X || <<X:32/native-signed-integer>> <= Bin ];
-	?int16 ->
-	    [X || <<X:16/native-signed-integer>> <= Bin ];
-	?int8 ->
-	    [X || <<X:8/native-signed-integer>> <= Bin ]
-    end.
-
 %%
 %%
 %% Fold F with accumulator A over the matrix 
@@ -435,88 +420,81 @@ foldr_(F,A,N,0,M,T,S,P,Bin) ->
 foldr_(F,A,N,J,M,T,S,P,Bin) ->
     E = element_(P,T,Bin),
     foldr_(F,F(E,A),N,J-1,M,T,S,P-1,Bin).
-%%
-%%
-%%
--spec foldl(fun((number(),term()) -> term()), term(), matrix()) -> term().
 
-foldl(F, A, #matrix{n=N,m=M,offset=Offs,stride=Stride,type=T,data=Bin}) ->
-    P = Offs,
-    foldl_(F,A,N,M,M,T,Stride,P,Bin).
+foldl_matrix(F,A,X=#matrix{rowmajor=true,n=N}) ->
+    foldl_rows(1,N,F,A,X);
+foldl_matrix(F,A,X=#matrix{rowmajor=false,m=M}) ->
+    foldl_rows(1,M,F,A,X).
 
-foldl_(_F,A,1,0,_M,_T,_S,_P,_Bin) ->
-    A;
-foldl_(F,A,N,0,M,T,S,P,Bin) ->
-    P1 = P - M + S,
-    foldr_(F,A,N-1,M,M,T,S,P1,Bin);
-foldl_(F,A,N,J,M,T,S,P,Bin) ->
-    E = element_(P,T,Bin),
-    foldl_(F,F(E,A),N,J-1,M,T,S,P+1,Bin).
+foldr_matrix(F,A,X=#matrix{rowmajor=true,n=N}) ->
+    foldr_rows(1,N,F,A,X);
+foldr_matrix(F,A,X=#matrix{rowmajor=false,m=M}) ->
+    foldr_rows(1,M,F,A,X).
 
-%%
-%%
-%%
--spec zipfoldr(fun((number(),number(), term()) -> term()), term(),
-	       matrix(), matrix()) -> term().
-		      
-zipfoldr(F, A,
-	 #matrix{n=N,m=M,offset=Offs1,stride=Stride1,type=T1,data=Bin1}, 
-	 #matrix{n=N,m=M,offset=Offs2,stride=Stride2,type=T2,data=Bin2}) ->
-    P1 = Offs1 + (N-1)*Stride1 + M - 1,
-    P2 = Offs2 + (N-1)*Stride2 + M - 1,
-    zipfoldr_(F,A,N,M,M,
-	      T1,Stride1,P1,Bin1,
-	      T2,Stride2,P2,Bin2).
+foldl_rows(I,N,_F,A,_X) when I > N -> A;
+foldl_rows(I,N,F,A,X) ->
+    A1 = foldl_row(I,F,A,X),
+    foldl_rows(I+1,N,F,A1,X).
 
-zipfoldr_(_F, A, 1, 0, _M,
-	  _T1,_S1,_P1,_Bin1,
-	  _T2,_S2,_P2,_Bin2) ->
-    A;
-zipfoldr_(F, A, N, 0, M,
-	  T1,S1,P1,Bin1,
-	  T2,S2,P2,Bin2) ->
-    P11 = P1 + M - S1,
-    P21 = P2 + M - S2,
-    zipfoldr_(F,A,N-1,M,M,
-	      T1,S1,P11,Bin1,
-	      T2,S2,P21,Bin2);
-zipfoldr_(F,A,N,J,M,
-	  T1,S1,P1,Bin1,
-	  T2,S2,P2,Bin2) ->
-    E1 = element_(P1,T1,Bin1),
-    E2 = element_(P2,T2,Bin2),
-    zipfoldr_(F, F(E1,E2,A),N,J-1,M,
-	      T1,S1,P1-1,Bin1,
-	      T2,S2,P2-1,Bin2).
+foldr_rows(I,N,_F,A,_X) when I > N -> A;
+foldr_rows(I,N,F,A,X) ->
+    A1 = foldr_row(I,F,A,X),
+    foldr_rows(I+1,N,F,A1,X).
+
+%% fold left over row
+foldl_row(I,F,A,#matrix{rowmajor=true,n=_N,m=M,offset=O,
+		       stride=S,type=T,data=D}) ->
+    P = O + (I-1)*S,
+    fold_elems_(F,A,D,P,T,1,M);
+foldl_row(I,F,A,#matrix{rowmajor=false,n=N,m=_M,offset=O,
+		       stride=S,type=T,data=D}) ->
+    P = O + (I-1),
+    fold_elems_(F,A,D,P,T,S,N).
+
+
+%% fold left over column
+foldl_column(J,F,A,#matrix{rowmajor=false,n=_N,m=M,offset=O,
+			   stride=S,type=T,data=D}) ->
+    P = O + (J-1)*S,
+    fold_elems_(F,A,D,P,T,1,M);
+foldl_column(J,F,A,#matrix{rowmajor=true,n=N,m=_M,offset=O,
+			   stride=S,type=T,data=D}) ->
+    P = O + (J-1),
+    fold_elems_(F,A,D,P,T,S,N).
+
+%% fold right over rows
+foldr_row(I,F,A,#matrix{rowmajor=true,n=_N,m=M,offset=O,
+			stride=S,type=T,data=D}) ->
+    P = O + (I-1)*S + M-1,
+    fold_elems_(F,A,D,P,T,-1,M);
+foldr_row(I,F,A,#matrix{rowmajor=false,n=N,m=_M,offset=O,
+			stride=S,type=T,data=D}) ->
+    P = O + (N-1)*S + (I-1),
+    fold_elems_(F,A,D,P,T,-S,N).
+
+foldr_column(J,F,A,#matrix{rowmajor=false,n=_N,m=M,offset=O,
+			   stride=S,type=T,data=D}) ->
+    P = O + (J-1)*S + M-1,
+    fold_elems_(F,A,D,P,T,-1,M);
+foldr_column(J,F,A,#matrix{rowmajor=true,n=N,m=_M,offset=O,
+			   stride=S,type=T,data=D}) ->
+    P = O + (N-1)*S + (J-1),
+    fold_elems_(F,A,D,P,T,-S,N).
+
+fold_elems_(_F,A,_D,_P,_T,_S,0) -> A;
+fold_elems_(F,A,D,P,T,S,I) -> 
+    A1 = F(element_(P,T,D),A),
+    fold_elems_(F,A1,D,P+S,T,S,I-1).
 
 %%
 %% Add two matrices
 %%
 -spec add(A::matrix(), B::matrix()) -> matrix().
 
-%% add max MAX linear elements each lap make
-%% sure submatrices, if any, always are size aligned
-
-add(A=#matrix{n=N,m=M,type=T1},
-    B=#matrix{n=N,m=M,type=T2}) when T1 =:= T2, N*M =< ?MAX_ADD_NM ->
-    add_(A,B);
-add(A=#matrix{n=N,m=M,type=T1},
-    B=#matrix{n=N,m=M,type=T2}) ->
-    T = type_combine(T1,T2),
-    C = new_(N,M,T,[]),
-    R = submatrix_arows(N,M),
-    add_parts_(A,B,C,1,R,N,M).
-
-add_parts_(A,B,C,I,R,N,M) when I =< N ->
-    K = erlang:min(R,N-I+1),
-    %% io:format("add: (~w,~w,~w,~w)+(~w,~w,~w,~w)\n", [I,1,K,M, I,1,K,M]),
-    Ai = submatrix(I,1,K,M,A),
-    Bi = submatrix(I,1,K,M,B),
-    Ci = submatrix(I,1,K,M,C),
-    add_(Ai,Bi,Ci),
-    add_parts_(A,B,C,I+K,R,N,M);
-add_parts_(_A,_B,C,I,_R,N,_M) when I =:= N+1 ->
-    C.
+add(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
+    add_(X,Y);
+add(X=#matrix{n=N,m=M},Y=#matrix{n=M,m=N}) ->
+    add_(X,Y).
 
 add_(A,B) ->
     add_ref(A,B).
@@ -533,93 +511,114 @@ add(A, B, Dst) ->
 add_(_A, _B, _Dst) ->
     ?nif_stub.
 
-
-add_ref(A=#matrix{n=N,m=M,type=T1},
-	B=#matrix{n=N,m=M,type=T2}) ->
-    Type = type_combine(T1,T2),
-    Es = zipfoldr(
-	   fun(Ai,Bi,Acc) ->
-		   Ci = add_element(Ai,Bi),
-		   [number_to_bin(Type,Ci)|Acc]
-	   end, [], A, B),
-    new_(N,M,Type,Es).
-
-add_element({R1,I1},{R2,I2}) -> {R1+R2,I1+I2};
-add_element({R1,I1},R2) ->  {R1+R2,I1};
-add_element(R1,{R2,I2}) -> {R1+R2,I2};
-add_element(R1,R2) -> R1+R2.
-
-%% calculate number of rows to operate over
-submatrix_arows(N,M) ->
-    N1 = ?MAX_ADD_NM div M,
-    N2 = erlang:min(N1,N),
-    erlang:max(1,N2).
-
-submatrix_mrows(N,M) ->
-    N1 = ?MAX_MUL_NM div M,
-    N2 = erlang:min(N1,N),
-    erlang:max(1,N2).
+add_ref(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
+    add_ref_(X,Y);
+add_ref(X=#matrix{n=N,m=M},Y=#matrix{n=M,m=N}) ->
+    add_ref_(X,Y).
+    
+add_ref_(X,Y) ->
+    T = type_combine(X#matrix.type,Y#matrix.type),
+    {N,M} = size(X),
+    Data = map_elems(fun(Xij,Yij) ->
+			     elem_to_bin(T,scalar_add(Xij,Yij))
+		     end, X, Y),
+    new_(N,M,T,true,Data).
 
 %%
 %% Subtract two matrices
 %%
 -spec subtract(A::matrix(), B::matrix()) -> matrix().
 
-subtract(X=#matrix{n=N,m=M,type=T1}, 
-	 Y=#matrix{n=N,m=M,type=T2}) ->
-    Type = type_combine(T1,T2),
-    Es = zipfoldr(
-	   fun(Xi,Yi,Acc) ->
-		   [number_to_bin(Type,Xi-Yi)|Acc]
-	   end, [], X, Y),
-    new_(N,M,Type,Es).
+subtract(X, Y) ->
+    subtract_ref(X, Y).
+
+
+subtract_ref(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
+    subtract_ref_(X,Y);
+subtract_ref(X=#matrix{n=N,m=M},Y=#matrix{n=M,m=N}) ->
+    subtract_ref_(X,Y).
+    
+subtract_ref_(X,Y) ->
+    T = type_combine(X#matrix.type,Y#matrix.type),
+    {N,M} = size(X),
+    Data = map_elems(fun(Xij,Yij) ->
+			     elem_to_bin(T,scalar_subtract(Xij,Yij))
+		     end, X, Y),
+    new_(N,M,T,true,Data).
 
 %%
 %% Multiply two matrices element wise
 %%
 -spec times(A::matrix(), B::matrix()) -> matrix().
 
-times(X=#matrix{n=N,m=M,type=T1},
-    Y=#matrix{n=N,m=M,type=T2}) ->
-    Type = type_combine(T1,T2),
-    Es = zipfoldr(
-	   fun(Xi,Yi,Acc) ->
-		   [number_to_bin(Type,Xi*Yi)|Acc]
-	   end, [], X, Y),
-    new_(N,M,Type,Es).
+times(X,Y) ->
+    times_ref(X, Y).
+
+times_ref(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
+    times_ref_(X,Y);
+times_ref(X=#matrix{n=N,m=M},Y=#matrix{n=M,m=N}) ->
+    times_ref_(X,Y).
+    
+times_ref_(X,Y) ->
+    T = type_combine(X#matrix.type,Y#matrix.type),
+    {N,M} = size(X),
+    Data = map_elems(fun(Xij,Yij) ->
+			     elem_to_bin(T,scalar_multiply(Xij,Yij))
+		     end, X, Y),
+    new_(N,M,T,true,Data).
 
 %%
 %% Negate a matrix
 %%
 -spec negate(A::matrix()) -> matrix().
-negate(X=#matrix{n=N,m=M,type=T}) ->
-    Es = foldr(
-	   fun(Xi,Acc) ->
-		   [number_to_bin(T,-Xi)|Acc]
-	   end, [], X),
-    new_(N,M,T,Es).
+negate(X) ->
+    negate_ref(X).
 
--spec negate(A::matrix(),C::matrix()) -> matrix().
-negate(_A, _C) ->
+negate_ref(X) ->
+    {N,M} = size(X),
+    T = X#matrix.type,
+    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_negate(Xij)) end, X),
+    new_(N,M,T,true,Es).
+
+-spec negate(X::matrix(),Dst::matrix()) -> matrix().
+negate(_X, _Dst) ->
     ?nif_stub.
+
 %%
 %% Scale a matrix by a scalar number
 %%
--spec scale(F::number(), A::matrix()) -> matrix().
-scale(F, X=#matrix{n=N,m=M,type=T}) when is_number(F) ->
-    Es = foldr(
-	   fun(Xi,Acc) ->
-		   [number_to_bin(T,F*Xi)|Acc]
-	   end, [], X),
-    new_(N,M,T,Es).
+-spec scale(F::number(), X::matrix()) -> matrix().
+scale(F, X) when is_number(F) orelse ?is_complex(F) ->
+    scale_ref(F, X).
+
+scale_ref(F, X) ->
+    {N,M} = size(X),
+    T = X#matrix.type,
+    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_multiply(F,Xij)) end, X),
+    new_(N,M,T,true,Es).
+
+-spec scale(F::number(), X::matrix(), Dst::matrix()) -> matrix().
+scale(_F, _X, _Dst) ->
+    ?nif_stub.
 
 %%
 %% Multiply elementwise and add everything
 %%
--spec mulsum(A::matrix(), B::matrix()) -> number().
+-spec mulsum(X::matrix(), Y::matrix()) -> number().
 
+mulsum(X,Y) when ?is_complex_matrix(X) orelse ?is_complex_matrix(Y) ->
+    mulsum(X,Y,{0.0,0.0});
 mulsum(X,Y) ->
-    zipfoldr(fun(Xi,Yi,Sum) -> Xi*Yi+Sum end, 0, X, Y).
+    mulsum(X,Y,0).
+
+mulsum(X,Y,Sum) ->
+    Es = map_elems(fun(Xij,Yij) ->
+			   scalar_multiply(Xij,Yij)
+		   end, X, Y),
+    lists:foldl(
+      fun(Zi,Si) ->
+	      lists:foldl(fun(Zij,Sij) -> scalar_add(Zij,Sij) end, Zi, Si)
+      end, Es, Sum).
 
 %%
 %% Calculate X^2 
@@ -667,7 +666,7 @@ multiply_ref(#matrix{n=Nx,m=Mx,offset=Offs1,stride=Stride1,type=T1,data=Bin1},
     P2  = Offs2 + My-1,            %% last column in Y
     T = type_combine(T1,T2),
     Es = mult_(Nx,My,Mx,My,T,Bin1,P1,Stride1,T1,  Bin2,P2,Stride2,T2, []),
-    new_(Nx,My,T,Es).
+    new_(Nx,My,T,true,Es).
 
 multiply(A, B, Dst) ->
     multiply_(A, B, Dst).
@@ -680,18 +679,18 @@ mult_(1,0,_Mx,_My,_T,_Bin1,_P1,_S1,_T1, _Bin2,_P2,_S2,_T2,Acc) ->
 mult_(N,0,Mx,My,T,Bin1,P1,S1,T1,  Bin2,P2,S2,T2, Acc) ->
     mult_(N-1,My,Mx,My,T,Bin1,P1-S1,S1,T1, Bin2,P2+My,S2,T2, Acc);
 mult_(N,J,Mx,My,T,Bin1,P1,S1,T1,  Bin2,P2,S2,T2,  Acc) ->
-    C = dot_(Bin1,P1,1,T1,  Bin2,P2,S2,T2,  Mx,0),
+    C = dot_(Bin1,P1,1,T1,  Bin2,P2,S2,T2,  Mx, scalar_zero(T)),
     %% io:format("j=~w,sum=~w\n", [J,C]),
     mult_(N,J-1,Mx,My,T,Bin1,P1,S1,T1, Bin2,P2-1,S2,T2,
-	  [number_to_bin(T,C)|Acc]).
+	  [elem_to_bin(T,C)|Acc]).
 
-dot_(_Bin1,_P1,_S1,_T1, _Bin2,_P2,_S2,_T2, 0,Sum) ->
+dot_(_Bin1,_P1,_S1,_T1, _Bin2,_P2,_S2,_T2, 0, Sum) ->
     Sum;
 dot_(Bin1,P1,S1,T1, Bin2,P2,S2,T2, K,Sum) ->
     %% io:format("p1=~w, p2=~w\n", [P1,P2]),
     E1 = element_(P1,T1,Bin1),
     E2 = element_(P2,T2,Bin2),
-    Sum1 = E1*E2+Sum,
+    Sum1 = scalar_add(scalar_multiply(E1,E2), Sum),
     dot_(Bin1,P1+S1,S1,T1, Bin2,P2+S2,S2,T2, K-1,Sum1).
 
 %% calculate Dst = X*Yt where Yt is a transposed matrix
@@ -719,8 +718,8 @@ load_column_as_row(J, A, I, Dst) ->
 multiply_large(X=#matrix{n=Nx,m=Mx,type=T1},
 	       Y=#matrix{n=Ny,m=My,type=T2}) when Mx =:= Ny ->
     T = type_combine(T1,T2),
-    Z = new_(Nx,My,T,[]),
-    R = new_(1,Ny,T,[]),
+    Z = new_(Nx,My,T,true,[]),
+    R = new_(1,Ny,T,true,[]),
     mult_large_(X,Y,Z,R,1,My).
 
 multiply_large(X=#matrix{n=Nx,m=Mx},
@@ -730,7 +729,7 @@ multiply_large(X=#matrix{n=Nx,m=Mx},
        Nz =:= Nx,
        Mz =:= My ->
     T = encode_type(T3),
-    R = new_(1,Ny,T,[]),
+    R = new_(1,Ny,T,true,[]),
     mult_large_(X,Y,Z,R,1,My).
 
 mult_large_(X,Y,Z,R,J,M) when J =< M ->
@@ -743,14 +742,23 @@ mult_large_(_X,_Y,Z,_R,_J,_M) ->
 
 %%
 %% Transpose a matrix
+%% if rowmajor then n = number of rows, m = number of columns
+%% if !rowmajor then n = number of columns, m = number of rows!
 %%
 -spec transpose(A::matrix()) -> matrix().
-transpose(#matrix{n=N,m=M,offset=Offs,stride=Stride,type=Type,data=Bin}) ->
+transpose(X = #matrix{rowmajor=RowMajor}) ->
+    X#matrix { rowmajor=not RowMajor }.
+
+transpose_(_X) ->
+    ?nif_stub.    
+
+transpose_data(#matrix{n=N,m=M,offset=Offs,stride=Stride,rowmajor=RowMajor,
+		       type=Type,data=Bin}) ->
     ES  = element_bytes(Type),
     RS  = ES*Stride,                         %% row bytes
     End = ES*(Offs + (N-1)*Stride + M - 1),  %% end element position
     Es = trans_(M,N,N,Bin,End,End,ES,RS,[]),
-    new_(M,N,Type,Es).
+    new_(M,N,Type,RowMajor,Es).
 
 trans_(1,0,_N,_Bin,_Pos,_Pos0,_ES,_RS,Acc) ->
     Acc;
@@ -836,14 +844,15 @@ max(N, M, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
   when N =< Nx, M =< Mx ->
     Es = convolve(
 	   fun(I, J) ->
+		   %% FIXME complex!
 		   V = fold_elems(
 			 fun(E,undefined) -> E;
 			    (E,Max) -> max(E,Max)
 			 end, undefined, I, J, N, M, X),
 		   %% io:format("(~w,~w) = ~w\n", [I,J,V]),
-		   number_to_bin(T,V)
+		   elem_to_bin(T,V)
 	   end, N, M, Sx, Sy, X),
-    new_(((Nx-N) div Sx) +1, ((Mx-M) div Sy)+1, T, Es).
+    new_(((Nx-N) div Sx) +1, ((Mx-M) div Sy)+1, T, true, Es).
 
 %%
 %%
@@ -864,12 +873,12 @@ l2(N, M, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
     Es = convolve(
 	   fun(I, J) ->
 		   S = fold_elems(
-			 fun(E,undefined) -> E*E;
-			    (E,Sum) -> E*E+Sum
-			 end, undefined, I, J, N, M, X),
-		   number_to_bin(T,math:sqrt(S))
+			 fun(E,Sum) ->
+				 scalar_add(scalar_multiply(E,E), Sum)
+			 end, scalar_zero(T), I, J, N, M, X),
+		   elem_to_bin(T,math:sqrt(S))
 	   end, N, M, Sx, Sy, X),
-    new_(((Nx-N) div Sx)+1, ((Mx-M) div Sy)+1, T, Es).
+    new_(((Nx-N) div Sx)+1, ((Mx-M) div Sy)+1, T, true, Es).
 
 %%
 %%
@@ -886,9 +895,9 @@ filter(W=#matrix{n=Nw,m=Mw}, B, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
     Es = convolve(
 	   fun(I, J) ->
 		   A = submatrix(I,J,Nw,Mw,X),
-		   number_to_bin(T,mulsum(W,A)+B)
+		   elem_to_bin(T,mulsum(W,A)+B)
 	   end, Nw, Mw, Sx, Sy, X),
-    new_(((Nx-Nw) div Sx)+1, ((Mx-Mw) div Sy)+1, T, Es).
+    new_(((Nx-Nw) div Sx)+1, ((Mx-Mw) div Sy)+1, T, true, Es).
 
 %% 
 -spec argmax(A::matrix()) -> [integer()].
@@ -905,6 +914,19 @@ argmax_v(I, IMax, Max, [_|As]) ->
     argmax_v(I+1, IMax, Max, As);
 argmax_v(_I, IMax, _Max, []) ->
     IMax.
+
+
+map_elems(F,X) ->
+    [[ F(Xij) || Xij <- R] || R <- to_list(X)].
+
+map_elems(F,X,Y) ->
+    lists:zipwith(
+      fun(Xi,Yi) ->
+	      lists:zipwith(
+		fun(Xij,Yij) ->
+			F(Xij,Yij)
+		end, Xi, Yi)
+      end, to_list(X), to_list(Y)).
 
 %%
 %% Scan embedded matrix data
@@ -927,26 +949,13 @@ fold_elems_(_F,Acc,_Bin,_Start,_I,_RowLen,_T,_RowStride,K) when K =< 0 ->
 fold_elems_(F,Acc,Bin,Start,_I,RowLen,T,RowStride,K) ->
     fold_elems_(F,Acc,Bin,Start+RowStride,0,RowLen,T,RowStride,K).
 
-%% fold elements in reverse
-rfold_elems(F,Acc,Bin,End,RowLen,Type,RowStride,Total) ->
-    rfold_elems_(F,Acc,Bin,End,0,RowLen,Type,RowStride,Total).
-
-rfold_elems_(F,Acc,Bin,End,I,RowLen,T,RowStride,K) when I < RowLen ->
-    E = element_(End-I,T,Bin),
-    rfold_elems_(F,F(E,Acc),Bin,End,I+1,RowLen,
-		 T,RowStride,K-1);
-rfold_elems_(_F,Acc,_Bin,_End,_I,_RowLen,_T,_RowStride,K) when K =< 0 ->
-    Acc;
-rfold_elems_(F,Acc,Bin,End,_I,RowLen,T,RowStride,K) ->
-    rfold_elems_(F,Acc,Bin,End-RowStride,0,RowLen,T,RowStride,K).
-
 -spec sigmoid(A::matrix()) -> matrix().
 sigmoid(X=#matrix{n=N,m=M,type=T}) ->
     Es = foldr(
 	   fun(Xi,Acc) ->
-		   [number_to_bin(T,sigmoid__(Xi))|Acc]
+		   [elem_to_bin(T,sigmoid__(Xi))|Acc]
 	   end, [], X),
-    new_(N,M,T,Es).
+    new_(N,M,T,true,Es).
 
 sigmoid__(X) when is_float(X) ->
     1.0/(1.0 + math:exp(-X)).
@@ -955,9 +964,9 @@ sigmoid__(X) when is_float(X) ->
 sigmoid_prime(X=#matrix{n=N,m=M,type=T}) ->
     Es = foldr(
 	   fun(Xi,Acc) ->
-		   [number_to_bin(T,sigmoid_prime__(Xi))|Acc]
+		   [elem_to_bin(T,sigmoid_prime__(Xi))|Acc]
 	   end, [], X),
-    new_(N,M,T,Es).
+    new_(N,M,T,true,Es).
 
 sigmoid_prime__(X) ->
     Z = sigmoid__(X),
@@ -967,9 +976,9 @@ sigmoid_prime__(X) ->
 rectifier(X=#matrix{n=N,m=M,type=T}) ->
     Es = foldr(
 	   fun(Xi,Acc) ->
-		   [number_to_bin(T,rectifier__(Xi))|Acc]
+		   [elem_to_bin(T,rectifier__(Xi))|Acc]
 	   end, [], X),
-    new_(N,M,T,Es).
+    new_(N,M,T,true,Es).
 
 rectifier__(X) when X < 0 -> 0;
 rectifier__(X) -> X.
@@ -978,9 +987,9 @@ rectifier__(X) -> X.
 softplus(X=#matrix{n=N,m=M,type=T}) ->
     Es = foldr(
 	   fun(Xi,Acc) ->
-		   [number_to_bin(T,softplus__(Xi))|Acc]
+		   [elem_to_bin(T,softplus__(Xi))|Acc]
 	   end, [], X),
-    new_(N,M,T,Es).
+    new_(N,M,T,true,Es).
 
 softplus__(X) ->
     math:log(1 + math:exp(X)).
@@ -992,53 +1001,39 @@ print(A,Prec) ->
     io:put_chars(format(A,Prec)).
 
 format(X) ->
-    format(X, 0).
+    format(X, 2).
 
-format(#matrix{n=N,m=M,offset=Offset,stride=Stride,type=T,data=Bin0},Prec) ->
-    Offset1 = Offset*element_bytes(T),
-    <<_:Offset1/binary,Bin/binary>> = Bin0,
-    Es = elements_to_list(T,Bin),
-    Fs = [format_element(E,Prec) || E <- Es],
-    W = lists:max([length(F) || F <- Fs]),
-    %% left pad
-    Fs2 = [lists:duplicate(W-length(F),$\s)++F || F <- Fs],
-    format_rows(N,M,Stride,Fs2,"|","|\n"," ","~s",[]).
+format(X,Prec) ->
+    Rows = to_list(X),
+    FRows = [ [format_element(E,Prec) || E <- Row] || Row <- Rows],
+    ColWs = column_width(FRows),
+    format_rows(FRows,ColWs,"|","|\n"," ","~s",[]).
 
-%% fixme allow integers as weights
-format_rows(0,_M,_,_As,_Rb,_Re,_Sep,_Fmt,_Args) ->
+format_rows([],_ColWs,_Rb,_Re,_Sep,_Fmt,_Args) ->
     [];
-format_rows(I,M,Stride,As,RowStart,RowEnd,Sep,Fmt,Args) ->
-    {Row0,As1} = split_row(Stride, As),
-    %% io:format("Row0=~p, As1=~p\n", [Row0, As1]),
-    {Row,_}  = lists:split(M, Row0),
-    %% io:format("Row=~p\n", [Row]),
-    Es = [io_lib:format(Fmt,Args++[Xij]) || Xij <- Row],
+format_rows([Row|Rows],ColWs,RowStart,RowEnd,Sep,Fmt,Args) ->
+    Es = lists:zipwith(
+	   fun(F,W) ->
+		   lists:duplicate(W-length(F),$\s)++F
+	   end, Row, ColWs),
     [ [RowStart,lists:join(Sep,Es),RowEnd] |
-      format_rows(I-1,M,Stride,As1,RowStart,RowEnd,Sep,Fmt,Args)].
+      format_rows(Rows,ColWs,RowStart,RowEnd,Sep,Fmt,Args)].
 
-%% special split that allows a short tail
-split_row(Pos, As) ->
-    split_row(Pos, As, []).
-
-split_row(0, As, Acc) -> 
-    {lists:reverse(Acc), As};
-split_row(I, [A|As], Acc) -> 
-    split_row(I-1, As, [A|Acc]);
-split_row(_I, [], Acc) ->
-    {lists:reverse(Acc), []}.
+%% calculate column width (max length over columns )
+column_width([[]|_]) ->
+    [];
+column_width(Rows) ->
+    Column = [length(hd(Row)) || Row <- Rows],
+    [ lists:max(Column) | column_width([tl(Row) || Row <- Rows]) ].
 
 
-is_integer_matrix(#matrix{type=T}) -> T =< ?float128.
-is_float_matrix(#matrix{type=T}) -> T >= ?float32 andalso T =< ?float128.
-is_complex_matrix(#matrix{type=T}) -> T >= ?complex64 andalso T =< ?complex128.
-
-format_element({R,I},0) when is_float(R),is_float(I) ->
+format_element({R,I},Prec) when is_float(R),is_float(I) ->
     if I == 0 ->
-	    lists:flatten([io_lib_format:fwrite_g(R)," "]);
+	    format_element(R,Prec)++" ";
        I < 0 ->
-	    lists:flatten([io_lib_format:fwrite_g(R),"-",io_lib_format:fwrite_g(abs(I)),"i"]);
+	    format_element(R,Prec)++"-"++format_element(-I,Prec)++"i";
        true ->
-	    lists:flatten([io_lib_format:fwrite_g(R),"+",io_lib_format:fwrite_g(I),"i"])
+	    format_element(R,Prec)++"+"++format_element(I,Prec)++"i"
     end;
 format_element(X,_) when is_integer(X) ->
     integer_to_list(X);
@@ -1047,36 +1042,46 @@ format_element(X,0) when is_float(X) ->
 format_element(X,Prec) when is_float(X) ->
     lists:flatten(io_lib:format("~.*f", [Prec,X])).
 
-typeof({_N,_M,T,_Bin}) -> T.
-typeof({N,M,T1,_Bin1},{N,M,T2,_Bin2}) -> type_combine(T1,T2).
-    
+
+%% calculate number of rows to operate over
+submatrix_arows(N,M) ->
+    N1 = ?MAX_ADD_NM div M,
+    N2 = erlang:min(N1,N),
+    erlang:max(1,N2).
+
+submatrix_mrows(N,M) ->
+    N1 = ?MAX_MUL_NM div M,
+    N2 = erlang:min(N1,N),
+    erlang:max(1,N2).
+
+
 %% combine types to the more general one
 type_combine(T1,T2) -> erlang:max(T1,T2).
 
-number_to_bin(?complex128, {R,I}) ->
+elem_to_bin(?complex128, {R,I}) ->
     <<(float(R)):64/native-float,(float(I)):64/native-float>>;
-number_to_bin(?complex128, R) when is_number(R) ->
+elem_to_bin(?complex128, R) when is_number(R) ->
     <<(float(R)):64/native-float,0.0:64/native-float>>;
-number_to_bin(?complex64, {R,I}) ->
+elem_to_bin(?complex64, {R,I}) ->
     <<(float(R)):32/native-float,(float(I)):32/native-float>>;
-number_to_bin(?complex64, R) ->
+elem_to_bin(?complex64, R) ->
     <<(float(R)):32/native-float,0.0:32/native-float>>;
-number_to_bin(?float128, X) ->
+elem_to_bin(?float128, X) ->
     %%<<(float(X)):128/native-float>>;
     float128_to_binary(float(X));
-number_to_bin(?float64, X) ->
+elem_to_bin(?float64, X) ->
     <<(float(X)):64/native-float>>;
-number_to_bin(?float32, X) ->
+elem_to_bin(?float32, X) ->
     <<(float(X)):32/native-float>>;
-number_to_bin(?int128, X) ->
+elem_to_bin(?int128, X) ->
     <<(trunc(X)):128/native-signed-integer>>;
-number_to_bin(?int64, X) ->
+elem_to_bin(?int64, X) ->
     <<(trunc(X)):64/native-signed-integer>>;
-number_to_bin(?int32, X) ->
+elem_to_bin(?int32, X) ->
     <<(trunc(X)):32/native-signed-integer>>;
-number_to_bin(?int16, X) ->
+elem_to_bin(?int16, X) ->
     <<(trunc(X)):16/native-signed-integer>>;
-number_to_bin(?int8, X) ->
+elem_to_bin(?int8, X) ->
     <<(trunc(X)):8/native-signed-integer>>.
 
 native_binary_to_float32(<<F:32/native>>) ->
@@ -1114,17 +1119,6 @@ float128_to_binary(X) ->
     <<Xi:128/native>>.
 
 
-element_bits(?complex128) -> 128;
-element_bits(?complex64) -> 64;
-element_bits(?float128) -> 128;
-element_bits(?float64) -> 64;
-element_bits(?float32) -> 32;
-element_bits(?int128) -> 128;
-element_bits(?int64) -> 64;
-element_bits(?int32) -> 32;
-element_bits(?int16) -> 16;
-element_bits(?int8) -> 8.
-
 element_bytes(?complex128) -> 16;
 element_bytes(?complex64) -> 8;
 element_bytes(?float128) -> 16;
@@ -1146,3 +1140,47 @@ encode_type(float64) -> ?float64;
 encode_type(float128) -> ?float128;
 encode_type(complex64) -> ?complex64;
 encode_type(complex128) -> ?complex128.
+
+scalar_zero(?complex128) -> {0.0,0.0};
+scalar_zero(?complex64) -> {0.0,0.0};
+scalar_zero(?float128) -> 0.0;
+scalar_zero(?float64) -> 0.0;
+scalar_zero(?float32) -> 0.0;
+scalar_zero(?int128) -> 0;
+scalar_zero(?int64) -> 0;
+scalar_zero(?int32) -> 0;
+scalar_zero(?int16) -> 0;
+scalar_zero(?int8) -> 0.
+
+scalar_add(A,B) when is_number(A), is_number(B) -> A + B;
+scalar_add(A,B) when is_number(A), is_tuple(B) -> complex_add({A,0},B);
+scalar_add(A,B) when is_tuple(A), is_number(B) -> complex_add(A,{B,0});
+scalar_add(A,B) when is_tuple(A), is_tuple(B) -> complex_add(A,B).
+
+scalar_subtract(A,B) when is_number(A), is_number(B) -> A - B;
+scalar_subtract(A,B) when is_number(A), is_tuple(B) -> 
+    complex_subtract({A,0},B);
+scalar_subtract(A,B) when is_tuple(A), is_number(B) -> 
+    complex_subtract(A,{B,0});
+scalar_subtract(A,B) when is_tuple(A), is_tuple(B) -> 
+    complex_subtract(A,B).
+
+scalar_multiply(A,B) when is_number(A), is_number(B) -> A * B;
+scalar_multiply(A,B) when is_number(A), is_tuple(B) -> 
+    complex_multiply({A,0},B);
+scalar_multiply(A,B) when is_tuple(A), is_number(B) -> 
+    complex_multiply(A,{B,0});
+scalar_multiply(A,B) when is_tuple(A), is_tuple(B) -> 
+    complex_multiply(A,B).
+
+scalar_negate(A) when is_number(A) -> -A;
+scalar_negate(A) when is_tuple(A)  -> complex_negate(A).
+
+
+complex_add({A,B},{E,F}) -> {A+E,B+F}.
+
+complex_subtract({A,B},{E,F}) -> {A-E,B-F}.
+
+complex_negate({A,B}) -> {-A,-B}.
+
+complex_multiply({A,B},{E,F}) -> {A*E-B*F, B*E+A*F}.
