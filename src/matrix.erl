@@ -11,14 +11,14 @@
 -on_load(init/0).
 -export([new/4]).
 -export([new_/5]).
--export([copy/2, copy/4]).
--export([copy_data/2]).
+-export([copy/1, copy/2, copy/4]).
+-export([fill/2]).
 -export([from_list/1, from_list/2, from_list/3, from_list/4]).
 -export([to_list/1]).
 -export([normal/1, uniform/1, zero/1, one/1, identity/1]).
 -export([normal/2, uniform/2, zero/2, one/2, identity/2]).
 -export([normal/3, uniform/3, zero/3, one/3, identity/3]).
--export([constant/4]).
+-export([constant/3, constant/4]).
 -export([add/2,add/3]).
 -export([subtract/2]).
 -export([multiply/2, multiply/3]).
@@ -38,6 +38,7 @@
 -export([rectifier/1]).
 -export([softplus/1]).
 -export([transpose/1]).
+-export([transpose_data/1, transpose_data/2]).
 -export([print/1, print/2, format/1, format/2]).
 -export([row/2, column/2, submatrix/5]).
 -export([argmax/1]).
@@ -49,9 +50,8 @@
 
 %% internal nifs
 -export([add_/2,add_/3]).
--export([transpose_/1]).
 -export([multiply_/2, multiply_/3]).
--export([multiply_transposed_/2, multiply_transposed_/3]).
+-export([multiply_t_/2, multiply_t_/3]).
 -export([multiply_large/2, multiply_large/3]).
 -export([apply1/3]).
 
@@ -62,9 +62,12 @@
 -export([foldl_matrix/3, foldr_matrix/3]).
 
 %% reference for testing
+-export([transpose_ref/1]).
+-export([rectifier_ref/1]).
+-export([sigmoid_ref/1]).
+-export([sigmoid_prime_ref/1]).
 -export([negate_ref/1]).
 -export([add_ref/2]).
--export([transpose_data/1]).
 
 %% maximum numbr of elements for add/sub/times/negate...
 %% -define(MAX_NM, (256*4096)).
@@ -92,6 +95,8 @@ nif_stub_error(Line) ->
 -type matrix_type() :: complex128|complex64|
 		       float32|float64|float128|
 		       int64|int32|int16|int8.
+-type complex() :: {float(),float()}.
+-type scalar() :: integer()|float()|complex().
 
 -record(matrix,
 	{
@@ -131,10 +136,15 @@ new(N,M,T,Es) when is_integer(N), N>0,
     Type = encode_type(T),
     new_(N,M,Type,true,Es).
 
+
+-spec copy(Src::matrix()) ->  matrix().
+copy(_Src) ->
+    ?nif_stub.
+
 -spec copy(Src::matrix(), Dst::matrix()) ->
 		  matrix().
-copy(Src, Dst) ->
-    copy(Src, Dst, 0, 0).
+copy(_Src, _Dst) ->
+    ?nif_stub.
 
 -spec copy(Src::matrix(), Dst::matrix(), 
 	   RepeatHorizontal::unsigned(),
@@ -145,11 +155,12 @@ copy(Src, Dst) ->
 copy(_Src, _Dst, _Repeat_h, _Rpeat_v) ->
     ?nif_stub.
 
--spec copy_data(Src::matrix(), Dst::matrix()) ->
-		       matrix().
+
+-spec fill(Src::matrix(), Dst::matrix()) ->
+		  matrix().
 
 %% DESTRUCTIVE
-copy_data(_Src, _Dst) ->
+fill(_Src, _Dst) ->
     ?nif_stub.
 
 %% FIXME: new_ is normally a nif, but we may use the library without nifs,
@@ -295,17 +306,23 @@ one(N,M,Type) when is_integer(N), N >= 1,
     A = new_(N,M,T,true,[]),
     apply1(A, A, one).
 
-%% fixme: nif
--spec constant(N::unsigned(), M::unsigned(), T::matrix_type(), C::number()) ->
+-spec constant(N::unsigned(), M::unsigned(),C::scalar()) ->
 		      matrix().
-constant(N,M,T,C) when is_integer(N), N >= 1,
-		       is_integer(M), M >= 1,
-		       is_number(C) ->
-    Type = encode_type(T),
-    Z = elem_to_bin(Type, C),
-    BinList = lists:duplicate(N*M, Z),
-    new_(N,M,Type,true,BinList).
+constant(N,M,C) when is_integer(C) ->
+    constant(N,M,int32,C);
+constant(N,M,C) when is_float(C) ->
+    constant(N,M,float32,C);
+constant(N,M,C) when ?is_complex(C) ->
+    constant(N,M,complex64,C).
 
+-spec constant(N::unsigned(), M::unsigned(), T::matrix_type(), C::scalar()) ->
+		      matrix().
+constant(N,M,Type,C) when is_integer(N), N >= 1,
+		       is_integer(M), M >= 1 ->
+    T = encode_type(Type),
+    Src = new_(1,1,T,true,elem_to_bin(T,C)),
+    Dst = new_(N,M,T,true,[]),
+    fill(Src,Dst).
 
 -spec identity({N::unsigned(), M::unsigned()}) -> matrix().
 identity({N,M}) ->
@@ -402,24 +419,6 @@ element_(P, T, Bin) ->
 	?int8 ->
 	    <<_:P/binary-unit:8,X:8/native-signed-integer,_/binary>> = Bin, X
     end.
-
-%%
-%%
-%% Fold F with accumulator A over the matrix 
--spec foldr(fun((number(),term()) -> term()), term(), matrix()) -> term().
-
-foldr(F, A, #matrix{n=N,m=M,offset=Offs,stride=Stride,type=T,data=Bin}) ->
-    P = Offs + (N-1)*Stride + M - 1,
-    foldr_(F,A,N,M,M,T,Stride,P,Bin).
-
-foldr_(_F,A,1,0,_M,_T,_S,_P,_Bin) ->
-    A;
-foldr_(F,A,N,0,M,T,S,P,Bin) ->
-    P1 = P + M - S,
-    foldr_(F,A,N-1,M,M,T,S,P1,Bin);
-foldr_(F,A,N,J,M,T,S,P,Bin) ->
-    E = element_(P,T,Bin),
-    foldr_(F,F(E,A),N,J-1,M,T,S,P-1,Bin).
 
 foldl_matrix(F,A,X=#matrix{rowmajor=true,n=N}) ->
     foldl_rows(1,N,F,A,X);
@@ -694,17 +693,17 @@ dot_(Bin1,P1,S1,T1, Bin2,P2,S2,T2, K,Sum) ->
     dot_(Bin1,P1+S1,S1,T1, Bin2,P2+S2,S2,T2, K-1,Sum1).
 
 %% calculate Dst = X*Yt where Yt is a transposed matrix
--spec multiply_transposed_(X::matrix(), Yt::matrix()) -> 
-				  matrix().
+-spec multiply_t_(X::matrix(), Yt::matrix()) -> 
+			 matrix().
 
-multiply_transposed_(_X, _Y) ->
+multiply_t_(_X, _Y) ->
     ?nif_stub.
 
 %% calculate Dst = X*Yt where Yt is a transposed matrix
--spec multiply_transposed_(X::matrix(), Y::matrix(), Dst::matrix()) ->
-				  matrix().
+-spec multiply_t_(X::matrix(), Y::matrix(), Dst::matrix()) ->
+			 matrix().
 
-multiply_transposed_(_X, _Y, _Dst) ->
+multiply_t_(_X, _Y, _Dst) ->
     ?nif_stub.
 
 %% Load column J in A into row I of Dst
@@ -712,7 +711,7 @@ multiply_transposed_(_X, _Y, _Dst) ->
 load_column_as_row(J, A, I, Dst) ->
     Aj = column(J, A),
     Di = row(I, Dst),
-    copy_data(Aj, Di).
+    fill(Aj, Di).
 
 %% multiply large matrices
 multiply_large(X=#matrix{n=Nx,m=Mx,type=T1},
@@ -735,7 +734,7 @@ multiply_large(X=#matrix{n=Nx,m=Mx},
 mult_large_(X,Y,Z,R,J,M) when J =< M ->
     Zj = column(J, Z),
     load_column_as_row(J,Y,1,R),
-    multiply_transposed_(X, R, Zj),
+    multiply_t_(X, R, Zj),
     mult_large_(X,Y,Z,R,J+1,M);
 mult_large_(_X,_Y,Z,_R,_J,_M) ->
     Z.
@@ -749,10 +748,15 @@ mult_large_(_X,_Y,Z,_R,_J,_M) ->
 transpose(X = #matrix{rowmajor=RowMajor}) ->
     X#matrix { rowmajor=not RowMajor }.
 
-transpose_(_X) ->
-    ?nif_stub.    
+-spec transpose_data(Src::matrix()) -> matrix().
+transpose_data(Src) ->
+    transpose_ref(Src).
 
-transpose_data(#matrix{n=N,m=M,offset=Offs,stride=Stride,rowmajor=RowMajor,
+-spec transpose_data(Src::matrix(),Dst::matrix()) -> matrix().
+transpose_data(_Src, _Dst) ->
+    ?nif_stub.
+
+transpose_ref(#matrix{n=N,m=M,offset=Offs,stride=Stride,rowmajor=RowMajor,
 		       type=Type,data=Bin}) ->
     ES  = element_bytes(Type),
     RS  = ES*Stride,                         %% row bytes
@@ -950,22 +954,23 @@ fold_elems_(F,Acc,Bin,Start,_I,RowLen,T,RowStride,K) ->
     fold_elems_(F,Acc,Bin,Start+RowStride,0,RowLen,T,RowStride,K).
 
 -spec sigmoid(A::matrix()) -> matrix().
-sigmoid(X=#matrix{n=N,m=M,type=T}) ->
-    Es = foldr(
-	   fun(Xi,Acc) ->
-		   [elem_to_bin(T,sigmoid__(Xi))|Acc]
-	   end, [], X),
+sigmoid(X) ->
+    sigmoid_ref(X).
+
+sigmoid_ref(X=#matrix{n=N,m=M,type=T}) ->
+    Es = map_elems(fun(Xij) -> elem_to_bin(T,sigmoid__(Xij)) end, X),
     new_(N,M,T,true,Es).
 
 sigmoid__(X) when is_float(X) ->
     1.0/(1.0 + math:exp(-X)).
 
 -spec sigmoid_prime(A::matrix()) -> matrix().
-sigmoid_prime(X=#matrix{n=N,m=M,type=T}) ->
-    Es = foldr(
-	   fun(Xi,Acc) ->
-		   [elem_to_bin(T,sigmoid_prime__(Xi))|Acc]
-	   end, [], X),
+sigmoid_prime(X) ->
+    sigmoid_prime_ref(X).
+
+-spec sigmoid_prime_ref(A::matrix()) -> matrix().
+sigmoid_prime_ref(X=#matrix{n=N,m=M,type=T}) ->
+    Es = map_elems(fun(Xij) -> elem_to_bin(T,sigmoid_prime__(Xij)) end, X),
     new_(N,M,T,true,Es).
 
 sigmoid_prime__(X) ->
@@ -973,22 +978,16 @@ sigmoid_prime__(X) ->
     Z*(1-Z).
 
 -spec rectifier(A::matrix()) -> matrix().
-rectifier(X=#matrix{n=N,m=M,type=T}) ->
-    Es = foldr(
-	   fun(Xi,Acc) ->
-		   [elem_to_bin(T,rectifier__(Xi))|Acc]
-	   end, [], X),
-    new_(N,M,T,true,Es).
+rectifier(X) ->
+    rectifier_ref(X).
 
-rectifier__(X) when X < 0 -> 0;
-rectifier__(X) -> X.
+rectifier_ref(X=#matrix{n=N,m=M,type=T}) ->
+    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_rectifier(Xij)) end, X),
+    new_(N,M,T,true,Es).
 
 -spec softplus(A::matrix()) -> matrix().
 softplus(X=#matrix{n=N,m=M,type=T}) ->
-    Es = foldr(
-	   fun(Xi,Acc) ->
-		   [elem_to_bin(T,softplus__(Xi))|Acc]
-	   end, [], X),
+    Es = map_elems(fun(Xij) -> elem_to_bin(T,softplus__(Xij)) end, X),
     new_(N,M,T,true,Es).
 
 softplus__(X) ->
@@ -1175,6 +1174,10 @@ scalar_multiply(A,B) when is_tuple(A), is_tuple(B) ->
 
 scalar_negate(A) when is_number(A) -> -A;
 scalar_negate(A) when is_tuple(A)  -> complex_negate(A).
+
+scalar_rectifier({X,_}) -> {max(X,0.0), 0.0};
+scalar_rectifier(X) when is_integer(X) -> max(X,0);
+scalar_rectifier(X) -> max(X,0.0).
 
 
 complex_add({A,B},{E,F}) -> {A+E,B+F}.

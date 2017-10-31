@@ -424,19 +424,6 @@ bench_add(N,T,L) -> bench(N,fun(A,B) -> matrix:add(A,B) end, T, L).
 bench_add_table() ->
     bench_table("matrix:add/2",
 		fun(A,B) -> matrix:add(A,B) end).
-    
-%%
-%%  T=float32
-%%  N            NIF
-%%  32           500000
-%%  64           333333
-%%  128          83333
-%%  256          20833
-%%  512          4201
-%%  1024         684
-%%  2048         176
-%%  4096         37
-%%
 
 bench_times(N) -> bench_times(N,float32,1000).
 bench_times(N,T) -> bench_times(N,T,1000).
@@ -452,7 +439,6 @@ bench_negate_table() -> bench_table("matrix:negate/1",
 				    fun(A,_) -> matrix:negate(A) end).
 
     
-
 %%
 %% Bench loop / table
 %%
@@ -465,7 +451,7 @@ bench_table(Name,F,T) ->
     io:format("|------------|--------|\n"),
     bench(32,F,T,  131072),
     bench(64,F,T,  65536),
-    bench(128,F,T, 65536),
+    bench(128,F,T, 8192),
     bench(256,F,T, 256),
     bench(512,F,T, 64),
     bench(1024,F,T,8),
