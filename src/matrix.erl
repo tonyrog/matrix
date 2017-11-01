@@ -72,6 +72,10 @@
 -export([sigmoid_prime_ref/1]).
 -export([argmax_ref/2]).
 
+%% performance counter
+-define(count_vector_op(OP,A,B), count_vector_op((OP),(A),(B))).
+%% -define(count_vector_op(OP,A,B), ok).
+
 %% maximum numbr of elements for add/sub/times/negate...
 %% -define(MAX_NM, (256*4096)).
 -define(MAX_ADD_NM, (10*10)).
@@ -493,10 +497,9 @@ fold_elems_(F,A,D,P,T,S,I) ->
 %%
 -spec add(A::matrix(), B::matrix()) -> matrix().
 
-add(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
-    add_(X,Y);
-add(X=#matrix{n=N,m=M},Y=#matrix{n=M,m=N}) ->
-    add_(X,Y).
+add(A,B) ->
+    ?count_vector_op(add,A,B),
+    add_(A,B).
 
 add_(A,B) ->
     add_ref(A,B).
@@ -532,6 +535,7 @@ add_ref_(X,Y) ->
 -spec subtract(A::matrix(), B::matrix()) -> matrix().
 
 subtract(A, B) ->
+    ?count_vector_op(subtract,A,B),
     subtract_(A, B).
 
 -spec subtract(A::matrix(), B::matrix(), Dst::matrix()) -> matrix().
@@ -562,8 +566,9 @@ subtract_ref_(X,Y) ->
 %%
 -spec times(A::matrix(), B::matrix()) -> matrix().
 
-times(X,Y) ->
-    times_(X,Y).
+times(A,B) ->
+    ?count_vector_op(times,A,B),
+    times_(A,B).
 
 -spec times(A::matrix(), B::matrix(), Dst::matrix()) -> matrix().
 
@@ -678,6 +683,7 @@ pow_(A,B,P) ->
 -spec multiply(X::matrix(), Y::matrix()) -> matrix().
 
 multiply(A, B) ->
+    ?count_vector_op(multiply,A,B),
     multiply_(A,B).
 
 multiply_(A, B) ->
@@ -1216,3 +1222,61 @@ complex_subtract({A,B},{E,F}) -> {A-E,B-F}.
 complex_negate({A,B}) -> {-A,-B}.
 
 complex_multiply({A,B},{E,F}) -> {A*E-B*F, B*E+A*F}.
+
+count_vector_op(multiply,
+		#matrix{rowmajor=R1,type=T1},
+		#matrix{rowmajor=R2,type=T2}) ->
+    count(multiply,1),
+    if T1 =:= T2, R1, R2 ->
+	    count(multiply_mtv,1);
+       T1 =:= T2, R1, not R2 ->
+	    count(multiply_mtv_t,1);
+       T1 =:= T2 ->
+	    count(multiply_mt,1);
+       true ->
+	    ok
+
+    end;
+count_vector_op(add,
+		#matrix{rowmajor=R1,type=T1},
+		#matrix{rowmajor=R2,type=T2}) ->
+    count(add,1),
+    if T1 =:= T2, R1 =:= R2 ->
+	    count(add_mtv,1);
+       T1 =:= T2 ->
+	    count(add_mt,1);
+       true ->
+	    ok
+    end;
+count_vector_op(subtract,
+		#matrix{rowmajor=R1,type=T1},
+		#matrix{rowmajor=R2,type=T2}) ->
+    count(subtract,1),
+    if T1 =:= T2, R1 =:= R2 ->
+	    count(subtract_mtv,1);
+       T1 =:= T2 ->
+	    count(subtract_mt,1);
+       true ->
+	    ok
+    end;
+count_vector_op(times,
+		#matrix{rowmajor=R1,type=T1},
+		#matrix{rowmajor=R2,type=T2}) ->
+    count(times,1),
+    if T1 =:= T2, R1 =:= R2 ->
+	    count(times_mtv,1);
+       T1 =:= T2 ->
+	    count(times_mt,1);
+       true ->
+	    ok
+    end;
+count_vector_op(Op, _A, _B) ->
+    count(Op, 1).
+
+count(Key, Value) ->
+    case get(Key) of
+	undefined ->
+	    put(Key, Value);
+	Value0 ->
+	    put(Key, Value0+Value)
+    end.
