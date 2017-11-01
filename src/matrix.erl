@@ -61,16 +61,16 @@
 -export([foldl_matrix/3, foldr_matrix/3]).
 
 %% reference for testing
--export([transpose_ref/1]).
--export([rectifier_ref/1]).
--export([sigmoid_ref/1]).
--export([sigmoid_prime_ref/1]).
--export([negate_ref/1]).
 -export([add_ref/2]).
 -export([subtract_ref/2]).
 -export([times_ref/2]).
 -export([multiply_ref/2]).
--export([argmax_ref/1]).
+-export([negate_ref/1]).
+-export([transpose_data_ref/1]).
+-export([rectifier_ref/1]).
+-export([sigmoid_ref/1]).
+-export([sigmoid_prime_ref/1]).
+-export([argmax_ref/2]).
 
 %% maximum numbr of elements for add/sub/times/negate...
 %% -define(MAX_NM, (256*4096)).
@@ -761,14 +761,14 @@ transpose(X = #matrix{rowmajor=RowMajor}) ->
 
 -spec transpose_data(Src::matrix()) -> matrix().
 transpose_data(Src) ->
-    transpose_ref(Src).
+    transpose_data_ref(Src).
 
 -spec transpose_data(Src::matrix(),Dst::matrix()) -> matrix().
 transpose_data(_Src, _Dst) ->
     ?nif_stub.
 
-transpose_ref(#matrix{n=N,m=M,offset=Offs,stride=Stride,rowmajor=RowMajor,
-		       type=Type,data=Bin}) ->
+transpose_data_ref(#matrix{n=N,m=M,offset=Offs,stride=Stride,rowmajor=RowMajor,
+			   type=Type,data=Bin}) ->
     ES  = element_bytes(Type),
     RS  = ES*Stride,                         %% row bytes
     End = ES*(Offs + (N-1)*Stride + M - 1),  %% end element position
@@ -919,24 +919,34 @@ argmax(A) ->
     Ai = argmax(A,0),    %% vector of indices for max columns
     to_list(Ai).
 
-argmax(_A,_I) ->
-    ?nif_stub.
+argmax(A,I) ->
+    argmax_ref(A,I).
 
 %% 
--spec argmax_ref(A::matrix()) -> [integer()].
-argmax_ref(A) ->
-    Al = to_list(A),
-    [ argmax_v(Ai) || Ai <- Al ].
+-spec argmax_ref(A::matrix(),Axis::0|1) -> [integer()].
+argmax_ref(A,1) ->
+    transpose(argmax_ref(transpose(A),0));
+argmax_ref(A,0) ->
+    {_N,M} = size(A),
+    from_list([argmax_l(to_list(A),M)],int32).
 
-argmax_v([A|As]) ->
-    argmax_v(1, 1, A, As).
+argmax_l([R|Rs],M) ->
+    argmax_l(Rs,2,R,lists:duplicate(M,1)).
 
-argmax_v(I, _IMax, Max, [A|As]) when A > Max ->
-    argmax_v(I+1, I, A, As);
-argmax_v(I, IMax, Max, [_|As]) ->
-    argmax_v(I+1, IMax, Max, As);
-argmax_v(_I, IMax, _Max, []) ->
-    IMax.
+argmax_l([Q|Rs],I,ArgVal,ArgMax) ->
+    {ArgVal1,ArgMax1} = argmax_r(ArgVal,ArgMax,Q,I,[],[]),
+    argmax_l(Rs,I+1,ArgVal1,ArgMax1);
+argmax_l([],_I,_ArgValue,ArgMax) ->
+    ArgMax.
+
+argmax_r([B|Bs],[X|Xs],[A|As],I,Bs1,Xs1) ->
+    if A > B ->
+	    argmax_r(Bs,Xs,As,I,[A|Bs1],[I|Xs1]);
+       true ->
+	    argmax_r(Bs,Xs,As,I,[B|Bs1],[X|Xs1])
+    end;
+argmax_r([],_Xs,_As,_I,Bs1,Xs1) ->
+    {lists:reverse(Bs1),lists:reverse(Xs1)}.
 
 
 map_elems(F,X) ->
