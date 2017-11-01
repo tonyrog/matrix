@@ -200,8 +200,6 @@ static ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc,
 				 const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, 
 				    const ERL_NIF_TERM argv[]);
-static ERL_NIF_TERM matrix_multiply_t(ErlNifEnv* env, int argc, 
-				      const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_negate(ErlNifEnv* env, int argc, 
 				  const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_scale(ErlNifEnv* env, int argc,
@@ -220,6 +218,8 @@ static ERL_NIF_TERM matrix_fill(ErlNifEnv* env, int argc,
 				const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_apply1(ErlNifEnv* env, int argc, 
 				  const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
+				  const ERL_NIF_TERM argv[]);
 
 #if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 12))
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
@@ -235,12 +235,12 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("new_",          5, matrix_new),
     NIF_FUNC("add_",          2, matrix_add),
     NIF_FUNC("add_",          3, matrix_add),
-    NIF_FUNC("subtract",      2, matrix_subtract),
-    NIF_FUNC("times",         2, matrix_times),
+    NIF_FUNC("subtract_",     2, matrix_subtract),
+    NIF_FUNC("subtract_",     3, matrix_subtract),    
+    NIF_FUNC("times_",        2, matrix_times),
+    NIF_FUNC("times_",        3, matrix_times),
     NIF_FUNC("multiply_",     2, matrix_multiply),
     NIF_FUNC("multiply_",     3, matrix_multiply),
-    NIF_FUNC("multiply_t_",   2, matrix_multiply_t),
-    NIF_FUNC("multiply_t_",   3, matrix_multiply_t),    
     NIF_FUNC("negate",        1, matrix_negate),
     NIF_FUNC("negate",        2, matrix_negate),
     NIF_FUNC("scale",         2, matrix_scale),
@@ -255,6 +255,7 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("copy",          4, matrix_copy),
     NIF_FUNC("fill",          2, matrix_fill),
     NIF_FUNC("apply1",        3, matrix_apply1),
+    NIF_FUNC("argmax",        2, matrix_argmax),
 };
 
 size_t element_size_exp_[10] = { 0, 1, 2, 3, 4,  2, 3, 4,  3, 4 };
@@ -1421,6 +1422,76 @@ static void scale_c(bool_t use_vector,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// argmax
+///////////////////////////////////////////////////////////////////////////////
+
+static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
+		   size_t n, size_t m, int32_t* cp)
+{
+    au *= element_size(at);
+    av *= element_size(at);
+
+    if (is_integer(at)) {
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n-1;
+	    int32_t i = 1;
+	    int32_t max_i = 1;
+	    int64_t max_v = read_int(at, ap1);
+	    
+	    ap1 += au;
+	    while(n1--) {
+		int64_t v = read_int(at, ap1);
+		ap1 += au;
+		i++;
+		if (v > max_v) { max_v = v; max_i = i; }
+	    }
+	    *cp++ = max_i;
+	    ap += av;
+	}	
+    }
+    else if (is_float(at)) {
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n-1;
+	    int32_t i = 1;
+	    int32_t max_i = 1;
+	    float64_t max_v = read_float(at, ap1);
+	    
+	    ap1 += au;
+	    while(n1--) {
+		float64_t v = read_float(at, ap1);
+		ap1 += au;
+		i++;
+		if (v > max_v) { max_v = v; max_i = i; }
+	    }
+	    *cp++ = max_i;
+	    ap += av;
+	}
+    }
+    else if (is_complex(at)) {
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n-1;
+	    int32_t i = 1;
+	    int32_t max_i = 1;
+	    complex128_t max_v = read_complex(at, ap1);
+	    
+	    ap1 += au;
+	    while(n1--) {
+		complex128_t v = read_complex(at, ap1);
+		ap1 += au;
+		i++;
+		if (cabs(v) > cabs(max_v)) { max_v = v; max_i = i; }
+	    }
+	    *cp++ = max_i;
+	    ap += av;
+
+	}	
+    }    
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // sigmoid
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -1463,6 +1534,7 @@ static void rectifier(matrix_type_t at, byte_t* ap, int au, int av,
 		      size_t n, size_t m)
 {
     if (at == ct) {
+	// fixme: vectorized version!
 	mt_rectifier(at, ap, au, av, cp, cu, cv, n, m);
     }
     else {
@@ -1568,7 +1640,7 @@ static void multiply(
 // multiply_transposed A*Bt = C
 ///////////////////////////////////////////////////////////////////////////////
 
-static void multiply_transposed(
+static void multiply_t(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
@@ -2568,27 +2640,64 @@ ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     matrix_t a, b, c;
+    size_t n, m;
     UNUSED(argc);
     
     if (!get_matrix(env, argv[0], &a))
 	return enif_make_badarg(env);
     if (!get_matrix(env, argv[1], &b))
 	return enif_make_badarg(env);
-    if (a.m != b.n)
-	return enif_make_badarg(env);
-
+    if (a.rowmajor) {
+	if (b.rowmajor) {
+	    if (a.m != b.n) return enif_make_badarg(env);
+	    n = a.n; m = b.m;
+	} else {
+	    if (a.m != b.m) return enif_make_badarg(env);
+	    n = a.n; m = b.n;
+	}
+    }
+    else {
+	if (b.rowmajor) {
+	    if (a.n != b.n) return enif_make_badarg(env);
+	    n = a.m; m = b.m;
+	} else {
+	    if (a.n != b.m) return enif_make_badarg(env);
+	    n = a.m; m = b.n;
+	}
+    }
+    
     if (argc == 2) {
 	matrix_type_t c_t = combine_type(a.type, b.type);
 	ERL_NIF_TERM bin;
-	
-	if (!create_matrix(env,a.n,b.m,TRUE,c_t,&c,&bin))
+
+	if (!create_matrix(env,n,m,TRUE,c_t,&c,&bin))
 	    return enif_make_badarg(env);
+
 	enif_rwlock_rlock(a.rw_lock);
 	enif_rwlock_rlock(b.rw_lock);
-	multiply(TRUE,
-		 a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-		 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-		 c.type, c.data+c.byte_offset, c.stride, 1);
+
+	if (a.rowmajor && b.rowmajor) {
+	    multiply(TRUE,
+		     a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
+		     b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+		     c.type, c.data+c.byte_offset, c.stride, 1);
+	} else if (a.rowmajor && !b.rowmajor) {
+	    multiply_t(TRUE,
+		       a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
+		       b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+		       c.type, c.data+c.byte_offset, c.stride, 1);
+	} else if (!a.rowmajor && b.rowmajor) {
+	    multiply(FALSE,
+		     a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
+		     b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+		     c.type, c.data+c.byte_offset, c.stride, 1);
+	}
+	else { // !a.rowmajor && !b.rowmajor
+	    multiply(FALSE,
+		     a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
+		     b.type, b.data+b.byte_offset, 1, b.stride, b.m, b.n,
+		     c.type, c.data+c.byte_offset, c.stride, 1);
+	}
 	enif_rwlock_runlock(b.rw_lock);
 	enif_rwlock_runlock(a.rw_lock);
 	return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
@@ -2596,65 +2705,63 @@ ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     else { // argc == 3
 	if (!get_matrix(env, argv[2], &c))
 	    return enif_make_badarg(env);
-	if ((a.n != c.n) || (b.m != c.m))
+	if (c.rowmajor && ((c.n != n) || (c.m != m)))
 	    return enif_make_badarg(env);
+	if (!c.rowmajor && ((c.n != m) || (c.m != n)))
+	    return enif_make_badarg(env);
+
 	if (c.rw_lock != a.rw_lock) enif_rwlock_rlock(a.rw_lock);
 	if (c.rw_lock != b.rw_lock) enif_rwlock_rlock(b.rw_lock);
 	enif_rwlock_rwlock(c.rw_lock);
-	multiply(TRUE,
-		 a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m, 
-		 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-		 c.type, c.data+c.byte_offset, c.stride, 1);
-	enif_rwlock_rwunlock(c.rw_lock);
-	if (c.rw_lock != b.rw_lock) enif_rwlock_runlock(b.rw_lock);
-	if (c.rw_lock != a.rw_lock) enif_rwlock_runlock(a.rw_lock);
-	return argv[2];
-    }
-}
 
-
-// multiply matrix with a tranposed matrix
-ERL_NIF_TERM matrix_multiply_t(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
-{
-    matrix_t a, b, c;
-    UNUSED(argc);
-
-    if (!get_matrix(env, argv[0], &a))
-	return enif_make_badarg(env);
-    if (!get_matrix(env, argv[1], &b))
-	return enif_make_badarg(env);
-    if (a.m != b.m)
-	return enif_make_badarg(env);
-
-    if (argc == 2) {
-	matrix_type_t c_t = combine_type(a.type, b.type);
-	ERL_NIF_TERM bin;
-
-	if (!create_matrix(env,a.n,b.n,TRUE,c_t,&c,&bin))
-	    return enif_make_badarg(env);
-
-	enif_rwlock_rlock(a.rw_lock);
-	enif_rwlock_rlock(b.rw_lock);
-	multiply_transposed(TRUE,
-			    a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-			    b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-			    c.type, c.data+c.byte_offset, c.stride, 1);
-	enif_rwlock_runlock(b.rw_lock);
-	enif_rwlock_runlock(a.rw_lock);
-	return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
-    }
-    else { // argc == 3
-	if (!get_matrix(env, argv[2], &c))
-	    return enif_make_badarg(env);
-	if ((a.n != c.n) || (b.n != c.m))
-	    return enif_make_badarg(env);
-	if (c.rw_lock != a.rw_lock) enif_rwlock_rlock(a.rw_lock);
-	if (c.rw_lock != b.rw_lock) enif_rwlock_rlock(b.rw_lock);
-	enif_rwlock_rwlock(c.rw_lock);
-	multiply_transposed(TRUE,
-			    a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-			    b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-			    c.type, c.data+c.byte_offset, c.stride, 1);
+	if (c.rowmajor) {
+	    if (a.rowmajor && b.rowmajor) {
+		multiply(TRUE,
+			 a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
+			 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+			 c.type, c.data+c.byte_offset, c.stride, 1);
+	    } else if (a.rowmajor && !b.rowmajor) {
+		multiply_t(TRUE,
+			   a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
+			   b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+			   c.type, c.data+c.byte_offset, c.stride, 1);
+	    } else if (!a.rowmajor && b.rowmajor) {
+		multiply(FALSE,
+			 a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
+			 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+			 c.type, c.data+c.byte_offset, c.stride, 1);
+	    }
+	    else { // !a.rowmajor && !b.rowmajor
+		multiply(FALSE,
+			 a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
+			 b.type, b.data+b.byte_offset, 1, b.stride, b.m, b.n,
+			 c.type, c.data+c.byte_offset, c.stride, 1);
+	    }
+	}
+	else {
+	    if (a.rowmajor && b.rowmajor) {
+		multiply(TRUE,
+			 a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
+			 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+			 c.type, c.data+c.byte_offset, 1, c.stride);
+	    } else if (a.rowmajor && !b.rowmajor) {
+		multiply_t(TRUE,
+			   a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
+			   b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+			   c.type, c.data+c.byte_offset, 1, c.stride);
+	    } else if (!a.rowmajor && b.rowmajor) {
+		multiply(FALSE,
+			 a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
+			 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+			 c.type, c.data+c.byte_offset, 1, c.stride);
+	    }
+	    else { // !a.rowmajor && !b.rowmajor
+		multiply(FALSE,
+			 a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
+			 b.type, b.data+b.byte_offset, 1, b.stride, b.m, b.n,
+			 c.type, c.data+c.byte_offset, 1, c.stride);
+	    }
+	}
 	enif_rwlock_rwunlock(c.rw_lock);
 	if (c.rw_lock != b.rw_lock) enif_rwlock_runlock(b.rw_lock);
 	if (c.rw_lock != a.rw_lock) enif_rwlock_runlock(a.rw_lock);
@@ -3032,6 +3139,70 @@ ERL_NIF_TERM matrix_apply1(ErlNifEnv* env, int argc,
 
     return argv[1];	
 }
+
+// find argmax in matrix
+ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
+			   const ERL_NIF_TERM argv[])
+{
+    matrix_t a;
+    unsigned axis;
+    matrix_t c;
+    ERL_NIF_TERM bin;
+    UNUSED(argc);
+    
+    if (!get_matrix(env, argv[0], &a))
+	return enif_make_badarg(env);
+    if (!enif_get_uint(env, argv[1], &axis))
+	return enif_make_badarg(env);
+    if (axis > 1)
+	return enif_make_badarg(env);
+
+    if (a.rowmajor) {
+	if (axis == 0) {
+	    // argmax for each column is returned (as a row)
+	    if (!create_matrix(env,1,a.m,TRUE,INT32,&c,&bin))
+		return enif_make_badarg(env);
+	    enif_rwlock_rlock(a.rw_lock);
+	    argmax(a.type, a.data+a.byte_offset,a.stride,1,a.n,a.m,
+		   (int32_t*)c.data);
+	    enif_rwlock_runlock(a.rw_lock);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+	else {
+	    // argmax for each row is returned (as a column)
+	    if (!create_matrix(env,1,a.n,FALSE,INT32,&c,&bin))
+		return enif_make_badarg(env);
+	    enif_rwlock_rlock(a.rw_lock);
+	    argmax(a.type, a.data+a.byte_offset,1,a.stride,a.m,a.n,
+		   (int32_t*)c.data);
+	    enif_rwlock_runlock(a.rw_lock);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+    }
+    else { // !a.rowmajor
+	if (axis == 0) {
+	    // argmax for each column is returned (as a row)
+	    if (!create_matrix(env,1,a.n,TRUE,INT32,&c,&bin))
+		return enif_make_badarg(env);
+	    enif_rwlock_rlock(a.rw_lock);
+	    argmax(a.type, a.data+a.byte_offset,1,a.stride,a.m,a.n,
+		   (int32_t*)c.data);
+	    enif_rwlock_runlock(a.rw_lock);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+	else {
+	    // argmax for each row is returned (as a column)
+	    if (!create_matrix(env,1,a.m,FALSE,INT32,&c,&bin))
+		return enif_make_badarg(env);
+	    enif_rwlock_rlock(a.rw_lock);
+	    argmax(a.type, a.data+a.byte_offset,a.stride,1,a.n,a.m,
+		   (int32_t*)c.data);
+	    enif_rwlock_runlock(a.rw_lock);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}	
+    }
+}
+
 
 // transpose data rather then toggle rowmajor
 ERL_NIF_TERM matrix_transpose_data(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])

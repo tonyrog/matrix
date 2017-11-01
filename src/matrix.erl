@@ -20,9 +20,9 @@
 -export([normal/3, uniform/3, zero/3, one/3, identity/3]).
 -export([constant/3, constant/4]).
 -export([add/2,add/3]).
--export([subtract/2]).
--export([multiply/2, multiply/3]).
--export([times/2]).
+-export([subtract/2,subtract/3]).
+-export([multiply/2,multiply/3]).
+-export([times/2,times/3]).
 -export([scale/2, scale/3]).
 -export([square/1]).
 -export([pow/2]).
@@ -41,7 +41,7 @@
 -export([transpose_data/1, transpose_data/2]).
 -export([print/1, print/2, format/1, format/2]).
 -export([row/2, column/2, submatrix/5]).
--export([argmax/1]).
+-export([argmax/1, argmax/2]).
 -export([convolve/4, convolve/6]).
 -export([rconvolve/4, rconvolve/6]).
 -export([max/3, max/5, l2/3, l2/5]).
@@ -51,7 +51,6 @@
 %% internal nifs
 -export([add_/2,add_/3]).
 -export([multiply_/2, multiply_/3]).
--export([multiply_t_/2, multiply_t_/3]).
 -export([multiply_large/2, multiply_large/3]).
 -export([apply1/3]).
 
@@ -68,6 +67,10 @@
 -export([sigmoid_prime_ref/1]).
 -export([negate_ref/1]).
 -export([add_ref/2]).
+-export([subtract_ref/2]).
+-export([times_ref/2]).
+-export([multiply_ref/2]).
+-export([argmax_ref/1]).
 
 %% maximum numbr of elements for add/sub/times/negate...
 %% -define(MAX_NM, (256*4096)).
@@ -528,10 +531,19 @@ add_ref_(X,Y) ->
 %%
 -spec subtract(A::matrix(), B::matrix()) -> matrix().
 
-subtract(X, Y) ->
-    subtract_ref(X, Y).
+subtract(A, B) ->
+    subtract_(A, B).
 
+-spec subtract(A::matrix(), B::matrix(), Dst::matrix()) -> matrix().
+subtract(A, B, Dst) ->
+    subtract_(A,B,Dst).
 
+subtract_(_A,_B,_Dst) ->
+    ?nif_stub.
+
+subtract_(A, B) ->
+    subtract_ref(A, B).
+    
 subtract_ref(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
     subtract_ref_(X,Y);
 subtract_ref(X=#matrix{n=N,m=M},Y=#matrix{n=M,m=N}) ->
@@ -551,7 +563,20 @@ subtract_ref_(X,Y) ->
 -spec times(A::matrix(), B::matrix()) -> matrix().
 
 times(X,Y) ->
+    times_(X,Y).
+
+-spec times(A::matrix(), B::matrix(), Dst::matrix()) -> matrix().
+
+times(X,Y,Dst) ->
+    times_(X,Y,Dst).
+
+
+times_(X,Y) ->
     times_ref(X, Y).
+
+times_(_X,_Y,_Dst) ->
+    ?nif_stub.
+
 
 times_ref(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
     times_ref_(X,Y);
@@ -692,20 +717,6 @@ dot_(Bin1,P1,S1,T1, Bin2,P2,S2,T2, K,Sum) ->
     Sum1 = scalar_add(scalar_multiply(E1,E2), Sum),
     dot_(Bin1,P1+S1,S1,T1, Bin2,P2+S2,S2,T2, K-1,Sum1).
 
-%% calculate Dst = X*Yt where Yt is a transposed matrix
--spec multiply_t_(X::matrix(), Yt::matrix()) -> 
-			 matrix().
-
-multiply_t_(_X, _Y) ->
-    ?nif_stub.
-
-%% calculate Dst = X*Yt where Yt is a transposed matrix
--spec multiply_t_(X::matrix(), Y::matrix(), Dst::matrix()) ->
-			 matrix().
-
-multiply_t_(_X, _Y, _Dst) ->
-    ?nif_stub.
-
 %% Load column J in A into row I of Dst
 %% DESTRUCTIVE
 load_column_as_row(J, A, I, Dst) ->
@@ -734,7 +745,7 @@ multiply_large(X=#matrix{n=Nx,m=Mx},
 mult_large_(X,Y,Z,R,J,M) when J =< M ->
     Zj = column(J, Z),
     load_column_as_row(J,Y,1,R),
-    multiply_t_(X, R, Zj),
+    multiply_(X, transpose(R), Zj),
     mult_large_(X,Y,Z,R,J+1,M);
 mult_large_(_X,_Y,Z,_R,_J,_M) ->
     Z.
@@ -903,14 +914,22 @@ filter(W=#matrix{n=Nw,m=Mw}, B, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
 	   end, Nw, Mw, Sx, Sy, X),
     new_(((Nx-Nw) div Sx)+1, ((Mx-Mw) div Sy)+1, T, true, Es).
 
-%% 
--spec argmax(A::matrix()) -> [integer()].
+%% argmax
 argmax(A) ->
+    Ai = argmax(A,0),    %% vector of indices for max columns
+    to_list(Ai).
+
+argmax(_A,_I) ->
+    ?nif_stub.
+
+%% 
+-spec argmax_ref(A::matrix()) -> [integer()].
+argmax_ref(A) ->
     Al = to_list(A),
     [ argmax_v(Ai) || Ai <- Al ].
 
 argmax_v([A|As]) ->
-    argmax_v(1, 0, A, As).
+    argmax_v(1, 1, A, As).
 
 argmax_v(I, _IMax, Max, [A|As]) when A > Max ->
     argmax_v(I+1, I, A, As);

@@ -107,14 +107,203 @@ test_multiply() ->
     test_multiply4(),
     test_tile_multiply().
 
+primes() ->
+    [2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,179,181,191,193,197,199,211,223,227,229,233,239,241,251,257,263,269,271,277,281,283,293,307,311].
+
+p_list(Size) when Size > 1, Size =< 64 ->
+    lists:sublist(primes(), Size).
+
+s_list(Size) ->
+    lists:seq(1,Size).
+
+
+row_A(T,N,M) ->
+    matrix:from_list([[ I*J || J <- p_list(M)] || I <- p_list(N)],T).
+
+col_A(T,N,M) ->
+    X=matrix:from_list([[ I*J || J <- p_list(N)] || I <- p_list(M)],T),
+    matrix:transpose(X).
+
+row_B(T,N,M) ->
+    matrix:from_list([[ I*J || J <- s_list(M)] || I <- s_list(N)],T).
+
+col_B(T,N,M) ->
+    X=matrix:from_list([[ I*J || J <- s_list(N)] || I <- s_list(M)],T),
+    matrix:transpose(X).
+
+row_C(T,N,M) ->
+    matrix:zero(N,M,T).
+
+col_C(T,N,M) ->
+    matrix:transpose(matrix:zero(M,N,T)).
+
+ref_mul_A_B(T,An,Am,Bn,Bm) ->
+    matrix:to_list(matrix:multiply_ref(row_A(T,An,Am),row_B(T,Bn,Bm))).
+
+ref_add_A_B(T,An,Am,Bn,Bm) ->
+    matrix:to_list(matrix:add_ref(row_A(T,An,Am),row_B(T,Bn,Bm))).
+
+ref_sub_A_B(T,An,Am,Bn,Bm) ->
+    matrix:to_list(matrix:subtract_ref(row_A(T,An,Am),row_B(T,Bn,Bm))).
+
+ref_times_A_B(T,An,Am,Bn,Bm) ->
+    matrix:to_list(matrix:times_ref(row_A(T,An,Am),row_B(T,Bn,Bm))).
+
+
+%% test transposed multiply
+test_mul_t() ->
+    test_mul_t2_(int32,5,4,4,3),
+    test_mul_t2_(int32,64,32,32,16),
+    test_mul_t3_(int32,5,4,4,3),
+    test_mul_t3_(int32,64,32,32,16),
+    ok.
+
+test_mul_t2_(T,An,Am,Bn,Bm) ->
+    R = ref_mul_A_B(T,An,Am,Bn,Bm),
+    R = matrix:to_list(matrix:multiply(row_A(T,An,Am), row_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:multiply(row_A(T,An,Am), col_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:multiply(col_A(T,An,Am), row_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:multiply(col_A(T,An,Am), col_B(T,Bn,Bm))),
+    ok.
+
+test_mul_t3_(T,An,Am,Bn,Bm) ->
+    R = ref_mul_A_B(T,An,Am,Bn,Bm),
+    R = matrix:to_list(matrix:multiply(row_A(T,An,Am),row_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:multiply(row_A(T,An,Am), col_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:multiply(col_A(T,An,Am), row_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:multiply(col_A(T,An,Am), col_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:multiply(row_A(T,An,Am), row_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:multiply(row_A(T,An,Am), col_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:multiply(col_A(T,An,Am), row_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:multiply(col_A(T,An,Am), col_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    ok.
+
+
+%% test transposed add
+test_add_t() ->
+    test_add_t2_(int32,5,4,5,4),
+    test_add_t2_(int32,64,32,64,32),
+    test_add_t3_(int32,5,4,5,4),
+    test_add_t3_(int32,64,32,64,32),
+    ok.
+
+test_add_t2_(T,An,Am,Bn,Bm) ->
+    R = ref_add_A_B(T,An,Am,Bn,Bm),
+    R = matrix:to_list(matrix:add(row_A(T,An,Am), row_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:add(row_A(T,An,Am), col_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:add(col_A(T,An,Am), row_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:add(col_A(T,An,Am), col_B(T,Bn,Bm))),
+    ok.
+
+test_add_t3_(T,An,Am,Bn,Bm) ->
+    R = ref_add_A_B(T,An,Am,Bn,Bm),
+    R = matrix:to_list(matrix:add(row_A(T,An,Am),row_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:add(row_A(T,An,Am), col_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:add(col_A(T,An,Am), row_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:add(col_A(T,An,Am), col_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:add(row_A(T,An,Am), row_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:add(row_A(T,An,Am), col_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:add(col_A(T,An,Am), row_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:add(col_A(T,An,Am), col_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    ok.
+
+
+%% test transposed add
+test_sub_t() ->
+    test_sub_t2_(int32,5,4,5,4),
+    test_sub_t2_(int32,64,32,64,32),
+    test_sub_t3_(int32,5,4,5,4),
+    test_sub_t3_(int32,64,32,64,32),
+    ok.
+
+test_sub_t2_(T,An,Am,Bn,Bm) ->
+    R = ref_sub_A_B(T,An,Am,Bn,Bm),
+    R = matrix:to_list(matrix:subtract(row_A(T,An,Am), row_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:subtract(row_A(T,An,Am), col_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:subtract(col_A(T,An,Am), row_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:subtract(col_A(T,An,Am), col_B(T,Bn,Bm))),
+    ok.
+
+test_sub_t3_(T,An,Am,Bn,Bm) ->
+    R = ref_sub_A_B(T,An,Am,Bn,Bm),
+    R = matrix:to_list(matrix:subtract(row_A(T,An,Am),row_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:subtract(row_A(T,An,Am), col_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:subtract(col_A(T,An,Am), row_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:subtract(col_A(T,An,Am), col_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:subtract(row_A(T,An,Am), row_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:subtract(row_A(T,An,Am), col_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:subtract(col_A(T,An,Am), row_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:subtract(col_A(T,An,Am), col_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    ok.
+
+%% test transposed add
+test_times_t() ->
+    test_times_t2_(int32,5,4,5,4),
+    test_times_t2_(int32,64,32,64,32),
+    test_times_t3_(int32,5,4,5,4),
+    test_times_t3_(int32,64,32,64,32),
+    ok.
+
+test_times_t2_(T,An,Am,Bn,Bm) ->
+    R = ref_times_A_B(T,An,Am,Bn,Bm),
+    R = matrix:to_list(matrix:times(row_A(T,An,Am), row_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:times(row_A(T,An,Am), col_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:times(col_A(T,An,Am), row_B(T,Bn,Bm))),
+    R = matrix:to_list(matrix:times(col_A(T,An,Am), col_B(T,Bn,Bm))),
+    ok.
+
+test_times_t3_(T,An,Am,Bn,Bm) ->
+    R = ref_times_A_B(T,An,Am,Bn,Bm),
+    R = matrix:to_list(matrix:times(row_A(T,An,Am),row_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:times(row_A(T,An,Am), col_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:times(col_A(T,An,Am), row_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:times(col_A(T,An,Am), col_B(T,Bn,Bm),
+				       row_C(T,An,Bm))),
+    R = matrix:to_list(matrix:times(row_A(T,An,Am), row_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:times(row_A(T,An,Am), col_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:times(col_A(T,An,Am), row_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    R = matrix:to_list(matrix:times(col_A(T,An,Am), col_B(T,Bn,Bm),
+				       col_C(T,An,Bm))),
+    ok.
+    
+
 test_multiply1() ->
     As = [[2]],
     Bs = [[3]],
     A    = matrix:from_list(As,int32),
     B    = matrix:from_list(Bs,int32),
     C    = matrix:multiply(A,B),
-    R    = matrix:to_list(C),
-    R    = [[6]],
+    [[6]] = matrix:to_list(C),
     ok.
 
 test_multiply2() ->

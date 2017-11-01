@@ -35,7 +35,7 @@ static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
 		      PARAMS_DECL)
 {
     LOCALS_DECL
-    (void) am;	
+    (void) am;
     TYPE* bp0 = bp;
 
     while(an--) {

@@ -15,29 +15,36 @@
  *
  ***************************************************************************/
 
+static TYPE2 CAT2(PROCEDURE,_dot_mulop)(TYPE* ap,int av,TYPE* bp,int bu,size_t n)
+{
+    TYPE2 sum = 0;
+
+    while(n--) {
+	TYPE2 p = OPERATION(*ap,*bp);
+	sum = OPERATION2(sum, p);
+	ap += av;
+	bp += bu;
+    }
+    return sum;
+}
+
 static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
 		      TYPE* bp, int bu, int bv, size_t bn, size_t bm,
 		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
     LOCALS_DECL
-    (void) bn;	
-    size_t i, j, k;
-
-    for (i=0; i<an; i++) {
+    (void) am;
+    TYPE* bp0 = bp;
+    
+    while(an--) {
         TYPE* cp1 = cp;
-	for (j=0; j<bm; j++) {
-	    TYPE2 sum = 0;
-	    TYPE* bp1 = bp + j*bv;  // bv2!!
-	    TYPE* ap1 = ap;
-	    for (k = 0; k < am; k++) {
-		TYPE2 p = OPERATION(*ap1,*bp1);
-		sum = OPERATION2(sum, p);
-		ap1 += av;
-		bp1 += bu;
-	    }
-	    *cp1 = sum;
+	size_t m = bm;
+	bp = bp0;
+	while(m--) {
+	    *cp1 = CAT2(PROCEDURE,_dot_mulop)(ap,av,bp,bu,bn);
 	    cp1 += cv;
+	    bp += bv;
 	}
 	ap += au;
 	cp += cu;
