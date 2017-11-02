@@ -2676,8 +2676,8 @@ ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     if (argc == 2) {
 	matrix_type_t c_t = combine_type(a.type, b.type);
 	ERL_NIF_TERM bin;
-	
-	if (a.rowmajor && !b.rowmajor) {  // TEST THIS
+
+	if (a.rowmajor && !b.rowmajor) {  // special case?
 	    if (!create_matrix(env,m,n,FALSE,c_t,&c,&bin))
 		return enif_make_badarg(env);
 	}
@@ -2703,7 +2703,6 @@ ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
 		       a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
 		       b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
 		       c.type, c.data+c.byte_offset, 1, c.stride);
-	    
 	} else if (!a.rowmajor && b.rowmajor) {
 	    multiply(FALSE,
 		     a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
@@ -2711,15 +2710,10 @@ ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
 		     c.type, c.data+c.byte_offset, c.stride, 1);
 	}
 	else { // !a.rowmajor && !b.rowmajor
-	    multiply(FALSE,
-		     a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
-		     b.type, b.data+b.byte_offset, 1, b.stride, b.m, b.n,
-		     c.type, c.data+c.byte_offset, c.stride, 1);
-	    // FIXME?
-//	    multiply_t(TRUE,
-//		     b.type, b.data+b.byte_offset, 1, b.stride, b.m, b.n,
-//		     a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
-//		     c.type, c.data+c.byte_offset, c.stride, 1);
+	    multiply(TRUE,
+		     b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
+		     a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
+		     c.type, c.data+c.byte_offset, 1, c.stride);
 	}
 	enif_rwlock_runlock(b.rw_lock);
 	enif_rwlock_runlock(a.rw_lock);
