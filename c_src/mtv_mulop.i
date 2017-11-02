@@ -15,6 +15,55 @@
  *
  ***************************************************************************/
 
+static inline TYPE2 CAT2(PROCEDURE,_dotv_mulop)(TYPE* ap,TYPE* bp,size_t n)
+{
+    TYPE2 sum = 0;
+    VTYPE vsum = VTYPE_ZERO;
+    unsigned int i;
+    
+    while(n >= VELEMS(TYPE)) {
+	VTYPE r = VOPERATION(*(VTYPE*)ap, *(VTYPE*)bp);
+	vsum = VOPERATION2(vsum, r);
+	ap += VELEMS(TYPE);
+	bp += VELEMS(TYPE);		
+	n -= VELEMS(TYPE);
+    }
+    for (i = 0; i < VELEMS(TYPE); i++)
+	sum += VELEMENT(vsum,i);
+    while(n--) {
+	TYPE p = OPERATION(*ap,*bp);
+	sum = OPERATION2(sum, p);
+	ap++;
+	bp++;
+    }
+    return sum;
+}
+
+// Load n elements from b into vector array cp
+static inline void CAT2(PROCEDURE,_loadv_mulop)(VTYPE* cp,TYPE* bp,int bu,size_t n)
+{
+    while(n >= VELEMS(TYPE)) {
+	VTYPE ce;
+	size_t i;
+	for (i = 0; i < VELEMS(TYPE); i++) {
+	    VSETELEMENT(ce,i,*bp);
+	    bp += bu;
+	}
+	*cp++ = ce;
+	n -= VELEMS(TYPE);
+    }
+    if (n) {  // column tail
+	VTYPE  ce = VTYPE_ZERO;
+	size_t i = 0;
+	while(i < n) {
+	    VSETELEMENT(ce,i,*bp);
+	    bp += bu;
+	    i++;
+	}
+	*cp = ce;
+    }
+}
+
 static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 		      TYPE* bp, int bu, size_t bn, size_t bm,
 		      TYPE* cp, int cu, int cv
@@ -25,64 +74,16 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
     while (bm--) {
         VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
 	TYPE* ap1 = ap;
-	TYPE* bp1 = bp;
 	TYPE* cp1 = cp;
-	size_t n = bn;
-	size_t j = 0;
+	size_t n;
 
-	// load column from B
-	while(n >= VELEMS(TYPE)) {
-	    VTYPE  ce;
-	    size_t i;
-	    TYPE*  bp2 = bp1;
-	    for (i = 0; i < VELEMS(TYPE); i++) {
-		VSETELEMENT(ce,i,*bp2);
-		bp2 += bu;
-	    }
-	    col[j++] = ce;
-	    n -= VELEMS(TYPE);
-	    bp1 += bu*VELEMS(TYPE);
-        }
-	if (n) {  // column tail
-	    VTYPE  ce;
-	    size_t i = 0;
-	    TYPE*  bp2 = bp1;
-	    while(i < n) {
-		VSETELEMENT(ce,i,*bp2);
-		bp2 += bu;
-		i++;
-	    }
-	    while(i < VELEMS(TYPE)) {
-		VSETELEMENT(ce,i,0);
-		i++;
-	    }
-	    col[j++] = ce;
-	}
+	CAT2(PROCEDURE,_loadv_mulop)(col,bp,bu,bn);
+	
 	bp++;     // advance to next column
 	n = an;   // multiply with all rows in A
 	while(n--) {
-	    TYPE2 sum = 0;
-	    VTYPE vsum = VTYPE_ZERO;
-	    size_t m = am;
-	    TYPE* ap2 = ap1;
 	    TYPE* tp = (TYPE*) &col[0];
-	    size_t i;
-	    while(m >= VELEMS(TYPE)) {
-		VTYPE r = VOPERATION(*(VTYPE*)tp, *(VTYPE*)ap2);
-		vsum = VOPERATION2(vsum, r);
-		tp += VELEMS(TYPE);
-		ap2 += VELEMS(TYPE);
-		m -= VELEMS(TYPE);
-	    }
-	    for (i = 0; i < VELEMS(TYPE); i++)
-		sum += VELEMENT(vsum,i);
-	    while(m--) {
-		TYPE p = OPERATION(*tp,*ap2);
-		sum = OPERATION2(sum, p);
-		tp++;
-		ap2++;
-	    }
-	    *cp1 = sum;
+	    *cp1 = CAT2(PROCEDURE,_dotv_mulop)(tp, ap1, am);
 	    cp1 += cu;
 	    ap1 += au;
 	}

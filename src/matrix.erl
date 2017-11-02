@@ -2,15 +2,13 @@
 %%% @copyright (C) 2017, Tony Rogvall
 %%% @doc
 %%%    binary matrix version
-%%%
 %%% @end
 
 -module(matrix).
 
 %% -compile(native).
 -on_load(init/0).
--export([new/4]).
--export([new_/5]).
+-export([create/4, create/5]).
 -export([copy/1, copy/2, copy/4]).
 -export([fill/2]).
 -export([from_list/1, from_list/2, from_list/3, from_list/4]).
@@ -22,6 +20,7 @@
 -export([add/2,add/3]).
 -export([subtract/2,subtract/3]).
 -export([multiply/2,multiply/3]).
+-export([mulsum/2]).
 -export([times/2,times/3]).
 -export([scale/2, scale/3]).
 -export([square/1]).
@@ -54,23 +53,16 @@
 -export([multiply_large/2, multiply_large/3]).
 -export([apply1/3]).
 
+%% internal use
+-export([element_/3]).
+-export([type_combine/2]).
+-export([elem_to_bin/2]).
+
 %% debug
 -export([foldl_row/4, foldr_row/4]).
 -export([foldl_column/4, foldr_column/4]).
 -export([foldl_rows/5, foldr_rows/5]).
 -export([foldl_matrix/3, foldr_matrix/3]).
-
-%% reference for testing
--export([add_ref/2]).
--export([subtract_ref/2]).
--export([times_ref/2]).
--export([multiply_ref/2]).
--export([negate_ref/1]).
--export([transpose_data_ref/1]).
--export([rectifier_ref/1]).
--export([sigmoid_ref/1]).
--export([sigmoid_prime_ref/1]).
--export([argmax_ref/2]).
 
 %% performance counter
 -define(count_vector_op(OP,A,B), count_vector_op((OP),(A),(B))).
@@ -83,75 +75,41 @@
 
 -compile({no_auto_import,[size/1]}).
 
--define(nif_stub,nif_stub_error(?LINE)).
-nif_stub_error(Line) ->
-    erlang:nif_error({nif_not_loaded,module,?MODULE,line,Line}).
+-include("matrix.hrl").
 
--define(int8,       0).
--define(int16,      1).
--define(int32,      2).
--define(int64,      3).
--define(int128,     4).
--define(float32,    5).
--define(float64,    6).
--define(float128,   7).
--define(complex64,  8).
--define(complex128, 9).
-
--type unsigned() :: non_neg_integer().
--type matrix_type() :: complex128|complex64|
-		       float32|float64|float128|
-		       int64|int32|int16|int8.
--type complex() :: {float(),float()}.
--type scalar() :: integer()|float()|complex().
-
--record(matrix,
-	{
-	  n :: unsigned(),          %% rows
-	  m :: unsigned(),          %% columns
-	  type :: 0..5,             %% encoded element type
-	  ptr = 0 :: unsigned(),    %% 0 is binary, not 0 is resource binary
-	  offset = 0 :: unsigned(), %% offset to first element
-	  stride :: unsigned(),     %% number of elements per (padded) row
-	  rowmajor :: boolean(),    %% stored row-by-row else col-by-col
-	  data :: binary()          %% native encode raw matrix data
-	}).
-
--type matrix() :: #matrix{}.
-
--define(is_complex_matrix(X),
-	((X#matrix.type >= ?complex64) andalso (X#matrix.type =< ?complex128))).
-
--define(is_float_matrix(X),
-	((X#matrix.type >= ?float32) andalso (X#matrix.type =< ?float128))).
-
--define(is_int_matrix(X),
-	((X#matrix.type >= ?int8) andalso (X#matrix.type =< ?int128))).
-
--define(is_complex(X), (is_number(element(1,(X))) andalso is_number(element(2,(X))))).
+-define(nif_stub(),
+	erlang:nif_error({nif_not_loaded,module,?MODULE,line,?LINE})).
 
 init() ->
     Nif = filename:join(code:priv_dir(matrix), "matrix_drv"),
     erlang:load_nif(Nif, 0).
 
--spec new(N::unsigned(), M::unsigned(), T::matrix_type(), Es::iolist()) ->
+-spec create(N::unsigned(), M::unsigned(), T::matrix_type(), Es::iolist()) ->
 		 matrix().
-new(N,M,T,Es) when is_integer(N), N>0,
-		   is_integer(M), M>0,
-		   is_atom(T),
-		   is_list(Es) ->
-    Type = encode_type(T),
-    new_(N,M,Type,true,Es).
+
+create(N,M,T,Es) ->
+    create(N,M,T,true,Es).
+
+create(N,M,Type,RowMajor,Es) when is_atom(Type) ->
+    create(N,M,encode_type(Type),RowMajor,Es);
+create(N,M,T,RowMajor,Data) when is_integer(N), N>0,
+				 is_integer(M), M>0,
+				 is_integer(T),
+				 is_list(Data) ->
+    create_(N,M,T,RowMajor,Data).
+
+create_(N,M,T,RowMajor,Data) ->
+    matrix_ref:create(N,M,T,RowMajor,Data).
 
 
 -spec copy(Src::matrix()) ->  matrix().
 copy(_Src) ->
-    ?nif_stub.
+    ?nif_stub().
 
 -spec copy(Src::matrix(), Dst::matrix()) ->
 		  matrix().
 copy(_Src, _Dst) ->
-    ?nif_stub.
+    ?nif_stub().
 
 -spec copy(Src::matrix(), Dst::matrix(), 
 	   RepeatHorizontal::unsigned(),
@@ -160,7 +118,7 @@ copy(_Src, _Dst) ->
 
 %% DESTRUCTIVE
 copy(_Src, _Dst, _Repeat_h, _Rpeat_v) ->
-    ?nif_stub.
+    ?nif_stub().
 
 
 -spec fill(Src::matrix(), Dst::matrix()) ->
@@ -168,15 +126,7 @@ copy(_Src, _Dst, _Repeat_h, _Rpeat_v) ->
 
 %% DESTRUCTIVE
 fill(_Src, _Dst) ->
-    ?nif_stub.
-
-%% FIXME: new_ is normally a nif, but we may use the library without nifs,
-%% to allow for interop betweeen we should calculate the stride in 
-%% number of elements per row and align row data to som vector size
-new_(N,M,T,RowMajor,Data) ->
-    Stride = M,
-    #matrix { n=N, m=M, type=T, stride=Stride, rowmajor=RowMajor,
-	      data=iolist_to_binary(Data)}.
+    ?nif_stub().
 
 %% create matrix from list of lists
 from_list(Rows) ->
@@ -197,7 +147,7 @@ from_list(Rows, N, M, Type) ->
 
 from_list_(Rows, N, M, T) ->
     Es = from_list_(Rows, 0, N, M, T),
-    new_(N, M, T, true, Es).
+    create(N, M, T, true, Es).
 
 from_list_([], N, N, _M, _T) ->
     [];
@@ -269,7 +219,7 @@ normal({N,M},T) ->
 normal(N,M,T) when is_integer(N), N >= 1,
 		   is_integer(M), M >= 1 ->
     Type = encode_type(T),
-    A = new_(N,M,Type,true,[]),
+    A = create(N,M,Type,true,[]),
     apply1(A, A, normal).
 
 -spec uniform({N::unsigned(), M::unsigned()}) -> matrix().
@@ -284,7 +234,7 @@ uniform({N,M},T) ->
 uniform(N,M,T) when is_integer(N), N >= 1,
 		    is_integer(M), M >= 1 ->
     Type = encode_type(T),
-    A = new_(N,M,Type,true,[]),
+    A = create(N,M,Type,true,[]),
     apply1(A, A, uniform).
 
 -spec zero({N::unsigned(), M::unsigned()}) -> matrix().
@@ -297,7 +247,7 @@ zero({N,M},T) -> zero(N,M,T).
 zero(N,M,Type) when is_integer(N), N >= 1,
 		    is_integer(M), M >= 1 ->
     T = encode_type(Type),
-    A = new_(N,M,T,true,[]),
+    A = create(N,M,T,true,[]),
     apply1(A, A, zero).
 
 -spec one({N::unsigned(), M::unsigned()}) -> matrix().
@@ -310,7 +260,7 @@ one({N,M},T) -> one(N,M,T).
 one(N,M,Type) when is_integer(N), N >= 1,
 		 is_integer(M), M >= 1 ->
     T = encode_type(Type),
-    A = new_(N,M,T,true,[]),
+    A = create(N,M,T,true,[]),
     apply1(A, A, one).
 
 -spec constant(N::unsigned(), M::unsigned(),C::scalar()) ->
@@ -327,8 +277,8 @@ constant(N,M,C) when ?is_complex(C) ->
 constant(N,M,Type,C) when is_integer(N), N >= 1,
 		       is_integer(M), M >= 1 ->
     T = encode_type(Type),
-    Src = new_(1,1,T,true,elem_to_bin(T,C)),
-    Dst = new_(N,M,T,true,[]),
+    Src = create(1,1,T,true,elem_to_bin(T,C)),
+    Dst = create(N,M,T,true,[]),
     fill(Src,Dst).
 
 -spec identity({N::unsigned(), M::unsigned()}) -> matrix().
@@ -343,19 +293,12 @@ identity({N,M},T) ->
 identity(N,M,Type) when is_integer(N), N >= 1,
 			is_integer(M), M >= 1 ->
     T = encode_type(Type),
-    A = new_(N,M,T,true,[]),
+    A = create(N,M,T,true,[]),
     apply1(A, A, identity).
-
-%%     Type = encode_type(T),
-%%    Bv = {elem_to_bin(Type, 0),elem_to_bin(Type, 1)},
-%%    Data = [[element(X+1,Bv) ||
-%%		<<X:1>> <= <<(1 bsl ((M-1)-I)):M>>] ||
-%%	       I <- lists:seq(0, N-1)],
-%%    new_(N,M,Type,true,Data).
 
 -spec apply1(A::matrix(), Dst::matrix(), Op::atom()) -> matrix().
 apply1(_A, _Dst, _Op) ->
-    ?nif_stub.    
+    ?nif_stub(). 
 
 %% return dimension in row major order
 -spec size(M::matrix()) -> {unsigned(), unsigned()}.
@@ -502,7 +445,7 @@ add(A,B) ->
     add_(A,B).
 
 add_(A,B) ->
-    add_ref(A,B).
+    matrix_ref:add(A,B).
 
 %%
 %% add two matrices and destructivly store in destination.
@@ -514,20 +457,7 @@ add(A, B, Dst) ->
     add_(A, B, Dst).
 
 add_(_A, _B, _Dst) ->
-    ?nif_stub.
-
-add_ref(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
-    add_ref_(X,Y);
-add_ref(X=#matrix{n=N,m=M},Y=#matrix{n=M,m=N}) ->
-    add_ref_(X,Y).
-    
-add_ref_(X,Y) ->
-    T = type_combine(X#matrix.type,Y#matrix.type),
-    {N,M} = size(X),
-    Data = map_elems(fun(Xij,Yij) ->
-			     elem_to_bin(T,scalar_add(Xij,Yij))
-		     end, X, Y),
-    new_(N,M,T,true,Data).
+    ?nif_stub().
 
 %%
 %% Subtract two matrices
@@ -543,23 +473,10 @@ subtract(A, B, Dst) ->
     subtract_(A,B,Dst).
 
 subtract_(_A,_B,_Dst) ->
-    ?nif_stub.
+    ?nif_stub().
 
 subtract_(A, B) ->
-    subtract_ref(A, B).
-    
-subtract_ref(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
-    subtract_ref_(X,Y);
-subtract_ref(X=#matrix{n=N,m=M},Y=#matrix{n=M,m=N}) ->
-    subtract_ref_(X,Y).
-    
-subtract_ref_(X,Y) ->
-    T = type_combine(X#matrix.type,Y#matrix.type),
-    {N,M} = size(X),
-    Data = map_elems(fun(Xij,Yij) ->
-			     elem_to_bin(T,scalar_subtract(Xij,Yij))
-		     end, X, Y),
-    new_(N,M,T,true,Data).
+    matrix_ref:subtract(A, B).
 
 %%
 %% Multiply two matrices element wise
@@ -575,80 +492,41 @@ times(A,B) ->
 times(X,Y,Dst) ->
     times_(X,Y,Dst).
 
-
 times_(X,Y) ->
-    times_ref(X, Y).
+    matrix_ref:times(X, Y).
 
 times_(_X,_Y,_Dst) ->
-    ?nif_stub.
-
-
-times_ref(X=#matrix{rowmajor=R,n=N,m=M},Y=#matrix{rowmajor=R,n=N,m=M}) ->
-    times_ref_(X,Y);
-times_ref(X=#matrix{n=N,m=M},Y=#matrix{n=M,m=N}) ->
-    times_ref_(X,Y).
-    
-times_ref_(X,Y) ->
-    T = type_combine(X#matrix.type,Y#matrix.type),
-    {N,M} = size(X),
-    Data = map_elems(fun(Xij,Yij) ->
-			     elem_to_bin(T,scalar_multiply(Xij,Yij))
-		     end, X, Y),
-    new_(N,M,T,true,Data).
+    ?nif_stub().
 
 %%
 %% Negate a matrix
 %%
 -spec negate(A::matrix()) -> matrix().
 negate(X) ->
-    negate_ref(X).
-
-negate_ref(X) ->
-    {N,M} = size(X),
-    T = X#matrix.type,
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_negate(Xij)) end, X),
-    new_(N,M,T,true,Es).
+    matrix_ref:negate(X).
 
 -spec negate(X::matrix(),Dst::matrix()) -> matrix().
 negate(_X, _Dst) ->
-    ?nif_stub.
+    ?nif_stub().
 
 %%
 %% Scale a matrix by a scalar number
 %%
 -spec scale(F::number(), X::matrix()) -> matrix().
 scale(F, X) when is_number(F) orelse ?is_complex(F) ->
-    scale_ref(F, X).
-
-scale_ref(F, X) ->
-    {N,M} = size(X),
-    T = X#matrix.type,
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_multiply(F,Xij)) end, X),
-    new_(N,M,T,true,Es).
+    matrix_ref:scale(F, X).
 
 -spec scale(F::number(), X::matrix(), Dst::matrix()) -> matrix().
 scale(_F, _X, _Dst) ->
-    ?nif_stub.
+    ?nif_stub().
 
 %%
 %% Multiply elementwise and add everything
 %%
 -spec mulsum(X::matrix(), Y::matrix()) -> number().
-
-mulsum(X,Y) when ?is_complex_matrix(X) orelse ?is_complex_matrix(Y) ->
-    mulsum(X,Y,{0.0,0.0});
 mulsum(X,Y) ->
-    mulsum(X,Y,0).
-
-mulsum(X,Y,Sum) ->
-    Es = map_elems(fun(Xij,Yij) ->
-			   scalar_multiply(Xij,Yij)
-		   end, X, Y),
-    lists:foldl(
-      fun(Zi,Si) ->
-	      lists:foldl(fun(Zij,Sij) -> scalar_add(Zij,Sij) end, Zi, Si)
-      end, Es, Sum).
-
+    matrix_ref:mulsum(X,Y).
+    
 %%
 %% Calculate X^2 
 %%
@@ -687,41 +565,13 @@ multiply(A, B) ->
     multiply_(A,B).
 
 multiply_(A, B) ->
-    multiply_ref(A,B).
-
-multiply_ref(#matrix{n=Nx,m=Mx,offset=Offs1,stride=Stride1,type=T1,data=Bin1},
-	     #matrix{n=Ny,m=My,offset=Offs2,stride=Stride2,type=T2,data=Bin2})
-  when Mx =:= Ny ->
-    P1  = Offs1 + (Nx-1)*Stride1,  %% last row in X
-    P2  = Offs2 + My-1,            %% last column in Y
-    T = type_combine(T1,T2),
-    Es = mult_(Nx,My,Mx,My,T,Bin1,P1,Stride1,T1,  Bin2,P2,Stride2,T2, []),
-    new_(Nx,My,T,true,Es).
+    matrix_ref:multiply(A,B).
 
 multiply(A, B, Dst) ->
     multiply_(A, B, Dst).
 
 multiply_(_A, _B, _Dst) ->
-    ?nif_stub.
-
-mult_(1,0,_Mx,_My,_T,_Bin1,_P1,_S1,_T1, _Bin2,_P2,_S2,_T2,Acc) ->
-    Acc;
-mult_(N,0,Mx,My,T,Bin1,P1,S1,T1,  Bin2,P2,S2,T2, Acc) ->
-    mult_(N-1,My,Mx,My,T,Bin1,P1-S1,S1,T1, Bin2,P2+My,S2,T2, Acc);
-mult_(N,J,Mx,My,T,Bin1,P1,S1,T1,  Bin2,P2,S2,T2,  Acc) ->
-    C = dot_(Bin1,P1,1,T1,  Bin2,P2,S2,T2,  Mx, scalar_zero(T)),
-    %% io:format("j=~w,sum=~w\n", [J,C]),
-    mult_(N,J-1,Mx,My,T,Bin1,P1,S1,T1, Bin2,P2-1,S2,T2,
-	  [elem_to_bin(T,C)|Acc]).
-
-dot_(_Bin1,_P1,_S1,_T1, _Bin2,_P2,_S2,_T2, 0, Sum) ->
-    Sum;
-dot_(Bin1,P1,S1,T1, Bin2,P2,S2,T2, K,Sum) ->
-    %% io:format("p1=~w, p2=~w\n", [P1,P2]),
-    E1 = element_(P1,T1,Bin1),
-    E2 = element_(P2,T2,Bin2),
-    Sum1 = scalar_add(scalar_multiply(E1,E2), Sum),
-    dot_(Bin1,P1+S1,S1,T1, Bin2,P2+S2,S2,T2, K-1,Sum1).
+    ?nif_stub().
 
 %% Load column J in A into row I of Dst
 %% DESTRUCTIVE
@@ -734,8 +584,8 @@ load_column_as_row(J, A, I, Dst) ->
 multiply_large(X=#matrix{n=Nx,m=Mx,type=T1},
 	       Y=#matrix{n=Ny,m=My,type=T2}) when Mx =:= Ny ->
     T = type_combine(T1,T2),
-    Z = new_(Nx,My,T,true,[]),
-    R = new_(1,Ny,T,true,[]),
+    Z = create(Nx,My,T,true,[]),
+    R = create(1,Ny,T,true,[]),
     mult_large_(X,Y,Z,R,1,My).
 
 multiply_large(X=#matrix{n=Nx,m=Mx},
@@ -745,7 +595,7 @@ multiply_large(X=#matrix{n=Nx,m=Mx},
        Nz =:= Nx,
        Mz =:= My ->
     T = encode_type(T3),
-    R = new_(1,Ny,T,true,[]),
+    R = create(1,Ny,T,true,[]),
     mult_large_(X,Y,Z,R,1,My).
 
 mult_large_(X,Y,Z,R,J,M) when J =< M ->
@@ -767,30 +617,11 @@ transpose(X = #matrix{rowmajor=RowMajor}) ->
 
 -spec transpose_data(Src::matrix()) -> matrix().
 transpose_data(Src) ->
-    transpose_data_ref(Src).
+    matrix_ref:transpose_data(Src).
 
 -spec transpose_data(Src::matrix(),Dst::matrix()) -> matrix().
 transpose_data(_Src, _Dst) ->
-    ?nif_stub.
-
-transpose_data_ref(#matrix{n=N,m=M,offset=Offs,stride=Stride,rowmajor=RowMajor,
-			   type=Type,data=Bin}) ->
-    ES  = element_bytes(Type),
-    RS  = ES*Stride,                         %% row bytes
-    End = ES*(Offs + (N-1)*Stride + M - 1),  %% end element position
-    Es = trans_(M,N,N,Bin,End,End,ES,RS,[]),
-    new_(M,N,Type,RowMajor,Es).
-
-trans_(1,0,_N,_Bin,_Pos,_Pos0,_ES,_RS,Acc) ->
-    Acc;
-trans_(J,0,N,Bin,_Pos,Pos0,ES,RS,Acc) ->
-    Pos1 = Pos0-ES,
-    %% io:format("pos1=~w\n", [Pos1]),
-    trans_(J-1,N,N,Bin,Pos1,Pos1,ES,RS,Acc);
-trans_(J,I,N,Bin,Pos,Pos0,ES,RS,Acc) ->
-    %% io:format("pos=~w, pos0=~w\n", [Pos,Pos0]),
-    <<_:Pos/binary,E:ES/binary,_/binary>> = Bin,
-    trans_(J,I-1,N,Bin,Pos-RS,Pos0,ES,RS,[E|Acc]).
+    ?nif_stub().
 
 %%
 %% select a row, return as a matrix with one row
@@ -861,19 +692,8 @@ max(N, M, X) ->
 -spec max(N::unsigned(),M::unsigned(),Sx::unsigned(),Sy::unsigned(),
 	  matrix()) -> matrix().
 
-max(N, M, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
-  when N =< Nx, M =< Mx ->
-    Es = convolve(
-	   fun(I, J) ->
-		   %% FIXME complex!
-		   V = fold_elems(
-			 fun(E,undefined) -> E;
-			    (E,Max) -> max(E,Max)
-			 end, undefined, I, J, N, M, X),
-		   %% io:format("(~w,~w) = ~w\n", [I,J,V]),
-		   elem_to_bin(T,V)
-	   end, N, M, Sx, Sy, X),
-    new_(((Nx-N) div Sx) +1, ((Mx-M) div Sy)+1, T, true, Es).
+max(N, M, Sx, Sy, X) ->
+    matrix_ref:max(N, M, Sx, Sy, X).
 
 %%
 %%
@@ -889,17 +709,8 @@ l2(N, M, X) ->
 -spec l2(N::unsigned(),M::unsigned(),Sx::unsigned(),Sy::unsigned(),
 	 matrix()) -> matrix().
 
-l2(N, M, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
-  when N =< Nx, M =< Mx ->
-    Es = convolve(
-	   fun(I, J) ->
-		   S = fold_elems(
-			 fun(E,Sum) ->
-				 scalar_add(scalar_multiply(E,E), Sum)
-			 end, scalar_zero(T), I, J, N, M, X),
-		   elem_to_bin(T,math:sqrt(S))
-	   end, N, M, Sx, Sy, X),
-    new_(((Nx-N) div Sx)+1, ((Mx-M) div Sy)+1, T, true, Es).
+l2(N, M, Sx, Sy, X) ->
+    matrix_ref:l2(N, M, Sx, Sy, X).
 
 %%
 %%
@@ -911,122 +722,36 @@ filter(W, B, X) ->
 -spec filter(W::matrix(), B::number(), Sx::unsigned(), Sy::unsigned(),
 	     X::matrix()) -> matrix().
 
-filter(W=#matrix{n=Nw,m=Mw}, B, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
-  when Nw =< Nx, Mw =< Mx ->
-    Es = convolve(
-	   fun(I, J) ->
-		   A = submatrix(I,J,Nw,Mw,X),
-		   elem_to_bin(T,mulsum(W,A)+B)
-	   end, Nw, Mw, Sx, Sy, X),
-    new_(((Nx-Nw) div Sx)+1, ((Mx-Mw) div Sy)+1, T, true, Es).
+filter(W, B, Sx, Sy, X) ->
+    matrix_ref:filter(W, B, Sx, Sy, X).
+
 
 %% argmax
+-spec argmax(A::matrix(),Axis::0|1) -> [integer()].
+
 argmax(A) ->
     Ai = argmax(A,0),    %% vector of indices for max columns
     to_list(Ai).
 
 argmax(A,I) ->
-    argmax_ref(A,I).
+    matrix_ref:argmax(A,I).
 
-%% 
--spec argmax_ref(A::matrix(),Axis::0|1) -> [integer()].
-argmax_ref(A,1) ->
-    transpose(argmax_ref(transpose(A),0));
-argmax_ref(A,0) ->
-    {_N,M} = size(A),
-    from_list([argmax_l(to_list(A),M)],int32).
-
-argmax_l([R|Rs],M) ->
-    argmax_l(Rs,2,R,lists:duplicate(M,1)).
-
-argmax_l([Q|Rs],I,ArgVal,ArgMax) ->
-    {ArgVal1,ArgMax1} = argmax_r(ArgVal,ArgMax,Q,I,[],[]),
-    argmax_l(Rs,I+1,ArgVal1,ArgMax1);
-argmax_l([],_I,_ArgValue,ArgMax) ->
-    ArgMax.
-
-argmax_r([B|Bs],[X|Xs],[A|As],I,Bs1,Xs1) ->
-    if A > B ->
-	    argmax_r(Bs,Xs,As,I,[A|Bs1],[I|Xs1]);
-       true ->
-	    argmax_r(Bs,Xs,As,I,[B|Bs1],[X|Xs1])
-    end;
-argmax_r([],_Xs,_As,_I,Bs1,Xs1) ->
-    {lists:reverse(Bs1),lists:reverse(Xs1)}.
-
-
-map_elems(F,X) ->
-    [[ F(Xij) || Xij <- R] || R <- to_list(X)].
-
-map_elems(F,X,Y) ->
-    lists:zipwith(
-      fun(Xi,Yi) ->
-	      lists:zipwith(
-		fun(Xij,Yij) ->
-			F(Xij,Yij)
-		end, Xi, Yi)
-      end, to_list(X), to_list(Y)).
-
-%%
-%% Scan embedded matrix data
-%%
-fold_elems(F,Acc,I,J,N,M,#matrix{n=Nx,m=Mx,offset=Offs,stride=Stride,
-				 type=T,data=Bin})
-  when N=<Nx, Mx=<Mx ->  %% FIXME: add more conditions
-    P = Offs + (I-1)*Stride + J-1,
-    fold_elems(F,Acc,Bin,P,M,T,Stride,N*M).
-
-
-fold_elems(F,Acc,Bin,Start,RowLen,Type,RowStride,Total) ->
-    fold_elems_(F,Acc,Bin,Start,0,RowLen,Type,RowStride,Total).
-
-fold_elems_(F,Acc,Bin,Start,I,RowLen,T,RowStride,K) when I < RowLen ->
-    E = element_(Start+I,T,Bin),
-    fold_elems_(F,F(E,Acc),Bin,Start,I+1,RowLen,T,RowStride,K-1);
-fold_elems_(_F,Acc,_Bin,_Start,_I,_RowLen,_T,_RowStride,K) when K =< 0 ->
-    Acc;
-fold_elems_(F,Acc,Bin,Start,_I,RowLen,T,RowStride,K) ->
-    fold_elems_(F,Acc,Bin,Start+RowStride,0,RowLen,T,RowStride,K).
 
 -spec sigmoid(A::matrix()) -> matrix().
 sigmoid(X) ->
-    sigmoid_ref(X).
-
-sigmoid_ref(X=#matrix{n=N,m=M,type=T}) ->
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,sigmoid__(Xij)) end, X),
-    new_(N,M,T,true,Es).
-
-sigmoid__(X) when is_float(X) ->
-    1.0/(1.0 + math:exp(-X)).
+    matrix_ref:sigmoid(X).
 
 -spec sigmoid_prime(A::matrix()) -> matrix().
 sigmoid_prime(X) ->
-    sigmoid_prime_ref(X).
-
--spec sigmoid_prime_ref(A::matrix()) -> matrix().
-sigmoid_prime_ref(X=#matrix{n=N,m=M,type=T}) ->
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,sigmoid_prime__(Xij)) end, X),
-    new_(N,M,T,true,Es).
-
-sigmoid_prime__(X) ->
-    Z = sigmoid__(X),
-    Z*(1-Z).
+    matrix_ref:sigmoid_prime(X).
 
 -spec rectifier(A::matrix()) -> matrix().
 rectifier(X) ->
-    rectifier_ref(X).
-
-rectifier_ref(X=#matrix{n=N,m=M,type=T}) ->
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_rectifier(Xij)) end, X),
-    new_(N,M,T,true,Es).
+    matrix_ref:rectifier(X).
 
 -spec softplus(A::matrix()) -> matrix().
-softplus(X=#matrix{n=N,m=M,type=T}) ->
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,softplus__(Xij)) end, X),
-    new_(N,M,T,true,Es).
-
-softplus__(X) ->
-    math:log(1 + math:exp(X)).
+softplus(X) ->
+    matrix_ref:softplus(X).
 
 print(A) ->
     io:put_chars(format(A)).
@@ -1075,19 +800,6 @@ format_element(X,0) when is_float(X) ->
     lists:flatten(io_lib_format:fwrite_g(X));
 format_element(X,Prec) when is_float(X) ->
     lists:flatten(io_lib:format("~.*f", [Prec,X])).
-
-
-%% calculate number of rows to operate over
-submatrix_arows(N,M) ->
-    N1 = ?MAX_ADD_NM div M,
-    N2 = erlang:min(N1,N),
-    erlang:max(1,N2).
-
-submatrix_mrows(N,M) ->
-    N1 = ?MAX_MUL_NM div M,
-    N2 = erlang:min(N1,N),
-    erlang:max(1,N2).
-
 
 %% combine types to the more general one
 type_combine(T1,T2) -> erlang:max(T1,T2).
@@ -1175,103 +887,69 @@ encode_type(float128) -> ?float128;
 encode_type(complex64) -> ?complex64;
 encode_type(complex128) -> ?complex128.
 
-scalar_zero(?complex128) -> {0.0,0.0};
-scalar_zero(?complex64) -> {0.0,0.0};
-scalar_zero(?float128) -> 0.0;
-scalar_zero(?float64) -> 0.0;
-scalar_zero(?float32) -> 0.0;
-scalar_zero(?int128) -> 0;
-scalar_zero(?int64) -> 0;
-scalar_zero(?int32) -> 0;
-scalar_zero(?int16) -> 0;
-scalar_zero(?int8) -> 0.
-
-scalar_add(A,B) when is_number(A), is_number(B) -> A + B;
-scalar_add(A,B) when is_number(A), is_tuple(B) -> complex_add({A,0},B);
-scalar_add(A,B) when is_tuple(A), is_number(B) -> complex_add(A,{B,0});
-scalar_add(A,B) when is_tuple(A), is_tuple(B) -> complex_add(A,B).
-
-scalar_subtract(A,B) when is_number(A), is_number(B) -> A - B;
-scalar_subtract(A,B) when is_number(A), is_tuple(B) -> 
-    complex_subtract({A,0},B);
-scalar_subtract(A,B) when is_tuple(A), is_number(B) -> 
-    complex_subtract(A,{B,0});
-scalar_subtract(A,B) when is_tuple(A), is_tuple(B) -> 
-    complex_subtract(A,B).
-
-scalar_multiply(A,B) when is_number(A), is_number(B) -> A * B;
-scalar_multiply(A,B) when is_number(A), is_tuple(B) -> 
-    complex_multiply({A,0},B);
-scalar_multiply(A,B) when is_tuple(A), is_number(B) -> 
-    complex_multiply(A,{B,0});
-scalar_multiply(A,B) when is_tuple(A), is_tuple(B) -> 
-    complex_multiply(A,B).
-
-scalar_negate(A) when is_number(A) -> -A;
-scalar_negate(A) when is_tuple(A)  -> complex_negate(A).
-
-scalar_rectifier({X,_}) -> {max(X,0.0), 0.0};
-scalar_rectifier(X) when is_integer(X) -> max(X,0);
-scalar_rectifier(X) -> max(X,0.0).
-
-
-complex_add({A,B},{E,F}) -> {A+E,B+F}.
-
-complex_subtract({A,B},{E,F}) -> {A-E,B-F}.
-
-complex_negate({A,B}) -> {-A,-B}.
-
-complex_multiply({A,B},{E,F}) -> {A*E-B*F, B*E+A*F}.
+%% performance counters
 
 count_vector_op(multiply,
-		#matrix{rowmajor=R1,type=T1},
-		#matrix{rowmajor=R2,type=T2}) ->
-    count(multiply,1),
+		#matrix{rowmajor=R1,n=N1,m=M1,type=T1},
+		#matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    count({multiply,K1,K2},1),
     if T1 =:= T2, R1, R2 ->
-	    count(multiply_mtv,1);
+	    count({multiply_mtv,K1,K2},1);
        T1 =:= T2, R1, not R2 ->
-	    count(multiply_mtv_t,1);
+	    count({multiply_mtv_t,K1,K2},1);
        T1 =:= T2 ->
-	    count(multiply_mt,1);
+	    count({multiply_mt,K1,K2},1);
        true ->
 	    ok
 
     end;
 count_vector_op(add,
-		#matrix{rowmajor=R1,type=T1},
-		#matrix{rowmajor=R2,type=T2}) ->
-    count(add,1),
+		#matrix{rowmajor=R1,n=N1,m=M1,type=T1},
+		#matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    count({add,K1,K2},1),
     if T1 =:= T2, R1 =:= R2 ->
-	    count(add_mtv,1);
+	    count({add_mtv,K1,K2},1);
        T1 =:= T2 ->
-	    count(add_mt,1);
+	    count({add_mt,K1,K2},1);
        true ->
 	    ok
     end;
 count_vector_op(subtract,
-		#matrix{rowmajor=R1,type=T1},
-		#matrix{rowmajor=R2,type=T2}) ->
-    count(subtract,1),
+		#matrix{rowmajor=R1,n=N1,m=M1,type=T1},
+		#matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    count({subtract,K1,K2},1),
     if T1 =:= T2, R1 =:= R2 ->
-	    count(subtract_mtv,1);
+	    count({subtract_mtv,K1,K2},1);
        T1 =:= T2 ->
-	    count(subtract_mt,1);
+	    count({subtract_mt,K1,K2},1);
        true ->
 	    ok
     end;
 count_vector_op(times,
-		#matrix{rowmajor=R1,type=T1},
-		#matrix{rowmajor=R2,type=T2}) ->
-    count(times,1),
+		#matrix{rowmajor=R1,n=N1,m=M1,type=T1},
+		#matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    count({times,K1,K2},1),
     if T1 =:= T2, R1 =:= R2 ->
-	    count(times_mtv,1);
+	    count({times_mtv,K1,K2},1);
        T1 =:= T2 ->
-	    count(times_mt,1);
+	    count({times_mt,K1,K2},1);
        true ->
 	    ok
     end;
-count_vector_op(Op, _A, _B) ->
-    count(Op, 1).
+count_vector_op(Op,
+		#matrix{rowmajor=R1,n=N1,m=M1},
+		#matrix{rowmajor=R2,n=N2,m=M2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    count({Op,K1,K2}, 1).
 
 count(Key, Value) ->
     case get(Key) of

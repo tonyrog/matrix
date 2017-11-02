@@ -138,16 +138,16 @@ col_C(T,N,M) ->
     matrix:transpose(matrix:zero(M,N,T)).
 
 ref_mul_A_B(T,An,Am,Bn,Bm) ->
-    matrix:to_list(matrix:multiply_ref(row_A(T,An,Am),row_B(T,Bn,Bm))).
+    matrix:to_list(matrix_ref:multiply(row_A(T,An,Am),row_B(T,Bn,Bm))).
 
 ref_add_A_B(T,An,Am,Bn,Bm) ->
-    matrix:to_list(matrix:add_ref(row_A(T,An,Am),row_B(T,Bn,Bm))).
+    matrix:to_list(matrix_ref:add(row_A(T,An,Am),row_B(T,Bn,Bm))).
 
 ref_sub_A_B(T,An,Am,Bn,Bm) ->
-    matrix:to_list(matrix:subtract_ref(row_A(T,An,Am),row_B(T,Bn,Bm))).
+    matrix:to_list(matrix_ref:subtract(row_A(T,An,Am),row_B(T,Bn,Bm))).
 
 ref_times_A_B(T,An,Am,Bn,Bm) ->
-    matrix:to_list(matrix:times_ref(row_A(T,An,Am),row_B(T,Bn,Bm))).
+    matrix:to_list(matrix_ref:times(row_A(T,An,Am),row_B(T,Bn,Bm))).
 
 
 %% test transposed multiply

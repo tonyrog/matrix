@@ -15,7 +15,7 @@
  *
  ***************************************************************************/
 
-static TYPE2 CAT2(PROCEDURE,_dotv_t_mulop)(TYPE* ap,  TYPE* bp,  size_t n)
+static inline TYPE2 CAT2(PROCEDURE,_dotv_t_mulop)(TYPE* ap,TYPE* bp,size_t n)
 {
     TYPE2 sum = 0;
     VTYPE vsum = VTYPE_ZERO;
@@ -46,7 +46,7 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 {
     LOCALS_DECL
     (void) am;
-    TYPE* bp0 = bp;    
+    TYPE* bp0 = bp;
 
     while (an--) {
 	TYPE* cp1 = cp;
