@@ -299,6 +299,11 @@ static size_t element_size(matrix_type_t type)
     return element_size_[type];
 }
 
+static size_t size_of_array(matrix_type_t type, size_t nelems)
+{
+    return nelems << element_size_exp_[type];
+}
+
 static int is_integer(matrix_type_t type)
 {
     return (type >= INT8) && (type <= INT64);
@@ -978,11 +983,10 @@ static void apply1(int func,
 {
     size_t i, j;
 
-    au *= element_size(at);
-    av *= element_size(at);
-
-    cu *= element_size(ct);
-    cv *= element_size(ct);    
+    au = size_of_array(at,au);
+    av = size_of_array(at,av);
+    cu = size_of_array(ct,cu);
+    cv = size_of_array(ct,cv);
     
     if (is_float(ct)) {
 	for (i=0; i<n; i++) {
@@ -1079,12 +1083,12 @@ static void apply2(int func,
 		   matrix_type_t ct, byte_t* cp, int cu, int cv,
 		   size_t n, size_t m)
 {
-    au *= element_size(at);
-    av *= element_size(at);    
-    bu *= element_size(bt);
-    bv *= element_size(bt);    
-    cu *= element_size(ct);
-    cv *= element_size(ct);    
+    au = size_of_array(at,au);
+    av = size_of_array(at,av);    
+    bu = size_of_array(bt,bu);
+    bv = size_of_array(bt,bv);    
+    cu = size_of_array(ct,cu);
+    cv = size_of_array(ct,cv);    
 
     if (is_float(ct)) {
 	while(n--) {
@@ -1276,10 +1280,10 @@ static void scale_i(bool_t use_vector,
 	    mt_scale_i(at, ap, au, av, cp, cu, cv, n, m, factor);
     }
     else {
-	au *= element_size(at);
-	av *= element_size(at);    
-	cu *= element_size(ct);
-	cv *= element_size(ct);
+	au = size_of_array(at,au);
+	av = size_of_array(at,av);    
+	cu = size_of_array(ct,cu);
+	cv = size_of_array(ct,cv);
 
 	if (is_integer(ct)) {
 	    while(n--) {
@@ -1347,10 +1351,10 @@ static void scale_f(bool_t use_vector,
 	    mt_scale_f(at, ap, au, av, cp, cu, cv, n, m, factor);
     }
     else {
-	au *= element_size(at);
-	av *= element_size(at);    
-	cu *= element_size(ct);
-	cv *= element_size(ct);
+	au = size_of_array(at,au);
+	av = size_of_array(at,av);    
+	cu = size_of_array(ct,cu);
+	cv = size_of_array(ct,cv);
 	
 	if (is_complex(ct)) {
 	    while(n--) {
@@ -1400,10 +1404,10 @@ static void scale_c(bool_t use_vector,
 	    mt_scale_c(at, ap, au, av, cp, cu, cv, n, m, factor);
     }
     else {
-	au *= element_size(at);
-	av *= element_size(at);    
-	cu *= element_size(ct);
-	cv *= element_size(ct);
+	au = size_of_array(at,au);
+	av = size_of_array(at,av);    
+	cu = size_of_array(ct,cu);
+	cv = size_of_array(ct,cv);
 
 	while(n--) {
 	    byte_t* ap1 = ap;
@@ -1428,8 +1432,8 @@ static void scale_c(bool_t use_vector,
 static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
 		   size_t n, size_t m, int32_t* cp)
 {
-    au *= element_size(at);
-    av *= element_size(at);
+    au = size_of_array(at,au);
+    av = size_of_array(at,av);
 
     if (is_integer(at)) {
 	while(m--) {
@@ -1555,29 +1559,35 @@ static void multiply(
 {
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_GCC_VECTOR
-	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
+	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
 	    mtv_multiply(at,ap,au,an,am,bp,bu,bn,bm,cp,cu,cv);
+	}
 	else
 #endif
-	    mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,cp,cu,cv);	
+	{
+	    mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,cp,cu,cv);
+	}
     }
     else {
-	unsigned int i, j, k;
-	au *= element_size(at);
-	av *= element_size(at);
-	bu *= element_size(bt);
-	bv *= element_size(bt);
-	cu *= element_size(ct);
-	cv *= element_size(ct);
+	byte_t* bp0 = bp;
+	au = size_of_array(at,au);
+	av = size_of_array(at,av);
+	bu = size_of_array(bt,bu);
+	bv = size_of_array(bt,bv);
+	cu = size_of_array(ct,cu);
+	cv = size_of_array(ct,cv);
 
 	if (is_float(ct)) {
-	    for (i=0; i<an; i++) {
+	    while(an--) {
 		byte_t* cp1 = cp;
-		for (j=0; j<bm; j++) {
-		    float64_t sum = 0;
-		    byte_t* bp1 = bp + j*bv;  // FIXME: bv2!! column pointer
-		    byte_t* ap1 = ap;         // row pointer
-		    for (k = 0; k < am; k++) {
+		size_t m = bm;
+		bp = bp0;
+		while(m--) {
+		    float64_t sum = 0.0;
+		    byte_t* bp1 = bp;
+		    byte_t* ap1 = ap;
+		    size_t  k = am;
+		    while(k--) {
 			float64_t a = read_float(at, ap1);
 			float64_t b = read_float(bt, bp1);
 			sum += a*b;
@@ -1586,19 +1596,23 @@ static void multiply(
 		    }
 		    write_float(ct, cp1, sum);
 		    cp1 += cv;
+		    bp += bv;
 		}
 		ap += au;
 		cp += cu;
 	    }
 	}
 	else if (is_complex(ct)) {
-	    for (i=0; i<an; i++) {
+	    while(an--) {
 		byte_t* cp1 = cp;
-		for (j=0; j<bm; j++) {
-		    complex128_t sum = 0;
-		    byte_t* bp1 = bp + j*bv;
+		size_t m = bm;
+		bp = bp0;
+		while(m--) {		
+		    complex128_t sum =  CMPLX(0.0,0.0);;
+		    byte_t* bp1 = bp;
 		    byte_t* ap1 = ap;
-		    for (k = 0; k < am; k++) {
+		    size_t  k = am;
+		    while(k--) {		    
 			complex128_t a = read_complex(at, ap1);
 			complex128_t b = read_complex(bt, bp1);
 			sum += a*b;
@@ -1607,19 +1621,23 @@ static void multiply(
 		    }
 		    write_complex(ct, cp1, sum);
 		    cp1 += cv;
+		    bp += bv;
 		}
 		ap += au;
 		cp += cu;
 	    }
 	}
 	else {
-	    for (i=0; i<an; i++) {
+	    while(an--) {
 		byte_t* cp1 = cp;
-		for (j=0; j<bm; j++) {
+		size_t m = bm;
+		bp = bp0;
+		while(m--) {		
 		    int64_t sum = 0;
-		    byte_t* bp1 = bp + j*bv;
+		    byte_t* bp1 = bp;
 		    byte_t* ap1 = ap;
-		    for (k = 0; k < am; k++) {
+		    size_t  k = am;
+		    while(k--) {
 			int64_t a = read_int(at, ap1);
 			int64_t b = read_int(bt, bp1);
 			sum += a*b;
@@ -1628,6 +1646,7 @@ static void multiply(
 		    }
 		    write_int(ct, cp1, sum);
 		    cp1 += cv;
+		    bp += bv;		    
 		}
 		ap += au;
 		cp += cu;
@@ -1657,12 +1676,12 @@ static void multiply_t(
     else {
 	byte_t* bp0 = bp;
 
-	au *= element_size(at);
-	av *= element_size(at);
-	bu *= element_size(bt);
-	bv *= element_size(bt);
-	cu *= element_size(ct);
-	cv *= element_size(ct);
+	au = size_of_array(at,au);
+	av = size_of_array(at,av);
+	bu = size_of_array(bt,bu);
+	bv = size_of_array(bt,bv);
+	cu = size_of_array(ct,cu);
+	cv = size_of_array(ct,cv);
 
 	if (is_float(ct)) {
 	    while(an--) {
@@ -1670,7 +1689,7 @@ static void multiply_t(
 		size_t n = bn;
 		bp = bp0;
 		while(n--) {
-		    float64_t sum = 0;
+		    float64_t sum = 0.0;
 		    byte_t* ap1 = ap;     // row pointer		
 		    byte_t* bp1 = bp;     // "column" pointer
 		    size_t k = bm;
@@ -1864,10 +1883,10 @@ static void tile(matrix_type_t at,byte_t* ap,int au,int av,
     byte_t* ap0 = ap;
     size_t  n   = cn;
 
-    av *= element_size(at);
-    au *= element_size(at);
-    cv *= element_size(ct);
-    cu *= element_size(ct);    
+    av = size_of_array(at,av);
+    au = size_of_array(at,au);
+    cv = size_of_array(ct,cv);
+    cu = size_of_array(ct,cu);    
     
     if (at == ct) { // simple copy row with wrap
 	size_t sz = element_size(at);
@@ -2026,10 +2045,10 @@ static void fill(matrix_type_t at,byte_t* ap,int au,int av,
     size_t  aj = 0;
     size_t  n = cn;
 
-    av *= element_size(at);
-    au *= element_size(at);
-    cv *= element_size(ct);
-    cu *= element_size(ct);
+    av = size_of_array(at,av);
+    au = size_of_array(at,au);
+    cv = size_of_array(ct,cv);
+    cu = size_of_array(ct,cu);
     
     if (at == ct) {
 	size_t sz = element_size(at);
@@ -2424,65 +2443,6 @@ static void m_apply2(
     }
 }
 
-// matrix add A+B -> C, check all rowmajor variant
-// with and without accelerations
-
-static void m_add(matrix_t* ap, matrix_t* bp, matrix_t* cp)
-{
-    if (cp->rowmajor) {
-	if (ap->rowmajor && bp->rowmajor)
-	    add(TRUE,
-		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
-		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
-		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
-		cp->n, cp->m);
-	else if (!ap->rowmajor && bp->rowmajor)
-	    add(FALSE,
-		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
-		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
-		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
-		cp->n, cp->m);
-	else if (ap->rowmajor && !bp->rowmajor)
-	    add(FALSE,
-		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
-		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
-		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
-		cp->n, cp->m);
-	else
-	    add(FALSE,
-		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
-		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
-		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
-		cp->n, cp->m);
-    }
-    else {
-	if (ap->rowmajor && bp->rowmajor)
-	    add(FALSE,
-		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
-		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
-		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
-		cp->n, cp->m);
-	else if (!ap->rowmajor && bp->rowmajor)
-	    add(FALSE,
-		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
-		bp->type, bp->data+bp->byte_offset, 1, bp->stride,
-		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
-		cp->n, cp->m);
-	else if (ap->rowmajor && !bp->rowmajor)
-	    add(FALSE,
-		ap->type, ap->data+ap->byte_offset, 1, ap->stride,
-		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
-		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
-		cp->n, cp->m);
-	else
-	    add(TRUE,
-		ap->type, ap->data+ap->byte_offset, ap->stride, 1,
-		bp->type, bp->data+bp->byte_offset, bp->stride, 1,
-		cp->type, cp->data+cp->byte_offset, cp->stride, 1,
-		cp->n, cp->m);
-    }
-}
-
 // add two matrices
 ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
@@ -2509,7 +2469,7 @@ ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	enif_rwlock_rlock(a.rw_lock);
 	enif_rwlock_rlock(b.rw_lock);
 
-	m_add(&a, &b, &c);
+	m_apply2(add, &a, &b, &c);
 	
 	enif_rwlock_runlock(b.rw_lock);
 	enif_rwlock_runlock(a.rw_lock);
@@ -2527,7 +2487,7 @@ ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	if (c.rw_lock != b.rw_lock) enif_rwlock_rlock(b.rw_lock);
 	enif_rwlock_rwlock(c.rw_lock);
 
-	m_add(&a, &b, &c);
+	m_apply2(add, &a, &b, &c);
 
 	enif_rwlock_rwunlock(c.rw_lock);
 	if (c.rw_lock != b.rw_lock) enif_rwlock_runlock(b.rw_lock);
@@ -2642,18 +2602,72 @@ ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     }
 }
 
+static void m_multiply(matrix_t* ap, matrix_t* bp, matrix_t* cp)
+{
+    if (cp->rowmajor) {
+	if (ap->rowmajor && bp->rowmajor) {
+	    multiply(TRUE,
+		     ap->type,ap->data+ap->byte_offset,ap->stride,1,ap->n,ap->m,
+		     bp->type,bp->data+bp->byte_offset,bp->stride,1,bp->n,bp->m,
+		     cp->type,cp->data+cp->byte_offset,cp->stride,1);
+	} else if (ap->rowmajor && !bp->rowmajor) {
+	    multiply_t(TRUE,
+		       ap->type,ap->data+ap->byte_offset,ap->stride,1,ap->n,ap->m,
+		       bp->type,bp->data+bp->byte_offset,bp->stride,1,bp->n,bp->m,
+		       cp->type,cp->data+cp->byte_offset,cp->stride,1);
+	} else if (!ap->rowmajor && bp->rowmajor) {
+	    multiply(FALSE,
+		     ap->type,ap->data+ap->byte_offset,1,ap->stride,ap->m,ap->n,
+		     bp->type,bp->data+bp->byte_offset,bp->stride,1,bp->n,bp->m,
+		     cp->type,cp->data+cp->byte_offset,cp->stride,1);
+	}
+	else { // !ap->rowmajor && !bp->rowmajor (NOTE A/B swap!)
+	    multiply(TRUE,
+		     bp->type,bp->data+bp->byte_offset,bp->stride,1,bp->n,bp->m,
+		     ap->type,ap->data+ap->byte_offset,ap->stride,1,ap->n,ap->m,
+		     cp->type,cp->data+cp->byte_offset,1,cp->stride);
+	}
+    }
+    else { // !cp->rowmajor
+	if (ap->rowmajor && bp->rowmajor) {
+	    multiply(TRUE,
+		     ap->type,ap->data+ap->byte_offset,ap->stride,1,ap->n,ap->m,
+		     bp->type,bp->data+bp->byte_offset,bp->stride,1,bp->n,bp->m,
+		     cp->type,cp->data+cp->byte_offset,1,cp->stride);
+	} else if (ap->rowmajor && !bp->rowmajor) {
+	    multiply_t(TRUE,
+		       ap->type,ap->data+ap->byte_offset,ap->stride,1,ap->n,ap->m,
+		       bp->type,bp->data+bp->byte_offset,bp->stride,1,bp->n,bp->m,
+		       cp->type,cp->data+cp->byte_offset,1,cp->stride);
+	} else if (!ap->rowmajor && bp->rowmajor) {
+	    multiply(FALSE,
+		     ap->type,ap->data+ap->byte_offset,1,ap->stride,ap->m,ap->n,
+		     bp->type,bp->data+bp->byte_offset,bp->stride,1,bp->n,bp->m,
+		     cp->type,cp->data+cp->byte_offset,1,cp->stride);
+	}
+	else { // !ap->rowmajor && !bp->rowmajor
+	    multiply(TRUE,
+		     bp->type,bp->data+bp->byte_offset,bp->stride,1,bp->n,bp->m,
+		     ap->type,ap->data+ap->byte_offset,ap->stride,1,ap->n,ap->m,
+		     cp->type,cp->data+cp->byte_offset,cp->stride,1);
+	}
+    }
+}
+
 // multiply A*B = C matrices
 
 ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     matrix_t a, b, c;
     size_t n, m;
+    bool_t rowmajor = TRUE;
     UNUSED(argc);
     
     if (!get_matrix(env, argv[0], &a))
 	return enif_make_badarg(env);
     if (!get_matrix(env, argv[1], &b))
 	return enif_make_badarg(env);
+    
     if (a.rowmajor) {
 	if (b.rowmajor) {
 	    if (a.m != b.n) return enif_make_badarg(env);
@@ -2672,49 +2686,26 @@ ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
 	    n = a.m; m = b.n;
 	}
     }
-    
-    if (argc == 2) {
-	matrix_type_t c_t = combine_type(a.type, b.type);
-	ERL_NIF_TERM bin;
 
-	if (a.rowmajor && !b.rowmajor) {  // special case?
-	    if (!create_matrix(env,m,n,FALSE,c_t,&c,&bin))
+    if ((argc == 2) ||
+	((argc == 3) && get_bool(env, argv[2], &rowmajor))) {
+	matrix_type_t c_t = combine_type(a.type, b.type);
+	ERL_NIF_TERM bin = 0;
+
+	if (rowmajor) {
+	    if (!create_matrix(env,n,m,TRUE,c_t,&c,&bin))
 		return enif_make_badarg(env);
 	}
 	else {
-	    if (!create_matrix(env,n,m,TRUE,c_t,&c,&bin))
+	    if (!create_matrix(env,m,n,FALSE,c_t,&c,&bin))
 		return enif_make_badarg(env);
 	}
 
 	enif_rwlock_rlock(a.rw_lock);
 	enif_rwlock_rlock(b.rw_lock);
 
-	if (a.rowmajor && b.rowmajor) {
-	    multiply(TRUE,
-		     a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-		     b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-		     c.type, c.data+c.byte_offset, c.stride, 1);
-	} else if (a.rowmajor && !b.rowmajor) {
-//	    multiply_t(TRUE,
-//		       a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-//		       b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-//		       c.type, c.data+c.byte_offset, c.stride, 1);
-	    multiply_t(TRUE,
-		       a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-		       b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-		       c.type, c.data+c.byte_offset, 1, c.stride);
-	} else if (!a.rowmajor && b.rowmajor) {
-	    multiply(FALSE,
-		     a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
-		     b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-		     c.type, c.data+c.byte_offset, c.stride, 1);
-	}
-	else { // !a.rowmajor && !b.rowmajor
-	    multiply(TRUE,
-		     b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-		     a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-		     c.type, c.data+c.byte_offset, 1, c.stride);
-	}
+	m_multiply(&a, &b, &c);
+
 	enif_rwlock_runlock(b.rw_lock);
 	enif_rwlock_runlock(a.rw_lock);
 	return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
@@ -2731,54 +2722,8 @@ ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
 	if (c.rw_lock != b.rw_lock) enif_rwlock_rlock(b.rw_lock);
 	enif_rwlock_rwlock(c.rw_lock);
 
-	if (c.rowmajor) {
-	    if (a.rowmajor && b.rowmajor) {
-		multiply(TRUE,
-			 a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-			 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-			 c.type, c.data+c.byte_offset, c.stride, 1);
-	    } else if (a.rowmajor && !b.rowmajor) {
-		multiply_t(TRUE,
-			   a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-			   b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-			   c.type, c.data+c.byte_offset, c.stride, 1);
-	    } else if (!a.rowmajor && b.rowmajor) {
-		multiply(FALSE,
-			 a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
-			 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-			 c.type, c.data+c.byte_offset, c.stride, 1);
-	    }
-	    else { // !a.rowmajor && !b.rowmajor
-		multiply(FALSE,
-			 a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
-			 b.type, b.data+b.byte_offset, 1, b.stride, b.m, b.n,
-			 c.type, c.data+c.byte_offset, c.stride, 1);
-	    }
-	}
-	else {
-	    if (a.rowmajor && b.rowmajor) {
-		multiply(TRUE,
-			 a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-			 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-			 c.type, c.data+c.byte_offset, 1, c.stride);
-	    } else if (a.rowmajor && !b.rowmajor) {
-		multiply_t(TRUE,
-			   a.type, a.data+a.byte_offset, a.stride, 1, a.n, a.m,
-			   b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-			   c.type, c.data+c.byte_offset, 1, c.stride);
-	    } else if (!a.rowmajor && b.rowmajor) {
-		multiply(FALSE,
-			 a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
-			 b.type, b.data+b.byte_offset, b.stride, 1, b.n, b.m,
-			 c.type, c.data+c.byte_offset, 1, c.stride);
-	    }
-	    else { // !a.rowmajor && !b.rowmajor
-		multiply(FALSE,
-			 a.type, a.data+a.byte_offset, 1, a.stride, a.m, a.n,
-			 b.type, b.data+b.byte_offset, 1, b.stride, b.m, b.n,
-			 c.type, c.data+c.byte_offset, 1, c.stride);
-	    }
-	}
+	m_multiply(&a, &b, &c);
+
 	enif_rwlock_rwunlock(c.rw_lock);
 	if (c.rw_lock != b.rw_lock) enif_rwlock_runlock(b.rw_lock);
 	if (c.rw_lock != a.rw_lock) enif_rwlock_runlock(a.rw_lock);

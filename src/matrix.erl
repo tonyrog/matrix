@@ -65,8 +65,9 @@
 -export([foldl_matrix/3, foldr_matrix/3]).
 
 %% performance counter
--define(count_vector_op(OP,A,B), count_vector_op((OP),(A),(B))).
-%% -define(count_vector_op(OP,A,B), ok).
+-export([dump/0, dump/1]).
+-define(count_op(OP,A,B), count_op((OP),(A),(B))).
+%% -define(count_op(OP,A,B), ok).
 
 %% maximum numbr of elements for add/sub/times/negate...
 %% -define(MAX_NM, (256*4096)).
@@ -441,7 +442,7 @@ fold_elems_(F,A,D,P,T,S,I) ->
 -spec add(A::matrix(), B::matrix()) -> matrix().
 
 add(A,B) ->
-    ?count_vector_op(add,A,B),
+    ?count_op(add,A,B),
     add_(A,B).
 
 add_(A,B) ->
@@ -465,7 +466,7 @@ add_(_A, _B, _Dst) ->
 -spec subtract(A::matrix(), B::matrix()) -> matrix().
 
 subtract(A, B) ->
-    ?count_vector_op(subtract,A,B),
+    ?count_op(subtract,A,B),
     subtract_(A, B).
 
 -spec subtract(A::matrix(), B::matrix(), Dst::matrix()) -> matrix().
@@ -484,7 +485,7 @@ subtract_(A, B) ->
 -spec times(A::matrix(), B::matrix()) -> matrix().
 
 times(A,B) ->
-    ?count_vector_op(times,A,B),
+    ?count_op(times,A,B),
     times_(A,B).
 
 -spec times(A::matrix(), B::matrix(), Dst::matrix()) -> matrix().
@@ -561,15 +562,20 @@ pow_(A,B,P) ->
 -spec multiply(X::matrix(), Y::matrix()) -> matrix().
 
 multiply(A, B) ->
-    ?count_vector_op(multiply,A,B),
+    ?count_op(multiply,A,B),
     multiply_(A,B).
 
 multiply_(A, B) ->
     matrix_ref:multiply(A,B).
 
-multiply(A, B, Dst) ->
-    multiply_(A, B, Dst).
+-spec multiply(X::matrix(), Y::matrix(), RowMajor::boolean) ->  matrix() ;
+	      (X::matrix(), Y::matrix(), Dst::matrix()) -> matrix().
 
+multiply(A, B, Arg) ->
+    multiply_(A, B, Arg).
+
+multiply_(A, B, RowMajor) when is_boolean(RowMajor) ->
+    matrix_ref:multiply(A,B,RowMajor);
 multiply_(_A, _B, _Dst) ->
     ?nif_stub().
 
@@ -889,72 +895,116 @@ encode_type(complex128) -> ?complex128.
 
 %% performance counters
 
-count_vector_op(multiply,
-		#matrix{rowmajor=R1,n=N1,m=M1,type=T1},
-		#matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
+count_op(multiply,
+	 #matrix{rowmajor=R1,n=N1,m=M1,type=T1},
+	 #matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
     K1 = {R1,N1,M1},
     K2 = {R2,N2,M2},
-    count({multiply,K1,K2},1),
     if T1 =:= T2, R1, R2 ->
-	    count({multiply_mtv,K1,K2},1);
-       T1 =:= T2, R1, not R2 ->
-	    count({multiply_mtv_t,K1,K2},1);
-       T1 =:= T2 ->
-	    count({multiply_mt,K1,K2},1);
+	    count({{multiply,simd},K1,K2},1);
+       T1 =:= T2, R1, not R2 -> %% extra fast?
+	    count({{multiply,simd},K1,K2},1);
+       T1 =:= T2, not R1, R2 ->
+	    count({{multiply,plain},K1,K2},1);
+       T1 =:= T2, not R1, not R2 ->
+	    count({{multiply,simd},K1,K2},1);
        true ->
-	    ok
+	    count({{multiply,slow},K1,K2},1)
+    end;
+count_op(add,
+	 #matrix{rowmajor=R1,n=N1,m=M1,type=T1},
+	 #matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    if T1 =:= T2, R1 =:= R2 ->
+	    count({{add,simd},K1,K2},1);
+       T1 =:= T2 ->
+	    count({{add,plain},K1,K2},1);
+       true ->
+	    count({{add,slow},K1,K2},1)
+    end;
+count_op(subtract,
+	 #matrix{rowmajor=R1,n=N1,m=M1,type=T1},
+	 #matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    if T1 =:= T2, R1 =:= R2 ->
+	    count({{subtract,simd},K1,K2},1);
+       T1 =:= T2 ->
+	    count({{subtract,plain},K1,K2},1);
+       true ->
+	    count({{subtract,slow},K1,K2},1)
+    end;
+count_op(times,
+	 #matrix{rowmajor=R1,n=N1,m=M1,type=T1},
+	 #matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    if T1 =:= T2, R1 =:= R2 ->
+	    count({{times,simd},K1,K2},1);
+       T1 =:= T2 ->
+	    count({{times,plain},K1,K2},1);
+       true ->
+	    count({{times,slow},K1,K2},1)
+    end;
+count_op(Op,
+	 #matrix{rowmajor=R1,n=N1,m=M1},
+	 #matrix{rowmajor=R2,n=N2,m=M2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    count({{Op,plain},K1,K2}, 1).
 
-    end;
-count_vector_op(add,
-		#matrix{rowmajor=R1,n=N1,m=M1,type=T1},
-		#matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
-    K1 = {R1,N1,M1},
-    K2 = {R2,N2,M2},
-    count({add,K1,K2},1),
-    if T1 =:= T2, R1 =:= R2 ->
-	    count({add_mtv,K1,K2},1);
-       T1 =:= T2 ->
-	    count({add_mt,K1,K2},1);
-       true ->
-	    ok
-    end;
-count_vector_op(subtract,
-		#matrix{rowmajor=R1,n=N1,m=M1,type=T1},
-		#matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
-    K1 = {R1,N1,M1},
-    K2 = {R2,N2,M2},
-    count({subtract,K1,K2},1),
-    if T1 =:= T2, R1 =:= R2 ->
-	    count({subtract_mtv,K1,K2},1);
-       T1 =:= T2 ->
-	    count({subtract_mt,K1,K2},1);
-       true ->
-	    ok
-    end;
-count_vector_op(times,
-		#matrix{rowmajor=R1,n=N1,m=M1,type=T1},
-		#matrix{rowmajor=R2,n=N2,m=M2,type=T2}) ->
-    K1 = {R1,N1,M1},
-    K2 = {R2,N2,M2},
-    count({times,K1,K2},1),
-    if T1 =:= T2, R1 =:= R2 ->
-	    count({times_mtv,K1,K2},1);
-       T1 =:= T2 ->
-	    count({times_mt,K1,K2},1);
-       true ->
-	    ok
-    end;
-count_vector_op(Op,
-		#matrix{rowmajor=R1,n=N1,m=M1},
-		#matrix{rowmajor=R2,n=N2,m=M2}) ->
-    K1 = {R1,N1,M1},
-    K2 = {R2,N2,M2},
-    count({Op,K1,K2}, 1).
+dump() ->
+    dump(all).
 
+dump(MatchKey) ->
+    lists:foreach(
+      fun
+	  ({ {{Key,SubKey},K1,K2}, Count, Caller }) 
+	    when Key =:= MatchKey; MatchKey =:= all ->
+	      print_counter(Key,SubKey,K1,K2,Count,Caller);
+	  (_) ->
+	      ok
+      end, lists:sort(get_counters())).
+
+get_counters() ->
+    [{Key,Value,Caller} || {{'$counter',Key,Caller},Value} <- get()].
+    
+
+%% overall counter  name R(4x5) C(5x4)
+print_counter(Key,SubKey,K1,K2,Value,Caller) ->
+    io:put_chars([atom_to_list(Key),"/",atom_to_list(SubKey)," ",
+		  format_dim(K1)," ",format_dim(K2),
+		  " = ", integer_to_list(Value),
+		  " @ ",format_caller(Caller),
+		  "\n"]).
+
+print_counter(Key,K1,K2,Value,Caller) ->
+    io:put_chars([atom_to_list(Key)," ",
+		  format_dim(K1)," ",format_dim(K2)," ",
+		  " = ", integer_to_list(Value)," @ ",format_caller(Caller),
+		  "\n"]).
+
+%% format dimension and rowmajor
+format_dim({true,N,M}) -> ["R(",integer_to_list(N),"x",integer_to_list(M),")"];
+format_dim({false,M,N}) -> ["C(",integer_to_list(N),"x",integer_to_list(M),")"].
+
+format_caller({M,F,A,Ln}) ->
+    [atom_to_list(M),":",atom_to_list(F),"/",integer_to_list(A),":",
+     integer_to_list(Ln),":"].
+			  
 count(Key, Value) ->
-    case get(Key) of
+    Caller  = get_counter_caller(),
+    Key1 = {'$counter',Key,Caller},
+    case get(Key1) of
 	undefined ->
-	    put(Key, Value);
+	    put(Key1, Value);
 	Value0 ->
-	    put(Key, Value0+Value)
+	    put(Key1, Value0+Value)
     end.
+
+%% slow but give us info where the counter is counted from
+get_counter_caller() ->
+    Es = try erlang:error(fake) catch error:_ -> erlang:get_stacktrace() end,
+    [_Here,_MatrixCount,_MatrixOp,{M,F,A,[_,{line,Ln}]}|_] = Es,
+    {M,F,A,Ln}.

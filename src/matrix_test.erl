@@ -16,6 +16,22 @@
 -export([bench_times/1]).
 -export([bench_negate/1]).
 
+all() ->
+    test_add(),
+    test_sub(),
+    test_times(),
+    test_negate(),
+    test_zero(),
+    test_identity(),
+    test_multiply(),
+    test_mul_t(),    
+    test_add_t(),
+    test_sub_t(),    
+    test_times_t(),
+    test_transpose(),
+    test_submatrix(),
+    ok.
+    
 %% test basic operation
 
 test_add() ->
@@ -360,17 +376,17 @@ test_tile_multiply() ->
     As2x3 = tile(2,3,As),
     Bs3x2 = tile(3,2,Bs),
     A2x3 = matrix:from_list(As2x3, int16),
-    io:format("a2x3=~w\n",[A2x3]),matrix:print(A2x3),
+    %% io:format("a2x3=~w\n",[A2x3]),matrix:print(A2x3),
     B3x2 = matrix:from_list(Bs3x2, int16),
-    io:format("b3x2=~w\n",[B3x2]),matrix:print(B3x2),
+    %% io:format("b3x2=~w\n",[B3x2]),matrix:print(B3x2),
     C2x2 = matrix:multiply(A2x3, B3x2),
-    io:format("c2x2=~w\n",[C2x2]),matrix:print(C2x2),
+    %% io:format("c2x2=~w\n",[C2x2]),matrix:print(C2x2),
     C    = matrix:submatrix(1,1,2,2,C2x2),
     AB = matrix:multiply(A,B),
-    io:format("ab=\n"),matrix:print(AB),
+    %% io:format("ab=\n"),matrix:print(AB),
     AB3 = matrix:add(AB, matrix:add(AB,AB)),
-    io:format("ab3=\n"),matrix:print(AB3),
-    io:format("c=~w\n",[C]),matrix:print(C),
+    %% io:format("ab3=\n"),matrix:print(AB3),
+    %% io:format("c=~w\n",[C]),matrix:print(C),
     R = matrix:to_list(AB3),
     R = matrix:to_list(C),
     ok.
@@ -567,7 +583,10 @@ make(N,M,T) ->
 
 bench_multiply(N) -> bench_multiply(N,float32,1000).
 bench_multiply(N,T) -> bench_multiply(N,T,1000).
-bench_multiply(N,T,L) -> bench(N,fun(A,B) -> matrix:multiply(A,B) end, T, L).
+bench_multiply(N,T,L) -> bench_multiply(N,T,L,false, true).
+bench_multiply(N,T,L,At,Bt) -> 
+    bench(N,fun(A,B) -> matrix:multiply(A,B) end, T, L, At, Bt).
+
 bench_multiply_table() ->
     bench_table("matrix:multiply/2",
 		fun(A,B) -> matrix:multiply(A,B) end).
@@ -593,11 +612,13 @@ bench_pmul(N,T,L) ->
       fun() ->
 	      A = matrix:uniform(N,N,T),
 	      B = matrix:uniform(N,N,T),
-	      T0 = erlang:system_time(milli_seconds),
+	      T0 = erlang:monotonic_time(),
 	      bench_pmul_loop(L,A,B,undefined),
-	      T1 = erlang:system_time(milli_seconds),
+	      T1 = erlang:monotonic_time(),
+	      Time = erlang:convert_time_unit(T1 - T0, native, microsecond),
+	      Ts = Time/1000000,
 	      io:format("~s: mult~wx~w/s = ~.2f time=~.f\n",
-			[?MODULE, N, N, 1000*(L / (T1-T0)), (T1-T0)/1000])
+			[?MODULE, N, N, L/Ts, Ts])
       end).
 
 bench_pmul_loop(0, _, _, _) ->
@@ -647,17 +668,40 @@ bench_table(Name,F,T) ->
     bench(2048,F,T,4),
     bench(4096,F,T,2).
 
+
 bench(N,F,T,L) ->
+    bench(N,F,T,L,false,false).
+
+bench(N,F,T,L,At,Bt) ->
+    erase(),
+    A0 = matrix:uniform(N,N,T),
+    A = if At -> matrix:transpose(A0);
+	   true -> A0
+	end,
+    B0 = matrix:uniform(N,N,T),
+    B = if Bt -> matrix:transpose(B0);
+	   true -> B0
+	end,
+    T0 = erlang:monotonic_time(),
+    R = bench_loop(L,F,A,B,undefined),
+    T1 = erlang:monotonic_time(),
+    Time = erlang:convert_time_unit(T1 - T0, native, microsecond),
+    Ts = Time/1000000,
+    io:format("|   ~wx~w   | ~.2f  |  t=~fs\n",
+	      [N, N, (L/Ts), Ts]).
+    
+bench_proc(N,F,T,L) ->
     SELF = self(),
     {Pid,Mon} =
 	spawn_monitor(
 	  fun() ->
 		  A = matrix:uniform(N,N,T),
 		  B = matrix:uniform(N,N,T),
-		  T0 = erlang:system_time(micro_seconds),
+		  T0 = erlang:monotonic_time(),
 		  R = bench_loop(L,F,A,B,undefined),
-		  T1 = erlang:system_time(micro_seconds),
-		  Ts = (T1-T0)/1000000,
+		  T1 = erlang:monotonic_time(),
+		  Time = erlang:convert_time_unit(T1 - T0, native, microsecond),
+		  Ts = Time/1000000,
 		  SELF ! {self(),R,Ts}
 	  end),
     receive

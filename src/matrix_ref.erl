@@ -12,7 +12,7 @@
 -export([add/2]).
 -export([subtract/2]).
 -export([times/2]).
--export([multiply/2]).
+-export([multiply/2,multiply/3]).
 -export([scale/2]).
 -export([negate/1]).
 -export([mulsum/2]).
@@ -25,6 +25,8 @@
 -export([l2/5]).
 -export([max/5]).
 -export([filter/5]).
+%%
+-export([transpose_list/1]).
 
 -import(matrix, [elem_to_bin/2, type_combine/2]).
 
@@ -98,33 +100,32 @@ scale(F, X) ->
 
 -spec multiply(X::matrix(), Y::matrix()) -> matrix().
 
-multiply(#matrix{n=Nx,m=Mx,offset=Offs1,stride=Stride1,type=T1,data=Bin1},
-	 #matrix{n=Ny,m=My,offset=Offs2,stride=Stride2,type=T2,data=Bin2})
-  when Mx =:= Ny ->
-    P1  = Offs1 + (Nx-1)*Stride1,  %% last row in X
-    P2  = Offs2 + My-1,            %% last column in Y
-    T = type_combine(T1,T2),
-    Es = mult_(Nx,My,Mx,My,T,Bin1,P1,Stride1,T1,  Bin2,P2,Stride2,T2, []),
-    matrix:create(Nx,My,T,true,Es).
+multiply(X, Y) ->
+    multiply(X, Y, true).
 
-mult_(1,0,_Mx,_My,_T,_Bin1,_P1,_S1,_T1, _Bin2,_P2,_S2,_T2,Acc) ->
-    Acc;
-mult_(N,0,Mx,My,T,Bin1,P1,S1,T1,  Bin2,P2,S2,T2, Acc) ->
-    mult_(N-1,My,Mx,My,T,Bin1,P1-S1,S1,T1, Bin2,P2+My,S2,T2, Acc);
-mult_(N,J,Mx,My,T,Bin1,P1,S1,T1,  Bin2,P2,S2,T2,  Acc) ->
-    C = dot_(Bin1,P1,1,T1,  Bin2,P2,S2,T2,  Mx, scalar_zero(T)),
-    %% io:format("j=~w,sum=~w\n", [J,C]),
-    mult_(N,J-1,Mx,My,T,Bin1,P1,S1,T1, Bin2,P2-1,S2,T2,
-	  [elem_to_bin(T,C)|Acc]).
+multiply(X=#matrix{type=Tx},Y=#matrix{type=Ty},RowMajor) when
+      is_boolean(RowMajor) ->
+    {Nx,_Mx} = matrix:size(X),
+    {_Ny,My} = matrix:size(Y),
+    Xs = matrix:to_list(X),
+    Zs = [ [dot(Xi,Yt) || Xi <- Xs] ||
+	     Yt <- matrix:to_list(matrix:transpose(Y))],
+    T = type_combine(Tx,Ty),
+    if RowMajor ->
+	    Es = [[elem_to_bin(T,Zij)||Zij<-Zr] || Zr <- transpose_list(Zs)],
+	    matrix:create(Nx,My,T,RowMajor,Es);
+       true ->
+	    Es = [[elem_to_bin(T,Zij)||Zij<-Zr] || Zr <- Zs],
+	    matrix:create(My,Nx,T,RowMajor,Es)
+    end.
 
-dot_(_Bin1,_P1,_S1,_T1, _Bin2,_P2,_S2,_T2, 0, Sum) ->
-    Sum;
-dot_(Bin1,P1,S1,T1, Bin2,P2,S2,T2, K,Sum) ->
-    %% io:format("p1=~w, p2=~w\n", [P1,P2]),
-    E1 = matrix:element_(P1,T1,Bin1),
-    E2 = matrix:element_(P2,T2,Bin2),
-    Sum1 = scalar_add(scalar_multiply(E1,E2), Sum),
-    dot_(Bin1,P1+S1,S1,T1, Bin2,P2+S2,S2,T2, K-1,Sum1).
+dot([A|As],[B|Bs]) ->
+    dot(As,Bs,scalar_multiply(A,B)).
+
+dot([A|As],[B|Bs],Sum) ->
+    dot(As,Bs,scalar_add(scalar_multiply(A,B),Sum));
+dot([], [], Sum) ->
+    Sum.
 
 -spec mulsum(X::matrix(), Y::matrix()) -> number().
 
@@ -144,24 +145,11 @@ mulsum(X,Y,Sum) ->
 
 -spec transpose_data(Src::matrix()) -> matrix().
 
-transpose_data(#matrix{n=N,m=M,offset=Offs,stride=Stride,rowmajor=RowMajor,
-			   type=Type,data=Bin}) ->
-    ES  = matrix:element_bytes(Type),
-    RS  = ES*Stride,                         %% row bytes
-    End = ES*(Offs + (N-1)*Stride + M - 1),  %% end element position
-    Es = trans_(M,N,N,Bin,End,End,ES,RS,[]),
-    matrix:create(M,N,Type,RowMajor,Es).
+transpose_data(X=#matrix{n=N,m=M,type=T,rowmajor=RowMajor}) ->
+    Zs = matrix:to_list(X),
+    Es = [[elem_to_bin(T,Zij)||Zij<-Zr] || Zr <- transpose_list(Zs)],
+    matrix:create(M,N,T,RowMajor,Es).
 
-trans_(1,0,_N,_Bin,_Pos,_Pos0,_ES,_RS,Acc) ->
-    Acc;
-trans_(J,0,N,Bin,_Pos,Pos0,ES,RS,Acc) ->
-    Pos1 = Pos0-ES,
-    %% io:format("pos1=~w\n", [Pos1]),
-    trans_(J-1,N,N,Bin,Pos1,Pos1,ES,RS,Acc);
-trans_(J,I,N,Bin,Pos,Pos0,ES,RS,Acc) ->
-    %% io:format("pos=~w, pos0=~w\n", [Pos,Pos0]),
-    <<_:Pos/binary,E:ES/binary,_/binary>> = Bin,
-    trans_(J,I-1,N,Bin,Pos-RS,Pos0,ES,RS,[E|Acc]).
 
 %% argmax
 -spec argmax(A::matrix(),Axis::0|1) -> [integer()].
@@ -350,3 +338,12 @@ complex_multiply({A,B},{E,F}) -> {A*E-B*F, B*E+A*F}.
 complex_abs({A,B}) -> math:sqrt(A*A+B*B).
 
 %% complex_arg({A,B}) -> math:atan2(B,A).
+
+%% transpose a list of list matrix representation
+-spec transpose_list(As::[[scalar()]]) -> [[scalar()]].
+transpose_list([[]|_]) -> 
+    [];
+transpose_list(As) ->
+    [ [hd(A) || A <- As] | transpose_list([tl(A) || A <- As]) ].
+
+
