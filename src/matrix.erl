@@ -43,14 +43,18 @@
 -export([argmax/1, argmax/2]).
 -export([convolve/4, convolve/6]).
 -export([rconvolve/4, rconvolve/6]).
--export([max/3, max/5, l2/3, l2/5]).
--export([filter/3, filter/5]).
+-export([maxpool/3, maxpool/5, maxpool/6]).
+-export([l2pool/3, l2pool/5, l2pool/6]).
+-export([filter/2, filter/4, filter/5]).
 -export([load_column_as_row/4]).
 
 %% internal nifs
 -export([add_/2,add_/3]).
 -export([multiply_/2, multiply_/3]).
 -export([multiply_large/2, multiply_large/3]).
+-export([l2pool_/5, l2pool_/6]).
+-export([maxpool_/5, maxpool_/6]).
+-export([filter_/4, filter_/5]).
 -export([apply1/3]).
 
 %% internal use
@@ -64,8 +68,11 @@
 -export([foldl_rows/5, foldr_rows/5]).
 -export([foldl_matrix/3, foldr_matrix/3]).
 
+-export_type([matrix/0]).
+
 %% performance counter
 -export([dump/0, dump/1]).
+-export([clear_counters/0]).
 -define(count_op(OP,A,B), count_op((OP),(A),(B))).
 %% -define(count_op(OP,A,B), ok).
 
@@ -526,6 +533,9 @@ scale(_F, _X, _Dst) ->
 %%
 -spec mulsum(X::matrix(), Y::matrix()) -> number().
 mulsum(X,Y) ->
+    mulsum_(X,Y).
+
+mulsum_(X,Y) ->
     matrix_ref:mulsum(X,Y).
     
 %%
@@ -656,16 +666,16 @@ submatrix(I, J, N, M, X=#matrix{offset=Offset,stride=Stride}) ->
 
 %%
 %% convolve a NxM matrix over the matrix A (soon: with padding Px, Py and
-%% padding value PAD) using Sx and Sy as stride steps.
+%% padding value PAD) using Sn and Sm as stride steps.
 %%
 
 -spec convolve(F::function(),
 	       N::unsigned(),M::unsigned(),
-	       Sx::unsigned(), Sy::unsigned(),A::matrix()) ->
+	       Sn::unsigned(), Sm::unsigned(),A::matrix()) ->
 		      matrix().
 
-convolve(F,N,M,Sx,Sy,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
-    [ F(I,J) || I <- lists:seq(1,Nx-N+1,Sx), J <- lists:seq(1,Mx-M+1,Sy)].
+convolve(F,N,M,Sn,Sm,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
+    [ F(I,J) || I <- lists:seq(1,Nx-N+1,Sn), J <- lists:seq(1,Mx-M+1,Sm)].
 
 -spec convolve(F::fun((integer(),integer()) -> term()),
 	       N::unsigned(),M::unsigned(),A::matrix()) -> [term()].
@@ -675,11 +685,11 @@ convolve(F,N,M,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
 
 -spec rconvolve(F::function(),
 	       N::unsigned(),M::unsigned(),
-	       Sx::unsigned(), Sy::unsigned(),A::matrix()) ->
+	       Sn::unsigned(), Sm::unsigned(),A::matrix()) ->
 		      matrix().
 
-rconvolve(F,N,M,Sx,Sy,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
-    [ F(I,J) || I <- lists:seq(Nx-N+1,1,-Sx), J <- lists:seq(Mx-M+1,1,-Sy)].
+rconvolve(F,N,M,Sn,Sm,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
+    [ F(I,J) || I <- lists:seq(Nx-N+1,1,-Sn), J <- lists:seq(Mx-M+1,1,-Sm)].
 
 -spec rconvolve(F::fun((integer(),integer()) -> term()),
 	       N::unsigned(),M::unsigned(),A::matrix()) -> [term()].
@@ -690,47 +700,78 @@ rconvolve(F,N,M,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
 %%
 %%
 %%
--spec max(N::unsigned(),M::unsigned(),matrix()) -> matrix().
+-spec maxpool(N::unsigned(),M::unsigned(),A::matrix()) -> matrix().
 
-max(N, M, X) ->
-    max(N, M, 1, 1, X).
+maxpool(N, M, A) ->
+    maxpool(N, M, 1, 1, A).
 
--spec max(N::unsigned(),M::unsigned(),Sx::unsigned(),Sy::unsigned(),
-	  matrix()) -> matrix().
+-spec maxpool(N::unsigned(),M::unsigned(),
+	      Sn::unsigned(),Sm::unsigned(),A::matrix()) -> matrix().
 
-max(N, M, Sx, Sy, X) ->
-    matrix_ref:max(N, M, Sx, Sy, X).
+maxpool(N, M, Sn, Sm, A) ->
+    maxpool_(N, M, Sn, Sm, A).
+
+maxpool_(N, M, Sn, Sm, A) ->
+    matrix_ref:maxpool(N, M, Sn, Sm, A).
+
+-spec maxpool(N::unsigned(),M::unsigned(),Sn::unsigned(),Sm::unsigned(),
+	      A::matrix(),Dst::matrix()) ->
+		     matrix().
+
+maxpool(N, M, Sn, Sm, A, Dst) ->
+    maxpool_(N, M, Sn, Sm, A, Dst).
+
+maxpool_(_N, _M, _Sn, _Sm, _A, _Dst) ->
+    ?nif_stub().
+
+%% l2pool
+-spec l2pool(N::unsigned(),M::unsigned(),A::matrix()) -> matrix().
+l2pool(N, M, A) ->
+    l2pool(N, M, 1, 1, A).
+
+%% l2pool 
+-spec l2pool(N::unsigned(),M::unsigned(),
+	     Sn::unsigned(),Sm::unsigned(),A::matrix()) -> matrix().
+
+l2pool(N, M, Sn, Sm, A) ->
+    l2pool_(N, M, Sn, Sm, A).
+
+l2pool_(N, M, Sn, Sm, A) ->
+    matrix_ref:l2pool(N, M, Sn, Sm, A).
+
+-spec l2pool(A::matrix(),N::unsigned(),M::unsigned(),
+	     Sn::unsigned(),Sm::unsigned(),Dst::matrix()) -> matrix().
+
+l2pool(N, M, Sn, Sm, A, Dst) ->
+    l2pool_(N, M, Sn, Sm, A, Dst).
+
+l2pool_(_N, _M, _Sn, _Sm, _A, _Dst) ->
+    ?nif_stub().
 
 %%
 %%
 %%
+-spec filter(W::matrix(), X::matrix()) -> matrix().
+filter(W, X) ->
+    filter(W, 1, 1, X).
 
--spec l2(N::unsigned(),M::unsigned(),matrix()) -> matrix().
-l2(N, M, X) ->
-    l2(N, M, 1, 1, X).
+-spec filter(W::matrix(), Sn::unsigned(), Sm::unsigned(), A::matrix()) -> 
+		    matrix().
 
-%%
-%%
-%%
--spec l2(N::unsigned(),M::unsigned(),Sx::unsigned(),Sy::unsigned(),
-	 matrix()) -> matrix().
+filter(W, Sn, Sm, A) ->
+    filter_(W, Sn, Sm, A).
 
-l2(N, M, Sx, Sy, X) ->
-    matrix_ref:l2(N, M, Sx, Sy, X).
+filter_(W, Sn, Sm, A) ->
+    matrix_ref:filter(W, Sn, Sm, A).
 
-%%
-%%
-%%
--spec filter(W::matrix(), B::number(), X::matrix()) -> matrix().
-filter(W, B, X) ->
-    filter(W, B, 1, 1, X).
+-spec filter(W::matrix(), Sn::unsigned(), Sm::unsigned(), A::matrix(),
+	     Dst::matrix()) -> matrix().
 
--spec filter(W::matrix(), B::number(), Sx::unsigned(), Sy::unsigned(),
-	     X::matrix()) -> matrix().
+filter(W, Sn, Sm, A, Dst) ->
+    filter_(W, Sn, Sm, A, Dst).
 
-filter(W, B, Sx, Sy, X) ->
-    matrix_ref:filter(W, B, Sx, Sy, X).
-
+filter_(_W, _Sn, _Sm, _A, _Dst) ->
+    ?nif_stub().
 
 %% argmax
 -spec argmax(A::matrix(),Axis::0|1) -> [integer()].
@@ -969,7 +1010,14 @@ dump(MatchKey) ->
 
 get_counters() ->
     [{Key,Value,Caller} || {{'$counter',Key,Caller},Value} <- get()].
-    
+
+%% clear all $counters
+clear_counters() ->
+    lists:foreach(
+      fun({Key={'$counter',_Key,_Caller},_Value}) ->
+	      erase(Key);
+	 (_) -> ok
+      end, get()).
 
 %% overall counter  name R(4x5) C(5x4)
 print_counter(Key,SubKey,K1,K2,Value,Caller) ->

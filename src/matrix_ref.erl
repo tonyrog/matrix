@@ -1,7 +1,7 @@
 %%% @author Tony Rogvall <tony@rogvall.se>
 %%% @copyright (C) 2017, Tony Rogvall
 %%% @doc
-%%%    reference implementations
+%%%    reference implementation
 %%% @end
 %%% Created :  1 Nov 2017 by Tony Rogvall <tony@rogvall.se>
 
@@ -22,9 +22,9 @@
 -export([sigmoid_prime/1]).
 -export([softplus/1]).
 -export([argmax/2]).
--export([l2/5]).
--export([max/5]).
--export([filter/5]).
+-export([l2pool/5]).
+-export([maxpool/5]).
+-export([filter/2, filter/4]).
 %%
 -export([transpose_list/1]).
 
@@ -198,41 +198,55 @@ softplus(X=#matrix{n=N,m=M,type=T}) ->
     Es = map_elems(fun(Xij) -> elem_to_bin(T,softplus__(Xij)) end, X),
     matrix:create(N,M,T,true,Es).
 
--spec l2(N::unsigned(),M::unsigned(),Sx::unsigned(),Sy::unsigned(),
-	 matrix()) -> matrix().
-l2(N, M, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
+-spec l2pool(A::matrix(),N::unsigned(),M::unsigned(),
+	     Sn::unsigned(),Sm::unsigned()) -> matrix().
+
+%% fixme: rowmajor!
+l2pool(N,M,Sn,Sm,A=#matrix{n=Nx,m=Mx,type=T})
   when N =< Nx, M =< Mx ->
     Es = matrix:convolve(
 	   fun(I, J) ->
-		   A = matrix:submatrix(I,J,N,M,X),
-		   Es = map_elems(fun(Xij) -> Xij*Xij end, A),
-		   S = sum([sum(R) || R <- Es]),
+		   B = matrix:submatrix(I,J,N,M,A),
+		   S = matrix:mulsum(B,B),
 		   elem_to_bin(T,math:sqrt(S))
-	   end, N, M, Sx, Sy, X),
-    matrix:create(((Nx-N) div Sx)+1, ((Mx-M) div Sy)+1, T, true, Es).
+	   end, N, M, Sn, Sm, A),
+    matrix:create(((Nx-N) div Sn)+1, ((Mx-M) div Sm)+1, T, true, Es).
 
--spec max(N::unsigned(),M::unsigned(),Sx::unsigned(),Sy::unsigned(),
-	  matrix()) -> matrix().
-
-max(N, M, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
+-spec maxpool(N::unsigned(),M::unsigned(),Sn::unsigned(),Sm::unsigned(),
+	      matrix()) -> matrix().
+%% fixme: rowmajor!
+maxpool(N,M,Sn,Sm,A=#matrix{n=Nx,m=Mx,type=T})
   when N =< Nx, M =< Mx ->
     Es = matrix:convolve(
 	   fun(I, J) ->
-		   A = matrix:submatrix(I,J,N,M,X),
-		   S = max([max(R) || R <- matrix:to_list(A)]),
+		   B = matrix:submatrix(I,J,N,M,A),
+		   S = max([max(R) || R <- matrix:to_list(B)]),
 		   elem_to_bin(T,S)
-	   end, N, M, Sx, Sy, X),
-    matrix:create(((Nx-N) div Sx) +1, ((Mx-M) div Sy)+1, T, true, Es).
+	   end, N, M, Sn, Sm, A),
+    matrix:create(((Nx-N) div Sn)+1, ((Mx-M) div Sm)+1, T, true, Es).
 
+%%
+%% Note that filter([[S]], A) == scale(S, A)
+%%
 
-filter(W=#matrix{n=Nw,m=Mw}, B, Sx, Sy, X=#matrix{n=Nx,m=Mx,type=T})
-  when Nw =< Nx, Mw =< Mx ->
+-spec filter(W::matrix(), A::matrix()) -> 
+		    matrix().
+
+filter(W, A) ->
+    filter(W, 1, 1, A).
+
+-spec filter(W::matrix(), Sn::unsigned(), Sm::unsigned(), A::matrix()) -> 
+		    matrix().
+
+%% fixme: rowmajor!
+filter(W=#matrix{n=Wn,m=Wm}, Sn, Sm, X=#matrix{n=Xn,m=Xm,type=T})
+  when Wn =< Xn, Wm =< Xm, is_integer(Sn), Sn>0, is_integer(Sm), Sm>0 ->
     Es = matrix:convolve(
 	   fun(I, J) ->
-		   A = matrix:submatrix(I,J,Nw,Mw,X),
-		   elem_to_bin(T,mulsum(W,A)+B)
-	   end, Nw, Mw, Sx, Sy, X),
-    matrix:create(((Nx-Nw) div Sx)+1, ((Mx-Mw) div Sy)+1, T, true, Es).
+		   A = matrix:submatrix(I,J,Wn,Wm,X),
+		   elem_to_bin(T,matrix:mulsum(W,A))
+	   end, Wn, Wm, Sn, Sm, X),
+    matrix:create(((Xn-Wn) div Sn)+1, ((Xm-Wm) div Sm)+1, T, true, Es).
 
 
 map_elems(F,X) ->
@@ -257,14 +271,6 @@ sigmoid_prime__(X) ->
 
 softplus__(X) ->
     math:log(1 + math:exp(X)).
-
-%% sum scalar
-sum([E|Es]) -> sum_(Es, E);
-sum([]) -> 0.
-
-sum_([A|Es], Sum) ->
-    sum_(Es, scalar_add(A,Sum));
-sum_([], Sum) -> Sum.
 
 %% max scalar
 max([E|Es]) -> max_(Es, E).

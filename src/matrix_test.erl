@@ -10,11 +10,19 @@
 -compile(export_all).
 -export([test_add/0]).
 -export([test_sub/0]).
--export([bench_multiply/1]).
+-export([all/0]).	 
+
+-export([bench_multiply/1,bench_multiply/2,bench_multiply/3,bench_multiply/5]).
+-export([bench_add/1,bench_add/2,bench_add/3]).
+-export([bench_subtract/1,bench_subtract/2,bench_subtract/3]).
+-export([bench_times/1,bench_times/2,bench_times/3]).
+-export([bench_negate/1,bench_negate/2,bench_negate/3]).
+-export([bench_transform/1,
+	 bench_transform/2,
+	 bench_transform/3,
+	 bench_transform/4]).
+
 -export([bench_multiply_large/1]).
--export([bench_add/1]).
--export([bench_times/1]).
--export([bench_negate/1]).
 
 all() ->
     test_add(),
@@ -31,6 +39,7 @@ all() ->
     test_transpose(),
     test_submatrix(),
     ok.
+
     
 %% test basic operation
 
@@ -591,6 +600,12 @@ bench_multiply_table() ->
     bench_table("matrix:multiply/2",
 		fun(A,B) -> matrix:multiply(A,B) end).
 
+%% multiply transform with vector4 of size N
+bench_transform(N) -> bench_transform(N,float32,1000).
+bench_transform(N,T) -> bench_transform(N,T,1000).
+bench_transform(N,T,L) -> bench_transform(N,T,L,false).
+bench_transform(N,T,L,Vt) ->
+    bench_transform(N,fun(A,B) -> matrix:multiply(A,B) end,T,L,Vt).
 
 
 bench_multiply_large(N) -> bench_multiply_large(N,float32,1000).
@@ -635,6 +650,13 @@ bench_add_table() ->
     bench_table("matrix:add/2",
 		fun(A,B) -> matrix:add(A,B) end).
 
+bench_subtract(N) -> bench_subtract(N,float32,1000).
+bench_subtract(N,T) -> bench_subtract(N,T,1000).
+bench_subtract(N,T,L) -> bench(N,fun(A,B) -> matrix:subtract(A,B) end, T, L).
+bench_subtract_table() ->
+    bench_table("matrix:subtract/2",
+		fun(A,B) -> matrix:subtract(A,B) end).
+
 bench_times(N) -> bench_times(N,float32,1000).
 bench_times(N,T) -> bench_times(N,T,1000).
 bench_times(N,T,L) -> bench(N,fun(A,B) -> matrix:times(A,B) end, T, L).
@@ -647,7 +669,6 @@ bench_negate(N,T) -> bench_negate(N,T,1000).
 bench_negate(N,T,L) -> bench(N,fun(A,_) -> matrix:negate(A) end, T, L).
 bench_negate_table() -> bench_table("matrix:negate/1", 
 				    fun(A,_) -> matrix:negate(A) end).
-
     
 %%
 %% Bench loop / table
@@ -673,7 +694,7 @@ bench(N,F,T,L) ->
     bench(N,F,T,L,false,false).
 
 bench(N,F,T,L,At,Bt) ->
-    erase(),
+    matrix:clear_counters(),
     A0 = matrix:uniform(N,N,T),
     A = if At -> matrix:transpose(A0);
 	   true -> A0
@@ -683,12 +704,25 @@ bench(N,F,T,L,At,Bt) ->
 	   true -> B0
 	end,
     T0 = erlang:monotonic_time(),
-    R = bench_loop(L,F,A,B,undefined),
+    _R = bench_loop(L,F,A,B,undefined),
     T1 = erlang:monotonic_time(),
     Time = erlang:convert_time_unit(T1 - T0, native, microsecond),
     Ts = Time/1000000,
-    io:format("|   ~wx~w   | ~.2f  |  t=~fs\n",
-	      [N, N, (L/Ts), Ts]).
+    io:format("|   ~wx~w   | ~.2f  |\n", [N, N, (L/Ts)]).
+
+
+bench_transform(N,F,T,L,Vt) ->
+    matrix:clear_counters(),
+    Transform = matrix:uniform(4,4,T),
+    V = if Vt -> matrix:transpose(matrix:uniform(N,4,T));
+	   true -> matrix:uniform(4,N,T)
+	end,
+    T0 = erlang:monotonic_time(),
+    _R = bench_loop(L,F,Transform,V,undefined),
+    T1 = erlang:monotonic_time(),
+    Time = erlang:convert_time_unit(T1 - T0, native, microsecond),
+    Ts = Time/1000000,
+    io:format("|   ~w   | ~.2f  |\n", [N, (L/Ts)]).
     
 bench_proc(N,F,T,L) ->
     SELF = self(),
@@ -727,6 +761,3 @@ bench_loop(0, _F, _, _, _) ->
 bench_loop(I, F, A, B, _) ->
     C = F(A,B),
     bench_loop(I-1,F,A,B,C).
-
-
-
