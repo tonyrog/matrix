@@ -51,13 +51,18 @@
 %% internal nifs
 -export([add_/2,add_/3]).
 -export([multiply_/2, multiply_/3]).
+-export([scale_/2, scale_/3]).
+-export([negate_/1, negate_/2]).
 -export([multiply_large/2, multiply_large/3]).
+-export([sigmoid_/1]).
+-export([sigmoid_prime_/1]).
 -export([l2pool_/5, l2pool_/6]).
 -export([maxpool_/5, maxpool_/6]).
 -export([filter_/4, filter_/5]).
 -export([apply1/3]).
 
 %% internal use
+-export([encode_type/1]).
 -export([element_/3]).
 -export([type_combine/2]).
 -export([elem_to_bin/2]).
@@ -92,23 +97,22 @@ init() ->
     Nif = filename:join(code:priv_dir(matrix), "matrix_drv"),
     erlang:load_nif(Nif, 0).
 
--spec create(N::unsigned(), M::unsigned(), T::matrix_type(), Es::iolist()) ->
+-spec create(N::unsigned(), M::unsigned(), T::matrix_type(), Data::iolist()) ->
 		 matrix().
 
-create(N,M,T,Es) ->
-    create(N,M,T,true,Es).
+create(N,M,T,Data) ->
+    create(N,M,T,true,Data).
 
-create(N,M,Type,RowMajor,Es) when is_atom(Type) ->
-    create(N,M,encode_type(Type),RowMajor,Es);
+create(N,M,Type,RowMajor,Data) when is_atom(Type) ->
+    create(N,M,encode_type(Type),RowMajor,Data);
 create(N,M,T,RowMajor,Data) when is_integer(N), N>0,
 				 is_integer(M), M>0,
 				 is_integer(T),
-				 is_list(Data) ->
+				 (is_list(Data) orelse is_binary(Data)) ->
     create_(N,M,T,RowMajor,Data).
 
 create_(N,M,T,RowMajor,Data) ->
     matrix_ref:create(N,M,T,RowMajor,Data).
-
 
 -spec copy(Src::matrix()) ->  matrix().
 copy(_Src) ->
@@ -511,21 +515,36 @@ times_(_X,_Y,_Dst) ->
 %%
 -spec negate(A::matrix()) -> matrix().
 negate(X) ->
+    negate_(X).
+
+negate_(X) ->
     matrix_ref:negate(X).
 
 -spec negate(X::matrix(),Dst::matrix()) -> matrix().
-negate(_X, _Dst) ->
+negate(X, Dst) ->
+    negate_(X, Dst).
+
+negate_(_X, _Dst) ->
     ?nif_stub().
 
 %%
 %% Scale a matrix by a scalar number
 %%
--spec scale(F::number(), X::matrix()) -> matrix().
-scale(F, X) when is_number(F) orelse ?is_complex(F) ->
+-spec scale(F::scalar(), X::matrix()) -> matrix().
+scale(F, X) when F == 1 -> X;
+scale(F, X) when F == 0 -> zero(size(X),type(X));
+scale({R,I},X) when R == 0, I == 0 -> zero(size(X),type(X));
+scale({R,I},X) when R == 1, I == 0 -> X;
+scale(F, X) when is_number(F) orelse ?is_complex(F) -> scale_(F, X).
+
+scale_(F, X) ->
     matrix_ref:scale(F, X).
 
 -spec scale(F::number(), X::matrix(), Dst::matrix()) -> matrix().
-scale(_F, _X, _Dst) ->
+scale(F, X, Dst) ->
+    scale_(F, X, Dst).
+
+scale_(_F, _X, _Dst) ->
     ?nif_stub().
 
 %%
@@ -786,10 +805,16 @@ argmax(A,I) ->
 
 -spec sigmoid(A::matrix()) -> matrix().
 sigmoid(X) ->
+    sigmoid_(X).
+
+sigmoid_(X) ->
     matrix_ref:sigmoid(X).
 
 -spec sigmoid_prime(A::matrix()) -> matrix().
 sigmoid_prime(X) ->
+    sigmoid_prime_(X).
+
+sigmoid_prime_(X) ->
     matrix_ref:sigmoid_prime(X).
 
 -spec rectifier(A::matrix()) -> matrix().

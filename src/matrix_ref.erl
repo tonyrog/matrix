@@ -27,6 +27,7 @@
 -export([filter/2, filter/4]).
 %%
 -export([transpose_list/1]).
+-export([ktop/2]).
 
 -import(matrix, [elem_to_bin/2, type_combine/2]).
 
@@ -279,6 +280,14 @@ max_([A|Es], Max) ->
     max_(Es, scalar_max(A,Max));
 max_([], Max) -> Max.
     
+
+%% return k-top positions as an index-list, A is matrix of form 1xM
+ktop(A, K) ->
+    {1,M} = matrix:size(A),
+    [V] = matrix:to_list(A),
+    Vi = lists:sort(fun(X,Y) -> X>Y end,lists:zip(V, lists:seq(1,M))),
+    [I || {_,I} <- lists:sublist(Vi,K)].
+
 
 scalar_zero(?complex128) -> {0.0,0.0};
 scalar_zero(?complex64) -> {0.0,0.0};
