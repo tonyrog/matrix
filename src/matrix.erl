@@ -20,8 +20,10 @@
 -export([add/2,add/3]).
 -export([subtract/2,subtract/3]).
 -export([multiply/2,multiply/3]).
+-export([kmultiply/3]).
 -export([mulsum/2]).
 -export([times/2,times/3]).
+-export([ktimes/3]).
 -export([scale/2, scale/3]).
 -export([square/1]).
 -export([pow/2]).
@@ -32,15 +34,18 @@
 -export([is_float_matrix/1]).
 -export([is_complex_matrix/1]).
 -export([element/3]).
--export([sigmoid/1]).
--export([sigmoid_prime/1]).
--export([rectifier/1]).
--export([softplus/1]).
+-export([sigmoid/1, sigmoid_prime/1]).
+-export([relu/1, relu_prime/1]).
+-export([leaky_relu/1, leaky_relu_prime/1]).
+-export([linear/1, linear_prime/1]).
+-export([tanh/1, tanh_prime/1]).
+-export([softplus/1,softplus_prime/1]).
 -export([transpose/1]).
 -export([transpose_data/1, transpose_data/2]).
 -export([print/1, print/2, format/1, format/2]).
 -export([row/2, column/2, submatrix/5]).
 -export([argmax/1, argmax/2]).
+-export([topk/2]).
 -export([convolve/4, convolve/6]).
 -export([rconvolve/4, rconvolve/6]).
 -export([maxpool/3, maxpool/5, maxpool/6]).
@@ -59,7 +64,7 @@
 -export([l2pool_/5, l2pool_/6]).
 -export([maxpool_/5, maxpool_/6]).
 -export([filter_/4, filter_/5]).
--export([apply1/3]).
+-export([apply1_/2, apply1_/3]).
 
 %% internal use
 -export([encode_type/1]).
@@ -232,7 +237,7 @@ normal(N,M,T) when is_integer(N), N >= 1,
 		   is_integer(M), M >= 1 ->
     Type = encode_type(T),
     A = create(N,M,Type,true,[]),
-    apply1(A, A, normal).
+    apply1_(normal, A, A).
 
 -spec uniform({N::unsigned(), M::unsigned()}) -> matrix().
 uniform({N,M}) ->
@@ -247,7 +252,7 @@ uniform(N,M,T) when is_integer(N), N >= 1,
 		    is_integer(M), M >= 1 ->
     Type = encode_type(T),
     A = create(N,M,Type,true,[]),
-    apply1(A, A, uniform).
+    apply1_(uniform, A, A).
 
 -spec zero({N::unsigned(), M::unsigned()}) -> matrix().
 zero({N,M}) -> zero(N,M,float64).
@@ -260,7 +265,7 @@ zero(N,M,Type) when is_integer(N), N >= 1,
 		    is_integer(M), M >= 1 ->
     T = encode_type(Type),
     A = create(N,M,T,true,[]),
-    apply1(A, A, zero).
+    apply1_(zero, A, A).
 
 -spec one({N::unsigned(), M::unsigned()}) -> matrix().
 one({N,M}) -> one(N,M,float64).
@@ -273,7 +278,7 @@ one(N,M,Type) when is_integer(N), N >= 1,
 		 is_integer(M), M >= 1 ->
     T = encode_type(Type),
     A = create(N,M,T,true,[]),
-    apply1(A, A, one).
+    apply1_(one, A, A).
 
 -spec constant(N::unsigned(), M::unsigned(),C::scalar()) ->
 		      matrix().
@@ -306,10 +311,15 @@ identity(N,M,Type) when is_integer(N), N >= 1,
 			is_integer(M), M >= 1 ->
     T = encode_type(Type),
     A = create(N,M,T,true,[]),
-    apply1(A, A, identity).
+    apply1_(identity, A, A).
 
--spec apply1(A::matrix(), Dst::matrix(), Op::atom()) -> matrix().
-apply1(_A, _Dst, _Op) ->
+
+-spec apply1_(A::matrix(), Op::atom()) -> matrix().
+apply1_(_A, _Op) ->
+    ?nif_stub(). 
+
+-spec apply1_(A::matrix(), Dst::matrix(), Op::atom()) -> matrix().
+apply1_(_A, _Dst, _Op) ->
     ?nif_stub(). 
 
 %% return dimension in row major order
@@ -608,6 +618,38 @@ multiply_(A, B, RowMajor) when is_boolean(RowMajor) ->
 multiply_(_A, _B, _Dst) ->
     ?nif_stub().
 
+%% get the top K elements from A as a integer matrix Kwith indices
+-spec topk(A::matrix(), K::unsigned()) -> matrix().
+topk(A, K) ->
+    matrix_ref:topk(A, K).
+
+%%
+%% Multiply two matrices but only in rows from K
+%%
+-spec kmultiply(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
+
+kmultiply(K, A, B) ->
+    ?count_op({kmultiply,K},A,B),
+    kmultiply_(K, A,B).
+
+-spec kmultiply_(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
+kmultiply_(K, A,B) ->
+    matrix_ref:kmultiply(K, A,B).
+
+%%
+%% Multiply two matrices element wise, but only in rows from K
+%%
+-spec ktimes(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
+
+ktimes(K, A, B) ->
+    ?count_op({ktimes,K},A,B),
+    ktimes_(K, A,B).
+
+-spec ktimes_(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
+ktimes_(K, A,B) ->
+    matrix_ref:ktimes(K,A,B).
+
+    
 %% Load column J in A into row I of Dst
 %% DESTRUCTIVE
 load_column_as_row(J, A, I, Dst) ->
@@ -814,16 +856,48 @@ sigmoid_(X) ->
 sigmoid_prime(X) ->
     sigmoid_prime_(X).
 
-sigmoid_prime_(X) ->
-    matrix_ref:sigmoid_prime(X).
+sigmoid_prime_(A) ->
+    matrix_ref:sigmoid_prime(A).
 
--spec rectifier(A::matrix()) -> matrix().
-rectifier(X) ->
-    matrix_ref:rectifier(X).
+-spec relu(A::matrix()) -> matrix().
+relu(A) ->
+    apply1_(relu, A).
+
+-spec relu_prime(A::matrix()) -> matrix().
+relu_prime(A) ->
+    apply1_(relu_prime, A).
+
+-spec leaky_relu(A::matrix()) -> matrix().
+leaky_relu(A) ->
+    apply1_(leaky_relu, A).
+
+-spec leaky_relu_prime(A::matrix()) -> matrix().
+leaky_relu_prime(A) ->
+    apply1_(leaky_relu_prime, A).
+
+-spec linear(A::matrix()) -> matrix().
+linear(A) -> 
+    A.
+
+-spec linear_prime(A::matrix()) -> matrix().
+linear_prime(A) ->
+    one(size(A), type(A)).
 
 -spec softplus(A::matrix()) -> matrix().
-softplus(X) ->
-    matrix_ref:softplus(X).
+softplus(A) ->
+    apply1_(softplus, A).
+
+-spec softplus_prime(A::matrix()) -> matrix().
+softplus_prime(A) ->
+    apply1_(softplus_prime, A).
+
+-spec tanh(A::matrix()) -> matrix().
+tanh(A) ->
+    apply1_(tanh, A).
+
+-spec tanh_prime(A::matrix()) -> matrix().
+tanh_prime(A) ->
+    apply1_(tanh_prime, A).
 
 print(A) ->
     io:put_chars(format(A)).

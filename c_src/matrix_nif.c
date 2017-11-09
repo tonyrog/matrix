@@ -44,11 +44,19 @@ typedef enum {
     IDENTITY,
     SIGMOID,
     SIGMOID_PRIME,
-    RECTIFIER,
+    SOFTPLUS,
+    SOFTPLUS_PRIME,
+    RELU,
+    RELU_PRIME,
+    LEAKY_RELU,
+    LEAKY_RELU_PRIME,    
     TANH,
+    TANH_PRIME,
     UNIFORM,
     NORMAL,
 } unary_operation_t;
+
+#define NUM_UNARY_OPERATIONS (NORMAL+1)
 
 typedef enum {
     PLUS,
@@ -314,7 +322,7 @@ static ERL_NIF_TERM matrix_sigmoid(ErlNifEnv* env, int argc,
 				   const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_sigmoid_prime(ErlNifEnv* env, int argc,
 					 const ERL_NIF_TERM argv[]);
-static ERL_NIF_TERM matrix_rectifier(ErlNifEnv* env, int argc,
+static ERL_NIF_TERM matrix_relu(ErlNifEnv* env, int argc,
 				     const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_copy(ErlNifEnv* env, int argc,
 				const ERL_NIF_TERM argv[]);
@@ -360,12 +368,13 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("transpose_data",2, matrix_transpose_data),
     NIF_FUNC("sigmoid_",      1, matrix_sigmoid),
     NIF_FUNC("sigmoid_prime_",1, matrix_sigmoid_prime),
-    NIF_FUNC("rectifier",     1, matrix_rectifier),
+    NIF_FUNC("relu",          1, matrix_relu),
     NIF_FUNC("copy",          1, matrix_copy),
     NIF_FUNC("copy",          2, matrix_copy),
     NIF_FUNC("copy",          4, matrix_copy),
     NIF_FUNC("fill",          2, matrix_fill),
-    NIF_FUNC("apply1",        3, matrix_apply1),
+    NIF_FUNC("apply1_",       2, matrix_apply1),
+    NIF_FUNC("apply1_",       3, matrix_apply1),
     NIF_FUNC("argmax",        2, matrix_argmax),
 };
 
@@ -393,8 +402,14 @@ typedef struct _rand_state_t {
 DECL_ATOM(matrix);
 DECL_ATOM(sigmoid);
 DECL_ATOM(sigmoid_prime);
-DECL_ATOM(rectifier);
+DECL_ATOM(relu);
+DECL_ATOM(relu_prime);
+DECL_ATOM(leaky_relu);
+DECL_ATOM(leaky_relu_prime);
 DECL_ATOM(tanh);
+DECL_ATOM(tanh_prime);
+DECL_ATOM(softplus);
+DECL_ATOM(softplus_prime);
 DECL_ATOM(negate);
 DECL_ATOM(uniform);
 DECL_ATOM(normal);
@@ -785,12 +800,12 @@ complex128_t complex128_max(complex128_t a, complex128_t b)
     return (cabs(a) > cabs(b)) ? a : b;
 }
 
-#define cop_sigmoid(x)    (1.0/(1.0 + cexp(-(x))))
+#define cop_sigmoid(z)    (1.0/(1.0 + cexp(-(z))))
 
-static inline complex128_t cop_sigmoid_prime(complex128_t x)
+static inline complex128_t cop_sigmoid_prime(complex128_t z)
 {
-    complex128_t z = cop_sigmoid(x);
-    return z*(1-z);
+    complex128_t z1 = cop_sigmoid(z);
+    return z1*(1-z1);
 }
 
 void copy_circular(uint8_t* dst, size_t n, uint8_t* src, size_t m)
@@ -1073,6 +1088,15 @@ complex128_t normal_c128(rand_alg_t a, float64_t m, float64_t s)
 // supported vector operators: +, -, *, /, unary minus, ^, |, &, ~, %.
 // shift operators: << and >> for integer vectors
 // comparison operators: ==, !=, <, <=, >, >=
+// nullary
+#define op_zero() (0)
+#define op_one()  (1)
+
+// unary
+#define op_neg(x)     (-(x))
+#define op_bnot(x)    (~(x))
+
+// binary
 #define op_add(x,y)   ((x)+(y))
 #define op_sub(x,y)   ((x)-(y))
 #define op_mul(x,y)   ((x)*(y))
@@ -1081,8 +1105,6 @@ complex128_t normal_c128(rand_alg_t a, float64_t m, float64_t s)
 #define op_bxor(x,y)  ((x)^(y))
 #define op_bor(x,y)   ((x)|(y))
 #define op_band(x,y)  ((x)&(y))
-#define op_neg(x)     (-(x))
-#define op_bnot(x)    (~(x))
 #define op_bsl(x,y)   ((x)<<(y))
 #define op_bsr(x,y)   ((x)>>(y))
 #define op_eq(x,y)    ((x)==(y))
@@ -1108,6 +1130,118 @@ static inline float64_t op_sigmoid_prime(float64_t x)
     return z*(1-z);
 }
 
+
+static void zero_int8(int8_t* xp, int8_t* yp) { UNUSED(xp); *yp = 0; }
+static void zero_int16(int16_t* xp, int16_t* yp) { UNUSED(xp); *yp = 0; }
+static void zero_int32(int32_t* xp, int32_t* yp) { UNUSED(xp); *yp = 0; }
+static void zero_int64(int64_t* xp, int64_t* yp) { UNUSED(xp); *yp = 0; }
+static void zero_float32(float32_t* xp, float32_t* yp) { UNUSED(xp); *yp = 0.0; }
+static void zero_float64(float64_t* xp, float64_t* yp) { UNUSED(xp); *yp = 0.0; }
+static void zero_complex64(complex64_t* xp, complex64_t* yp) { UNUSED(xp); *yp = CMPLXF(0.0,0.0); }
+static void zero_complex128(complex128_t* xp, complex128_t* yp) { UNUSED(xp); *yp = CMPLX(0.0,0.0); }
+
+static void one_int8(int8_t* xp,int8_t* yp) { UNUSED(xp); *yp = 1; }
+static void one_int16(int16_t* xp, int16_t* yp) { UNUSED(xp); *yp = 1; }
+static void one_int32(int32_t* xp, int32_t* yp) { UNUSED(xp); *yp = 1; }
+static void one_int64(int64_t* xp, int64_t* yp) { UNUSED(xp); *yp = 1; }
+static void one_float32(float32_t* xp, float32_t* yp) { UNUSED(xp); *yp = 1.0; }
+static void one_float64(float64_t* xp, float64_t* yp) { UNUSED(xp); *yp = 1.0; }
+static void one_complex64(complex64_t* xp, complex64_t* yp) { UNUSED(xp); *yp = CMPLXF(1.0,0.0); }
+static void one_complex128(complex128_t* xp, complex128_t* yp) { UNUSED(xp); *yp = CMPLX(1.0,0.0); }
+
+static void copy_int8(int8_t* xp, int8_t* yp) { *yp = *xp; }
+static void copy_int16(int16_t* xp, int16_t* yp) { *yp = *xp; }
+static void copy_int32(int32_t* xp, int32_t* yp) { *yp = *xp; }
+static void copy_int64(int64_t* xp, int64_t* yp) { *yp = *xp; }
+static void copy_float32(float32_t* xp, float32_t* yp) { *yp = *xp; }
+static void copy_float64(float64_t* xp, float64_t* yp) { *yp = *xp; }
+static void copy_complex64(complex64_t* xp, complex64_t* yp) { *yp = *xp; }
+static void copy_complex128(complex128_t* xp, complex128_t* yp) { *yp = *xp; }
+
+static void negate_int8(int8_t* xp, int8_t* yp) { *yp = op_neg(*xp); }
+static void negate_int16(int16_t* xp, int16_t* yp) { *yp = op_neg(*xp); }
+static void negate_int32(int32_t* xp, int32_t* yp) { *yp = op_neg(*xp); }
+static void negate_int64(int64_t* xp, int64_t* yp) { *yp = op_neg(*xp); }
+static void negate_float32(float32_t* xp, float32_t* yp) { *yp = op_neg(*xp); }
+static void negate_float64(float64_t* xp, float64_t* yp) { *yp = op_neg(*xp); }
+static void negate_complex64(complex64_t* xp, complex64_t* yp) { *yp = op_neg(*xp); }
+static void negate_complex128(complex128_t* xp, complex128_t* yp) { *yp = op_neg(*xp); }
+
+static void sigmoid_int8(int8_t* xp, int8_t* yp) { *yp = op_sigmoid(*xp); }
+static void sigmoid_int16(int16_t* xp, int16_t* yp) { *yp = op_sigmoid(*xp); }
+static void sigmoid_int32(int32_t* xp, int32_t* yp) { *yp = op_sigmoid(*xp); }
+static void sigmoid_int64(int64_t* xp, int64_t* yp) { *yp = op_sigmoid(*xp); }
+static void sigmoid_float32(float32_t* xp, float32_t* yp) { *yp = op_sigmoid(*xp); }
+static void sigmoid_float64(float64_t* xp, float64_t* yp) { *yp = op_sigmoid(*xp); }
+static void sigmoid_complex64(complex64_t* xp, complex64_t* yp) { *yp = cop_sigmoid(*xp); }
+static void sigmoid_complex128(complex128_t* xp,complex128_t* yp) { *yp = cop_sigmoid(*xp); }
+
+static void (*unary_int8[NUM_UNARY_OPERATIONS])(int8_t *,int8_t *)  = {
+    [ZERO] = zero_int8,
+    [ONE]  = one_int8,
+    [COPY] = copy_int8,
+    [NEGATE] = negate_int8,
+    [SIGMOID] = sigmoid_int8,
+};
+
+static void (*unary_int16[NUM_UNARY_OPERATIONS])(int16_t *,int16_t *)  = {
+    [ZERO] = zero_int16,
+    [ONE]  = one_int16,
+    [COPY] = copy_int16,
+    [NEGATE] = negate_int16,
+    [SIGMOID] = sigmoid_int16,
+};
+
+static void (*unary_int32[NUM_UNARY_OPERATIONS])(int32_t*,int32_t*)  = {
+    [ZERO] = zero_int32,
+    [ONE]  = one_int32,
+    [COPY] = copy_int32,
+    [NEGATE] = negate_int32,    
+    [SIGMOID] = sigmoid_int32,
+};
+
+static void (*unary_int64[NUM_UNARY_OPERATIONS])(int64_t*,int64_t*)  = {
+    [ZERO] = zero_int64,
+    [ONE]  = one_int64,
+    [COPY] = copy_int64,
+    [NEGATE] = negate_int64,
+    [SIGMOID] = sigmoid_int64,    
+};
+
+static void (*unary_float32[NUM_UNARY_OPERATIONS])(float32_t*,float32_t*)  = {
+    [ZERO] = zero_float32,
+    [ONE]  = one_float32,
+    [COPY] = copy_float32,
+    [NEGATE] = negate_float32,
+    [SIGMOID] = sigmoid_float32,
+};
+
+static void (*unary_float64[NUM_UNARY_OPERATIONS])(float64_t*,float64_t*)  = {
+    [ZERO] = zero_float64,
+    [ONE]  = one_float64,
+    [COPY] = copy_float64,
+    [NEGATE] = negate_float64,    
+    [SIGMOID] = sigmoid_float64,    
+};
+
+static void (*unary_complex64[NUM_UNARY_OPERATIONS])(complex64_t*,complex64_t*)  = {
+    [ZERO] = zero_complex64,
+    [ONE]  = one_complex64,
+    [COPY] = copy_complex64,
+    [NEGATE] = negate_complex64,
+    [SIGMOID] = sigmoid_complex64,
+};
+
+static void (*unary_complex128[NUM_UNARY_OPERATIONS])(complex128_t*,complex128_t*)  = {
+    [ZERO] = zero_complex128,
+    [ONE]  = one_complex128,
+    [COPY] = copy_complex128,
+    [NEGATE] = negate_complex128,
+    [SIGMOID] = sigmoid_complex128,    
+};
+
+typedef void (*unaryf_t)(byte_t*, byte_t*);
+
 ///////////////////////////////////////////////////////////////////////////////
 //  matrix_op.i
 //  (soon generated) contain all operations
@@ -1119,7 +1253,45 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 // a more general function for unary operations but a lot slower
 ///////////////////////////////////////////////////////////////////////////////
 
-static void apply1(int func,
+// at == ct
+static void t_apply1(unary_operation_t func,
+		     matrix_type_t at, byte_t* ap, int au, int av,
+		     matrix_type_t ct, byte_t* cp, int cu, int cv,
+		     size_t n, size_t m)
+{
+    size_t i, j;
+    unaryf_t unaryf;
+
+    au = size_of_array(at,au);
+    av = size_of_array(at,av);
+    cu = size_of_array(ct,cu);
+    cv = size_of_array(ct,cv);
+
+    switch(at) {
+    case INT8:  unaryf = (unaryf_t) unary_int8[func]; break;
+    case INT16: unaryf = (unaryf_t) unary_int16[func]; break;
+    case INT32: unaryf = (unaryf_t) unary_int32[func]; break;
+    case INT64: unaryf = (unaryf_t) unary_int64[func]; break;
+    case FLOAT32: unaryf = (unaryf_t) unary_float32[func]; break;
+    case FLOAT64: unaryf = (unaryf_t) unary_float64[func]; break;
+    case COMPLEX64: unaryf = (unaryf_t) unary_complex64[func]; break;
+    case COMPLEX128: unaryf = (unaryf_t) unary_complex128[func]; break;
+    }
+    for (i=0; i<n; i++) {
+	byte_t* ap1 = ap;
+	byte_t* cp1 = cp;
+	for (j = 0; j < m; j++) {
+	    unaryf(ap1, cp1);
+	    ap1 += av;
+	    cp1 += cv;
+	}
+	ap += au;
+	cp += cu;
+    }
+}
+
+
+static void apply1(unary_operation_t func,
 		   matrix_type_t at, byte_t* ap, int au, int av,
 		   matrix_type_t ct, byte_t* cp, int cu, int cv,
 		   size_t n, size_t m)
@@ -1140,12 +1312,22 @@ static void apply1(int func,
 		float64_t c;
 		ap1 += av;
 		switch(func) {
-		case SIGMOID:       c = op_sigmoid(a); break;
-		case SIGMOID_PRIME: c = op_sigmoid_prime(a); break;
-		case RECTIFIER:     c = op_max(0,a); break;
+		case SIGMOID:        c = op_sigmoid(a); break;
+		case SIGMOID_PRIME:  c = op_sigmoid_prime(a); break;
+		case SOFTPLUS:       c = log(1.0+exp(a)); break;
+		case SOFTPLUS_PRIME: c = op_sigmoid(a); break;		    
+		case RELU:           c = op_max(0.0,a); break;
+		case RELU_PRIME:     c = (a>0.0)?1.0:0.0; break;
+		case LEAKY_RELU:     c = op_max(0.1*a,a); break;
+		case LEAKY_RELU_PRIME:  c = (a>0.0)?1.0:0.1; break;
 		case TANH:          c = tanh(a); break;
-		case NEGATE:        c = -a; break;
-		case COPY:          c = a;  break;
+		case TANH_PRIME: {
+		    double th = tanh(a);
+		    c = 1.0-th*th;
+		    break;
+		}
+		case NEGATE:  c = -a; break;
+		case COPY:    c = a;  break;
 		case UNIFORM: c = uniform_64(MATRIX_RAND_ALG); break;
 		case NORMAL:  c = normal_64(MATRIX_RAND_ALG,0.0,1.0); break;
 		case ONE:     c = 1.0; break;
@@ -1169,11 +1351,41 @@ static void apply1(int func,
 		complex128_t c;
 		ap1 += av;
 		switch(func) {
-		case SIGMOID:       c = cop_sigmoid(a); break;
-		case SIGMOID_PRIME: c = cop_sigmoid_prime(a); break;
-		case RECTIFIER:
-		    c = CMPLX(op_max(0.0,creal(a)),op_max(0.0,cimag(a))); break;
+		case SIGMOID:        c = cop_sigmoid(a); break;
+		case SIGMOID_PRIME:  c = cop_sigmoid_prime(a); break;
+		case SOFTPLUS:       c = log(1.0+cexp(a)); break;
+		case SOFTPLUS_PRIME: c = cop_sigmoid(a); break;
+		case RELU: {
+		    float64_t ar = creal(a);
+		    float64_t ai = cimag(a);
+		    c = CMPLX(op_max(0.0,ar),op_max(0.0,ai));
+		    break;
+		}
+		case RELU_PRIME: {
+		    float64_t ar = creal(a);
+		    float64_t ai = cimag(a);
+		    c = CMPLX(ar>0.0?1.0:0.0,
+			      ai>0?1.0:0.0);
+		    break;
+		}
+		case LEAKY_RELU: {
+		    float64_t ar = creal(a);
+		    float64_t ai = cimag(a);
+		    c = CMPLX(op_max(0.1*ar,ar),op_max(0.1*ai,ai));
+		    break;
+		}
+		case LEAKY_RELU_PRIME: {
+		    float64_t ar = creal(a);
+		    float64_t ai = cimag(a);
+		    c = CMPLX(ar>0.0?1.0:0.1,ai>0.0?1.0:0.1);
+		    break;
+		}
 		case TANH:          c = ctanh(a); break;
+		case TANH_PRIME: {
+		    complex128_t cth = ctanh(a);
+		    c = 1-cth*cth;
+		    break;
+		}
 		case NEGATE:        c = -a; break;
 		case COPY:          c = a; break;
 		case UNIFORM:  c = uniform_c128(MATRIX_RAND_ALG); break;
@@ -1199,16 +1411,27 @@ static void apply1(int func,
 		int64_t c;
 		ap1 += av;
 		switch(func) {
-		case SIGMOID:   c = op_sigmoid(a); break;
-		case SIGMOID_PRIME: c = op_sigmoid_prime(a); break;
-		case RECTIFIER: c = op_max(0,a); break;
-		case TANH:      c = tanh(a); break;
+		case SIGMOID:        c = op_sigmoid(a); break;
+		case SIGMOID_PRIME:  c = op_sigmoid_prime(a); break;
+		case SOFTPLUS:       c = log(1+exp(a)); break;
+		case SOFTPLUS_PRIME: c = op_sigmoid(a); break;		    
+		case RELU:           c = op_max(0,a); break;
+		case RELU_PRIME:     c = (a>0)?1:0; break;
+		case LEAKY_RELU:     c = op_max(0.1*a,a); break;
+		case LEAKY_RELU_PRIME: c = (a>0)?1:0; break;
+		case TANH:           c = tanh(a); break;
+		case TANH_PRIME: {
+		    double th = tanh(a);
+		    c = 1-th*th;
+		    break;
+		}
 		case NEGATE:    c = -a; break;
 		case COPY:      c = a; break;
 		case UNIFORM:   c = rand_64(MATRIX_RAND_ALG); break;
 		case ONE:       c = 1; break;
 		case ZERO:      c = 0; break;
 		case IDENTITY:  c = (i==j); break;
+		case NORMAL:    c = 0; break;
 		default:        c = 0; break;
 		}
 		write_int(ct, cp1, c);
@@ -1685,7 +1908,7 @@ static void rectifier(matrix_type_t at, byte_t* ap, int au, int av,
 	mt_rectifier(at, ap, au, av, cp, cu, cv, n, m);
     }
     else {
-	apply1(RECTIFIER, at, ap, au, av, ct, cp, cu, cv, n, m);
+	apply1(RELU, at, ap, au, av, ct, cp, cu, cv, n, m);
     }
 }
 
@@ -3631,8 +3854,8 @@ ERL_NIF_TERM matrix_sigmoid_prime(ErlNifEnv* env, int argc,
 }
 
 // rectifier a matrix
-ERL_NIF_TERM matrix_rectifier(ErlNifEnv* env, int argc,
-			      const ERL_NIF_TERM argv[])
+ERL_NIF_TERM matrix_relu(ErlNifEnv* env, int argc,
+			 const ERL_NIF_TERM argv[])
 {
     matrix_t a;
     matrix_t c;
@@ -3654,52 +3877,72 @@ ERL_NIF_TERM matrix_rectifier(ErlNifEnv* env, int argc,
 }
 
 
-// matrix_apply1
+// matrix_apply1 (func, Src [,Dst])
 ERL_NIF_TERM matrix_apply1(ErlNifEnv* env, int argc,
 			   const ERL_NIF_TERM argv[])
 {
-    matrix_t a;
-    matrix_t c;
+    matrix_t a, c;
     unary_operation_t op;
     UNUSED(argc);
 
-    if (!enif_is_atom(env, argv[2]))
+    if (!enif_is_atom(env, argv[0]))
 	return enif_make_badarg(env);
-    if (argv[2] == ATOM(sigmoid))            op = SIGMOID;
-    else if (argv[2] == ATOM(sigmoid_prime)) op = SIGMOID_PRIME;
-    else if (argv[2] == ATOM(rectifier))     op = RECTIFIER;
-    else if (argv[2] == ATOM(tanh))          op = TANH;
-    else if (argv[2] == ATOM(negate))        op = NEGATE;
-    else if (argv[2] == ATOM(copy))          op = COPY;
-    else if (argv[2] == ATOM(uniform))       op = UNIFORM;
-    else if (argv[2] == ATOM(normal))        op = NORMAL;
-    else if (argv[2] == ATOM(zero))          op = ZERO;
-    else if (argv[2] == ATOM(one))           op = ONE;
-    else if (argv[2] == ATOM(identity))      op = IDENTITY;
+    if (argv[0] == ATOM(sigmoid))            op = SIGMOID;
+    else if (argv[0] == ATOM(sigmoid_prime)) op = SIGMOID_PRIME;
+    else if (argv[0] == ATOM(relu))          op = RELU;
+    else if (argv[0] == ATOM(relu_prime))    op = RELU_PRIME;
+    else if (argv[0] == ATOM(leaky_relu))    op = LEAKY_RELU;
+    else if (argv[0] == ATOM(leaky_relu_prime)) op = LEAKY_RELU_PRIME;    
+    else if (argv[0] == ATOM(tanh))          op = TANH;
+    else if (argv[0] == ATOM(tanh_prime))    op = TANH_PRIME;
+    else if (argv[0] == ATOM(softplus))      op = SOFTPLUS;
+    else if (argv[0] == ATOM(softplus_prime)) op = SOFTPLUS_PRIME;
+    else if (argv[0] == ATOM(negate))        op = NEGATE;
+    else if (argv[0] == ATOM(copy))          op = COPY;
+    else if (argv[0] == ATOM(uniform))       op = UNIFORM;
+    else if (argv[0] == ATOM(normal))        op = NORMAL;
+    else if (argv[0] == ATOM(zero))          op = ZERO;
+    else if (argv[0] == ATOM(one))           op = ONE;
+    else if (argv[0] == ATOM(identity))      op = IDENTITY;
     else return enif_make_badarg(env);
-
-    if (!get_matrix(env, argv[0], &a))
-	return enif_make_badarg(env);
-    if (!get_matrix(env, argv[1], &c))
-	return enif_make_badarg(env);
-    if ((a.rowmajor == c.rowmajor) && ((a.n != c.n) || (a.m != c.m)))
-	return enif_make_badarg(env);
-    else if ((a.rowmajor != c.rowmajor) && ((a.n != c.m) || (a.m != c.n)))
+    
+    if (!get_matrix(env, argv[1], &a))
 	return enif_make_badarg(env);
 
-    matrix_rw_lock(&a, &c);
-    if (c.rowmajor == a.rowmajor)
+    if (argc == 2) {
+	ERL_NIF_TERM bin;
+	if (!create_matrix(env,a.n,a.m,a.rowmajor,a.type,&c,&bin))
+	    return enif_make_badarg(env);
+	matrix_r_lock(&a);
 	apply1(op,
 	       a.type, a.first, a.stride, 1,
 	       c.type, c.first, c.stride, 1,
 	       c.n, c.m);
-    else
-	apply1(op,
-	       a.type, a.first, 1, a.stride,
-	       c.type, c.first, c.stride, 1,
-	       c.n, c.m);
-    matrix_rw_unlock(&a, &c);
-    return argv[1];
+	matrix_r_unlock(&a);
+	return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+    }
+    else {
+	if (!get_matrix(env, argv[2], &c))
+	    return enif_make_badarg(env);
+	if ((a.rowmajor == c.rowmajor) && ((a.n != c.n) || (a.m != c.m)))
+	    return enif_make_badarg(env);
+	else if ((a.rowmajor != c.rowmajor) && ((a.n != c.m) || (a.m != c.n)))
+	    return enif_make_badarg(env);
+
+	matrix_rw_lock(&a, &c);
+	if (c.rowmajor == a.rowmajor)
+	    apply1(op,
+		   a.type, a.first, a.stride, 1,
+		   c.type, c.first, c.stride, 1,
+		   c.n, c.m);
+	else
+	    apply1(op,
+		   a.type, a.first, 1, a.stride,
+		   c.type, c.first, c.stride, 1,
+		   c.n, c.m);
+	matrix_rw_unlock(&a, &c);
+	return argv[1];
+    }
 }
 
 // find argmax in matrix
@@ -3821,8 +4064,14 @@ static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     LOAD_ATOM(matrix);
     LOAD_ATOM(sigmoid);
     LOAD_ATOM(sigmoid_prime);
-    LOAD_ATOM(rectifier);
+    LOAD_ATOM(relu);
+    LOAD_ATOM(relu_prime);
+    LOAD_ATOM(leaky_relu);
+    LOAD_ATOM(leaky_relu_prime);    
     LOAD_ATOM(tanh);
+    LOAD_ATOM(tanh_prime);
+    LOAD_ATOM(softplus);
+    LOAD_ATOM(softplus_prime);
     LOAD_ATOM(negate);
     LOAD_ATOM(uniform);
     LOAD_ATOM(normal);

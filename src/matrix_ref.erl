@@ -12,22 +12,24 @@
 -export([add/2]).
 -export([subtract/2]).
 -export([times/2]).
+-export([ktimes/3]).
 -export([multiply/2,multiply/3]).
+-export([kmultiply/3]).
 -export([scale/2]).
 -export([negate/1]).
 -export([mulsum/2]).
 -export([transpose_data/1]).
--export([rectifier/1]).
--export([sigmoid/1]).
--export([sigmoid_prime/1]).
--export([softplus/1]).
+-export([sigmoid/1, sigmoid_prime/1]).
+-export([softplus/1, softplus_prime/1]).
+-export([tanh/1, tanh_prime/1]).
+-export([relu/1, relu_prime/1]).
 -export([argmax/2]).
 -export([l2pool/5]).
 -export([maxpool/5]).
 -export([filter/2, filter/4]).
 %%
 -export([transpose_list/1]).
--export([ktop/2]).
+-export([topk/2]).
 
 -import(matrix, [elem_to_bin/2, type_combine/2]).
 
@@ -128,6 +130,50 @@ dot([A|As],[B|Bs],Sum) ->
 dot([], [], Sum) ->
     Sum.
 
+%%
+%% kmultiply multiply only rows Xk with Y where k is taken from K
+%% it is assumed here that K is a matrix with a single row of 
+%% integer indices.
+%% FIXME: topk can be computed over multiple columns
+%%
+-spec kmultiply(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
+
+kmultiply(K, X=#matrix{n=Nx,m=Mx,type=T1}, Y=#matrix{n=Ny,m=My,type=T2}) 
+  when Mx =:= Ny ->
+    T = type_combine(T1,T2),
+    Z = matrix:create(Nx,My,T,true,[]), %% result matrix
+    matrix:apply1_(zero, Z, Z),  %% set to zero
+    [Ks] = matrix:to_list(K),    %% Ks is the index list
+    lists:foreach(
+      fun(I) ->
+	      Xi = matrix:row(I, X),
+	      Zi = matrix:row(I, Z),
+	      matrix:multiply(Xi,Y,Zi)
+      end, Ks),
+    Z.
+
+%% ktimes multiply only rows Xi with Yi where i is taken from K
+%% it is assumed here that K is a matrix with a single row of 
+%% integer indices.
+%% FIXME: topk can be computed over multiple columns
+
+-spec ktimes(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
+
+ktimes(K, X=#matrix{n=Nx,m=Mx,type=T1}, Y=#matrix{n=Ny,m=My,type=T2}) 
+  when Nx =:= Ny, Mx =:= My ->
+    T = type_combine(T1,T2),
+    Z = matrix:create(Nx,My,T,true,[]), %% result matrix
+    matrix:apply1_(zero, Z, Z),         %% set to zero
+    [Ks] = matrix:to_list(K),           %% Ks is the index list
+    lists:foreach(
+      fun(I) ->
+	      Xi = matrix:row(I, X),
+	      Yi = matrix:row(I, Y),
+	      Zi = matrix:row(I, Z),
+	      matrix:times(Xi,Yi,Zi)
+      end, Ks),
+    Z.
+
 -spec mulsum(X::matrix(), Y::matrix()) -> number().
 
 mulsum(X,Y) when ?is_complex_matrix(X) orelse ?is_complex_matrix(Y) ->
@@ -189,15 +235,35 @@ sigmoid_prime(X=#matrix{n=N,m=M,type=T}) ->
     Es = map_elems(fun(Xij) -> elem_to_bin(T,sigmoid_prime__(Xij)) end, X),
     matrix:create(N,M,T,true,Es).
 
--spec rectifier(A::matrix()) -> matrix().
-rectifier(X=#matrix{n=N,m=M,type=T}) ->
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_rectifier(Xij)) end, X),
+-spec relu(A::matrix()) -> matrix().
+relu(X=#matrix{n=N,m=M,type=T}) ->
+    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_relu(Xij)) end, X),
+    matrix:create(N,M,T,true,Es).
+
+-spec relu_prime(A::matrix()) -> matrix().
+relu_prime(X=#matrix{n=N,m=M,type=T}) ->
+    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_relu_prime(Xij)) end, X),
     matrix:create(N,M,T,true,Es).
 
 -spec softplus(A::matrix()) -> matrix().
 softplus(X=#matrix{n=N,m=M,type=T}) ->
     Es = map_elems(fun(Xij) -> elem_to_bin(T,softplus__(Xij)) end, X),
     matrix:create(N,M,T,true,Es).
+
+-spec softplus_prime(A::matrix()) -> matrix().
+softplus_prime(X) ->
+    matrix:sigmoid(X).
+
+-spec tanh(A::matrix()) -> matrix().
+tanh(A=#matrix{n=N,m=M,type=T}) ->
+    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_tanh(Xij)) end, A),
+    matrix:create(N,M,T,true,Es).
+
+-spec tanh_prime(A::matrix()) -> matrix().
+tanh_prime(A) ->
+    TanH = matrix:tanh(A),
+    matrix:subtract(matrix:one(matrix:size(A),matrix:type(A)),
+		    matrix:multiply(TanH,TanH)).
 
 -spec l2pool(A::matrix(),N::unsigned(),M::unsigned(),
 	     Sn::unsigned(),Sm::unsigned()) -> matrix().
@@ -280,14 +346,25 @@ max_([A|Es], Max) ->
     max_(Es, scalar_max(A,Max));
 max_([], Max) -> Max.
     
+%% topk calculate the top K values positions for each column in A
+%% the result is stored in MxK matrix as rows
+%% example: 
+%%     | -2 1 |
+%% top(| 5  2 |, 2) = | 2 3 |
+%%     | 13 3 |       | 3 4 |
+%%     | 1  4 ]
 
-%% return k-top positions as an index-list, A is matrix of form 1xM
-ktop(A, K) ->
-    {1,M} = matrix:size(A),
-    [V] = matrix:to_list(A),
-    Vi = lists:sort(fun(X,Y) -> X>Y end,lists:zip(V, lists:seq(1,M))),
-    [I || {_,I} <- lists:sublist(Vi,K)].
+-spec topk(A::matrix(), K::unsigned()) -> matrix().
 
+topk(A, K) ->
+    {N,M} = matrix:size(A),
+    matrix:from_list(
+      [begin
+	   [V] = matrix:to_list(matrix:transpose(matrix:column(J, A))),
+	   Vi = lists:sort(fun({X,_},{Y,_}) -> scalar_abs(X)>scalar_abs(Y) end,
+			   lists:zip(V, lists:seq(1,N))),
+	   [I || {_,I} <- lists:sublist(Vi,K)]
+       end || J <- lists:seq(1,M)], int32).
 
 scalar_zero(?complex128) -> {0.0,0.0};
 scalar_zero(?complex64) -> {0.0,0.0};
@@ -324,10 +401,20 @@ scalar_multiply(A,B) when is_tuple(A), is_tuple(B) ->
 scalar_negate(A) when is_number(A) -> -A;
 scalar_negate(A) when is_tuple(A)  -> complex_negate(A).
 
-scalar_rectifier({X,_}) -> {max(X,0.0), 0.0};
-scalar_rectifier(X) when is_integer(X) -> max(X,0);
-scalar_rectifier(X) -> max(X,0.0).
+scalar_relu({X,_}) -> {max(X,0.0), 0.0};
+scalar_relu(X) when is_integer(X) -> max(X,0);
+scalar_relu(X) -> max(X,0.0).
 
+scalar_relu_prime(X) when is_integer(X), X > 0 -> 1;
+scalar_relu_prime(X) when is_float(X), X > 0 -> 1.0;
+scalar_relu_prime(X) when is_integer(X) -> 0;
+scalar_relu_prime(X) when is_float(X) -> 0.0;
+scalar_relu_prime({X,_}) when is_number(X), X > 0 -> {1.0, 0.0};
+scalar_relu_prime({X,_}) when is_number(X) -> {1.0, 0.0}.
+
+scalar_tanh(X) when is_number(X) -> math:tanh(X);
+scalar_tanh(X) when ?is_complex(X) -> complex_tanh(X).
+     
 
 scalar_max(A,B) when is_number(A), is_number(B) ->
     erlang:max(A,B);
@@ -338,9 +425,12 @@ scalar_max(A,B) ->
        true -> B
     end.
 
+scalar_abs(A) when is_number(A) -> abs(A);
+scalar_abs(A) when ?is_complex(A) -> complex_abs(A).
+    
+
 complex(R) when is_number(R) -> {float(R),0.0};
 complex(A={_R,_I}) -> A.
-
 
 complex_add({A,B},{E,F}) -> {A+E,B+F}.
 
@@ -350,9 +440,35 @@ complex_negate({A,B}) -> {-A,-B}.
 
 complex_multiply({A,B},{E,F}) -> {A*E-B*F, B*E+A*F}.
 
-complex_abs({A,B}) -> math:sqrt(A*A+B*B).
+complex_divide({A1,B1},{A2,B2}) ->
+    D = A2*A2 + B2*B2,
+    {(A1*A2 + B1*B2) / D, -((A1*B2 + A2*B1) / D)}.
 
-%% complex_arg({A,B}) -> math:atan2(B,A).
+complex_abs({A,B}) -> math:sqrt(A*A+B*B).
+complex_arg({A,B}) -> math:atan2(B,A).
+
+complex_exp({X,Y}) -> Ex = math:exp(X), {Ex*math:cos(Y),Ex*math:sin(Y)}.
+
+complex_sinh(Z) -> 
+    {A,B} = complex_subtract(complex_exp(Z),complex_exp(-Z)),
+    {A/2, B/2}.
+
+complex_cosh(Z) ->
+    {A,B} = complex_add(complex_exp(Z),complex_exp(-Z)),
+    {A/2, B/2}.
+
+%%  sinh(z) = (e^z - e^-z)/2, cosh(z) = (e^z + e^-z)/2
+%%  e^z = e^(x+iy) = e^x(cos(y)+isin(y))
+
+complex_tanh(Z) ->
+    %% = complex_divide(complex_sinh(Z), complex_cosh(Z)).
+    E1 = complex_exp(Z),
+    E2 = complex_exp(-Z),
+    {A1,B1} = complex_subtract(E1, E2),
+    {A2,B2} = complex_add(E1, E2),
+    complex_divide({A1/2,B1/2},{A2/2,B2/2}).
+
+
 
 %% transpose a list of list matrix representation
 -spec transpose_list(As::[[scalar()]]) -> [[scalar()]].
