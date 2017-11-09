@@ -34,7 +34,7 @@ typedef enum {
     COMPLEX128 = 9,
 } matrix_type_t;
 
-#define MAX_TYPE_NUMBER COMPLEX128
+#define NUM_TYPES (COMPLEX128+1)
 
 typedef enum {
     ZERO,
@@ -2602,7 +2602,7 @@ static int get_matrix(ErlNifEnv* env, ERL_NIF_TERM arg, matrix_t* mp)
     if (!enif_get_uint(env, elems[1], &mp->n)) return 0;
     if (!enif_get_uint(env, elems[2], &mp->m)) return 0;
     if (!enif_get_uint(env, elems[3], &type)) return 0;
-    if (type > MAX_TYPE_NUMBER) return 0;
+    if (type >= NUM_TYPES) return 0;
     mp->type = type;
     if (!enif_get_uint64(env, elems[4], &ptr)) return 0;
     if (!enif_get_uint(env, elems[5], &mp->offset)) return 0;
@@ -2679,7 +2679,7 @@ ERL_NIF_TERM matrix_create(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	return enif_make_badarg(env);
     if (!enif_get_uint(env, argv[2], &type))
 	return enif_make_badarg(env);
-    if (type > MAX_TYPE_NUMBER)
+    if (type >= NUM_TYPES)
 	return enif_make_badarg(env);
     if (!get_bool(env, argv[3], &rowmajor))
 	return enif_make_badarg(env);
