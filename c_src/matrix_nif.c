@@ -79,6 +79,16 @@ typedef double complex complex128_t;
 #define UNUSED(a) ((void) a)
 #define VOIDPTR(x) ((void*)&(x))
 
+#define int8_t_zero    (0)
+#define int16_t_zero   (0)
+#define int32_t_zero   (0)
+#define int64_t_zero   (0)
+#define float32_t_zero (0.0)
+#define float64_t_zero (0.0)
+#define complex64_t_zero CMPLXF(0.0,0.0)
+#define complex128_t_zero CMPLX(0.0,0.0)
+
+
 #ifdef USE_GCC_VECTOR
 #define VSIZE 16
 #define VELEMS(t) (VSIZE/sizeof(t))
@@ -106,10 +116,10 @@ typedef float64_t vcomplex128_t __attribute__ ((vector_size (VSIZE)));
 #define vint16_t_zero   vint16_t_const(0)
 #define vint32_t_zero   vint32_t_const(0)
 #define vint64_t_zero   vint64_t_const(0)
-#define vfloat32_t_zero vfloat32_t_const(0)
-#define vfloat64_t_zero vfloat64_t_const(0)
-#define vcomplex64_t_zero vcomplex64_t_const(CMPLX(0.0,0.0))
-#define vcomplex128_t_zero vcomplex128_t_const(CMPLXF(0.0,0.0))
+#define vfloat32_t_zero vfloat32_t_const(0.0)
+#define vfloat64_t_zero vfloat64_t_const(0.0)
+#define vcomplex64_t_zero vcomplex64_t_const(CMPLXF(0.0,0.0))
+#define vcomplex128_t_zero vcomplex128_t_const(CMPLX(0.0,0.0))
 #else
 
 #define VSIZE     1
@@ -131,19 +141,20 @@ typedef complex128_t vcomplex128_t;
 #define vint64_t_const(a)   (a)
 #define vfloat32_t_const(a) (a)
 #define vfloat64_t_const(a) (a)
-#define vcomplex64_t_const(a) CMPLX((a),(0))
-#define vcomplex128_t_const(a) CMPLXF((a),(0))
+#define vcomplex64_t_const(a) CMPLX((a),(0.0))
+#define vcomplex128_t_const(a) CMPLXF((a),(0.0))
 
 #define vint8_t_zero    vint8_t_const(0)
 #define vint16_t_zero   vint16_t_const(0)
 #define vint32_t_zero   vint32_t_const(0)
 #define vint64_t_zero   vint64_t_const(0)
-#define vfloat32_t_zero vfloat32_t_const(0)
-#define vfloat64_t_zero vfloat64_t_const(0)
-#define vcomplex64_t_zero vcomplex64_t_const(0)
-#define vcomplex128_t_zero vcomplex128_t_const(0)
+#define vfloat32_t_zero vfloat32_t_const(0.0)
+#define vfloat64_t_zero vfloat64_t_const(0.0)
+#define vcomplex64_t_zero vcomplex64_t_const(0.0)
+#define vcomplex128_t_zero vcomplex128_t_const(0.0)
 
 #endif
+
 
 #define is_aligned(x) ((((uintptr_t)(x)) & (ALIGN-1)) == 0)
 
@@ -173,6 +184,8 @@ typedef complex128_t vcomplex128_t;
 #define VTYPE        CAT2(v,TYPE)
 #define VTYPE_ZERO   CAT3(v,TYPE,_zero)
 #define VTYPE_CONST(name) CAT3(v,TYPE,_const)(name)
+
+#define TYPE_ZERO   CAT2(TYPE,_zero)
 
 typedef struct {
     unsigned int n;
@@ -1921,6 +1934,7 @@ static void multiply(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
+    byte_t* dp,int du,int dv,
     matrix_type_t ct,byte_t* cp,int cu,int cv)
 {
     if ((at == bt) && (bt == ct)) {
@@ -1931,7 +1945,7 @@ static void multiply(
 	else
 #endif
 	{
-	    mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,cp,cu,cv);
+	    mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,dp,du,dv,cp,cu,cv);
 	}
     }
     else {
@@ -1946,76 +1960,91 @@ static void multiply(
 	if (is_float(ct)) {
 	    while(an--) {
 		byte_t* cp1 = cp;
+		byte_t* dp1 = dp;
 		size_t m = bm;
 		bp = bp0;
 		while(m--) {
 		    float64_t sum = 0.0;
-		    byte_t* bp1 = bp;
-		    byte_t* ap1 = ap;
-		    size_t  k = am;
-		    while(k--) {
-			float64_t a = read_float(at, ap1);
-			float64_t b = read_float(bt, bp1);
-			sum += a*b;
-			ap1 += av;
-			bp1 += bu;
+		    if (*dp1) {
+			byte_t* bp1 = bp;
+			byte_t* ap1 = ap;
+			size_t  k = am;
+			while(k--) {
+			    float64_t a = read_float(at, ap1);
+			    float64_t b = read_float(bt, bp1);
+			    sum += a*b;
+			    ap1 += av;
+			    bp1 += bu;
+			}
 		    }
 		    write_float(ct, cp1, sum);
 		    cp1 += cv;
 		    bp += bv;
+		    dp1 += dv;
 		}
 		ap += au;
 		cp += cu;
+		dp += du;
 	    }
 	}
 	else if (is_complex(ct)) {
 	    while(an--) {
 		byte_t* cp1 = cp;
+		byte_t* dp1 = dp;
 		size_t m = bm;
 		bp = bp0;
 		while(m--) {
 		    complex128_t sum =  CMPLX(0.0,0.0);;
-		    byte_t* bp1 = bp;
-		    byte_t* ap1 = ap;
-		    size_t  k = am;
-		    while(k--) {
-			complex128_t a = read_complex(at, ap1);
-			complex128_t b = read_complex(bt, bp1);
-			sum += a*b;
-			ap1 += av;
-			bp1 += bu;
+		    if (*dp1) {
+			byte_t* bp1 = bp;
+			byte_t* ap1 = ap;
+			size_t  k = am;
+			while(k--) {
+			    complex128_t a = read_complex(at, ap1);
+			    complex128_t b = read_complex(bt, bp1);
+			    sum += a*b;
+			    ap1 += av;
+			    bp1 += bu;
+			}
+			write_complex(ct, cp1, sum);
+			cp1 += cv;
+			bp += bv;
+			dp1 += dv;
 		    }
-		    write_complex(ct, cp1, sum);
-		    cp1 += cv;
-		    bp += bv;
 		}
 		ap += au;
 		cp += cu;
+		dp += du;
 	    }
 	}
 	else {
 	    while(an--) {
 		byte_t* cp1 = cp;
+		byte_t* dp1 = dp;
 		size_t m = bm;
 		bp = bp0;
 		while(m--) {
 		    int64_t sum = 0;
-		    byte_t* bp1 = bp;
-		    byte_t* ap1 = ap;
-		    size_t  k = am;
-		    while(k--) {
-			int64_t a = read_int(at, ap1);
-			int64_t b = read_int(bt, bp1);
-			sum += a*b;
-			ap1 += av;
-			bp1 += bu;
+		    if (*dp1) {
+			byte_t* bp1 = bp;
+			byte_t* ap1 = ap;
+			size_t  k = am;
+			while(k--) {
+			    int64_t a = read_int(at, ap1);
+			    int64_t b = read_int(bt, bp1);
+			    sum += a*b;
+			    ap1 += av;
+			    bp1 += bu;
+			}
+			write_int(ct, cp1, sum);
+			cp1 += cv;
+			bp += bv;
+			dp1 += dv;
 		    }
-		    write_int(ct, cp1, sum);
-		    cp1 += cv;
-		    bp += bv;
 		}
 		ap += au;
 		cp += cu;
+		dp += du;
 	    }
 	}
     }
@@ -2029,6 +2058,7 @@ static void multiply_t(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
+    byte_t* dp,int du,int dv,
     matrix_type_t ct,byte_t* cp,int cu,int cv)
 {
     if ((at == bt) && (bt == ct)) {
@@ -2037,11 +2067,11 @@ static void multiply_t(
 	    mtv_multiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,cp,cu,cv);
 	else
 #endif
-	    mt_multiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,cp,cu,cv);
+	    mt_multiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,
+				   dp,du,dv,cp,cu,cv);
     }
     else {
 	byte_t* bp0 = bp;
-
 	au = size_of_array(at,au);
 	av = size_of_array(at,av);
 	bu = size_of_array(bt,bu);
@@ -2052,76 +2082,91 @@ static void multiply_t(
 	if (is_float(ct)) {
 	    while(an--) {
 		byte_t* cp1 = cp;
+		byte_t* dp1 = dp;
 		size_t n = bn;
 		bp = bp0;
 		while(n--) {
 		    float64_t sum = 0.0;
-		    byte_t* ap1 = ap;
-		    byte_t* bp1 = bp;
-		    size_t k = bm;
-		    while(k--) {
-			float64_t a = read_float(at, ap1);
-			float64_t b = read_float(bt, bp1);
-			sum += a*b;
-			ap1 += av;
-			bp1 += bv;
+		    if (*dp1) {
+			byte_t* ap1 = ap;
+			byte_t* bp1 = bp;
+			size_t k = bm;
+			while(k--) {
+			    float64_t a = read_float(at, ap1);
+			    float64_t b = read_float(bt, bp1);
+			    sum += a*b;
+			    ap1 += av;
+			    bp1 += bv;
+			}
 		    }
 		    write_float(ct, cp1, sum);
 		    cp1 += cv;
 		    bp  += bu;
+		    dp1 += du;
 		}
 		ap += au;
 		cp += cu;
+		dp += dv;
 	    }
 	}
 	else if (is_complex(ct)) {
 	    while(an--) {
 		byte_t* cp1 = cp;
+		byte_t* dp1 = dp;		
 		size_t n = bn;
 		bp = bp0;
 		while(n--) {
 		    complex128_t sum = CMPLX(0.0,0.0);
-		    byte_t* ap1 = ap;
-		    byte_t* bp1 = bp;
-		    size_t k = bm;
-		    while(k--) {
-			complex128_t a = read_complex(at, ap1);
-			complex128_t b = read_complex(bt, bp1);
-			sum += a*b;
-			ap1 += av;
-			bp1 += bv;
+		    if (*dp1) {
+			byte_t* ap1 = ap;
+			byte_t* bp1 = bp;
+			size_t k = bm;
+			while(k--) {
+			    complex128_t a = read_complex(at, ap1);
+			    complex128_t b = read_complex(bt, bp1);
+			    sum += a*b;
+			    ap1 += av;
+			    bp1 += bv;
+			}
 		    }
 		    write_complex(ct, cp1, sum);
 		    cp1 += cv;
 		    bp += bu;
+		    dp1 += du;
 		}
 		ap += au;
 		cp += cu;
+		dp += dv;
 	    }
 	}
 	else {
 	    while(an--) {
 		byte_t* cp1 = cp;
+		byte_t* dp1 = dp;
 		size_t n = bn;
 		bp = bp0;
 		while(n--) {
 		    int64_t sum = 0;
-		    byte_t* ap1 = ap;
-		    byte_t* bp1 = bp;
-		    size_t k = bm;
-		    while(k--) {
-			int64_t a = read_int(at, ap1);
-			int64_t b = read_int(bt, bp1);
-			sum += a*b;
-			ap1 += av;
-			bp1 += bv;
+		    if (*dp1) {
+			byte_t* ap1 = ap;
+			byte_t* bp1 = bp;
+			size_t k = bm;
+			while(k--) {
+			    int64_t a = read_int(at, ap1);
+			    int64_t b = read_int(bt, bp1);
+			    sum += a*b;
+			    ap1 += av;
+			    bp1 += bv;
+			}
 		    }
 		    write_int(ct, cp1, sum);
 		    cp1 += cv;
 		    bp += bu;
+		    dp1 += du;
 		}
 		ap += au;
 		cp += cu;
+		dp += dv;
 	    }
 	}
     }
@@ -2961,27 +3006,32 @@ ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
 static void m_multiply(matrix_t* ap, matrix_t* bp, matrix_t* cp)
 {
+    byte_t d0 = 1;
     if (cp->rowmajor) {
 	if (ap->rowmajor && bp->rowmajor) {
 	    multiply(TRUE,
 		     ap->type,ap->first,ap->stride,1,ap->n,ap->m,
 		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     &d0, 0, 0,
 		     cp->type,cp->first,cp->stride,1);
 	} else if (ap->rowmajor && !bp->rowmajor) {
 	    multiply_t(TRUE,
 		       ap->type,ap->first,ap->stride,1,ap->n,ap->m,
 		       bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		       &d0, 0, 0,
 		       cp->type,cp->first,cp->stride,1);
 	} else if (!ap->rowmajor && bp->rowmajor) {
 	    multiply(FALSE,
 		     ap->type,ap->first,1,ap->stride,ap->m,ap->n,
 		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     &d0, 0, 0,
 		     cp->type,cp->first,cp->stride,1);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor (NOTE A/B swap!)
 	    multiply(TRUE,
 		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
 		     ap->type,ap->first,ap->stride,1,ap->n,ap->m,
+		     &d0, 0, 0,
 		     cp->type,cp->first,1,cp->stride);
 	}
     }
@@ -2990,22 +3040,26 @@ static void m_multiply(matrix_t* ap, matrix_t* bp, matrix_t* cp)
 	    multiply(TRUE,
 		     ap->type,ap->first,ap->stride,1,ap->n,ap->m,
 		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     &d0, 0, 0,
 		     cp->type,cp->first,1,cp->stride);
 	} else if (ap->rowmajor && !bp->rowmajor) {
 	    multiply_t(TRUE,
 		       ap->type,ap->first,ap->stride,1,ap->n,ap->m,
 		       bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		       &d0, 0, 0,
 		       cp->type,cp->first,1,cp->stride);
 	} else if (!ap->rowmajor && bp->rowmajor) {
 	    multiply(FALSE,
 		     ap->type,ap->first,1,ap->stride,ap->m,ap->n,
 		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     &d0, 0, 0,
 		     cp->type,cp->first,1,cp->stride);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor
 	    multiply(TRUE,
 		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
 		     ap->type,ap->first,ap->stride,1,ap->n,ap->m,
+		     &d0, 0, 0,
 		     cp->type,cp->first,cp->stride,1);
 	}
     }

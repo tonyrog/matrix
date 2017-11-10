@@ -138,8 +138,12 @@ dot([], [], Sum) ->
 %%
 -spec kmultiply(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
 
-kmultiply(K, X=#matrix{n=Nx,m=Mx,type=T1}, Y=#matrix{n=Ny,m=My,type=T2}) 
-  when Mx =:= Ny ->
+kmultiply(K, X=#matrix{type=T1}, Y=#matrix{type=T2}) ->
+    {Nx,Mx} = matrix:size(X),
+    {Ny,My} = matrix:size(Y),
+    if Mx =/= Ny -> errlang:error(badarg);
+       true -> ok
+    end,
     T = type_combine(T1,T2),
     Z = matrix:create(Nx,My,T,true,[]), %% result matrix
     matrix:apply1_(zero, Z, Z),  %% set to zero
@@ -159,8 +163,13 @@ kmultiply(K, X=#matrix{n=Nx,m=Mx,type=T1}, Y=#matrix{n=Ny,m=My,type=T2})
 
 -spec ktimes(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
 
-ktimes(K, X=#matrix{n=Nx,m=Mx,type=T1}, Y=#matrix{n=Ny,m=My,type=T2}) 
-  when Nx =:= Ny, Mx =:= My ->
+ktimes(K, X=#matrix{type=T1}, Y=#matrix{type=T2}) ->
+    {Nx,Mx} = matrix:size(X),
+    {Ny,My} = matrix:size(Y),
+    if Nx =/= Ny -> errlang:error(badarg);
+       Mx =/= My -> errlang:error(badarg);
+       true -> ok
+    end,
     T = type_combine(T1,T2),
     Z = matrix:create(Nx,My,T,true,[]), %% result matrix
     matrix:apply1_(zero, Z, Z),         %% set to zero

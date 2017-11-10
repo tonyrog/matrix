@@ -31,6 +31,7 @@ static TYPE2 CAT2(PROCEDURE,_dot_t_mulop)(TYPE* ap,int av,TYPE* bp,int bv,size_t
 
 static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
 		      TYPE* bp, int bu, int bv, size_t bn, size_t bm,
+		      byte_t* dp,int du,int dv,
 		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
@@ -40,16 +41,21 @@ static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
 
     while(an--) {
         TYPE* cp1 = cp;
+	byte_t* dp1 = dp;
 	size_t n = bn;
-
 	bp = bp0;
 	while(n--) {
-	    *cp1 = CAT2(PROCEDURE,_dot_t_mulop)(ap,av,bp,bv,bm);
+	    if (*dp1)
+		*cp1 = CAT2(PROCEDURE,_dot_t_mulop)(ap,av,bp,bv,bm);
+	    else
+		*cp1 = TYPE_ZERO;
 	    cp1 += cv;
 	    bp += bu;
+	    dp1 += du;
 	}
 	ap += au;
 	cp += cu;
+	dp += dv;
     }
 }
 

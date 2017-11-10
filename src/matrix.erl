@@ -620,7 +620,11 @@ multiply_(_A, _B, _Dst) ->
 
 %% get the top K elements from A as a integer matrix Kwith indices
 -spec topk(A::matrix(), K::unsigned()) -> matrix().
+topk(_A, 0) -> undefined;
 topk(A, K) ->
+    topk_(A,K).
+
+topk_(A,K) ->
     matrix_ref:topk(A, K).
 
 %%
@@ -628,6 +632,8 @@ topk(A, K) ->
 %%
 -spec kmultiply(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
 
+kmultiply(undefined, A, B) ->
+    multiply(A, B);
 kmultiply(K, A, B) ->
     ?count_op({kmultiply,K},A,B),
     kmultiply_(K, A,B).
@@ -641,13 +647,15 @@ kmultiply_(K, A,B) ->
 %%
 -spec ktimes(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
 
+ktimes(undefined, A, B) ->
+    times(A,B);
 ktimes(K, A, B) ->
     ?count_op({ktimes,K},A,B),
     ktimes_(K, A,B).
 
 -spec ktimes_(K::matrix(), X::matrix(), Y::matrix()) -> matrix().
-ktimes_(K, A,B) ->
-    matrix_ref:ktimes(K,A,B).
+ktimes_(K, A, B) ->
+    matrix_ref:ktimes(K, A, B).
 
     
 %% Load column J in A into row I of Dst
@@ -704,15 +712,19 @@ transpose_data(_Src, _Dst) ->
 %% select a row, return as a matrix with one row
 %%
 -spec row(I::unsigned(), A::matrix()) -> matrix().
-row(I, X=#matrix{m=M}) ->
-    submatrix(I, 1, 1, M, X).
+row(I, X=#matrix{rowmajor=true,n=N,m=M}) when I >= 1, I =< N ->
+    submatrix(I, 1, 1, M, X);
+row(I, X=#matrix{rowmajor=false,n=N,m=M}) when I >= 1, I =< M ->
+    submatrix(I, 1, 1, N, X).
 
 %%
 %% select a column, return as a matrix with one column
 %%
 -spec column(J::unsigned(), A::matrix()) -> matrix().
-column(J, X=#matrix{n=N}) ->
-    submatrix(1, J, N, 1, X).
+column(J, X=#matrix{rowmajor=true,n=N,m=M}) when J >= 1, J =< M ->
+    submatrix(1, J, N, 1, X);
+column(J, X=#matrix{rowmajor=false,n=N,m=M}) when J >= 1, J =< N ->
+    submatrix(1, J, M, 1, X).
 
 %%
 %% select a portion of a matrix
@@ -721,9 +733,12 @@ column(J, X=#matrix{n=N}) ->
 		N::unsigned(), M::unsigned(),
 		X::matrix()) -> matrix().
 
-submatrix(I, J, N, M, X=#matrix{offset=Offset,stride=Stride}) ->
+submatrix(I, J, N, M, X=#matrix{rowmajor=true,offset=Offset,stride=Stride}) ->
     Offset1 = Offset + (I-1)*Stride + (J-1),
-    X#matrix { n=N, m=M, offset=Offset1}.
+    X#matrix { n=N, m=M, offset=Offset1};
+submatrix(I, J, N, M, X=#matrix{rowmajor=false,offset=Offset,stride=Stride}) ->
+    Offset1 = Offset + (J-1)*Stride + (I-1),
+    X#matrix { n=M, m=N, offset=Offset1}.
 
 %%
 %% convolve a NxM matrix over the matrix A (soon: with padding Px, Py and
@@ -1087,6 +1102,12 @@ count_op(times,
        true ->
 	    count({{times,slow},K1,K2},1)
     end;
+count_op({Op,#matrix{rowmajor=R,n=N,m=M}},
+	 #matrix{rowmajor=R1,n=N1,m=M1},
+	 #matrix{rowmajor=R2,n=N2,m=M2}) ->
+    K1 = {R1,N1,M1},
+    K2 = {R2,N2,M2},
+    count({{Op,{R,N,M}},K1,K2}, 1);
 count_op(Op,
 	 #matrix{rowmajor=R1,n=N1,m=M1},
 	 #matrix{rowmajor=R2,n=N2,m=M2}) ->
@@ -1120,7 +1141,7 @@ clear_counters() ->
 
 %% overall counter  name R(4x5) C(5x4)
 print_counter(Key,SubKey,K1,K2,Value,Caller) ->
-    io:put_chars([atom_to_list(Key),"/",atom_to_list(SubKey)," ",
+    io:put_chars([atom_to_list(Key),"/",format_subkey(SubKey)," ",
 		  format_dim(K1)," ",format_dim(K2),
 		  " = ", integer_to_list(Value),
 		  " @ ",format_caller(Caller),
@@ -1131,6 +1152,12 @@ print_counter(Key,K1,K2,Value,Caller) ->
 		  format_dim(K1)," ",format_dim(K2)," ",
 		  " = ", integer_to_list(Value)," @ ",format_caller(Caller),
 		  "\n"]).
+
+format_subkey(Dim) when is_tuple(Dim) ->
+    format_dim(Dim);
+format_subkey(SubKey) when is_atom(SubKey) ->
+    atom_to_list(SubKey).
+
 
 %% format dimension and rowmajor
 format_dim({true,N,M}) -> ["R(",integer_to_list(N),"x",integer_to_list(M),")"];
