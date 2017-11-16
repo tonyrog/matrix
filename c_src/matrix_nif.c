@@ -26,43 +26,45 @@ typedef enum {
     INT16   = 1,
     INT32   = 2,
     INT64   = 3,
-    // INT128 = 4
-    FLOAT32 = 5,
-    FLOAT64 = 6,
-    // FLOAT128 = 7
-    COMPLEX64 = 8,
-    COMPLEX128 = 9,
+    FLOAT32 = 4,
+    FLOAT64 = 5,
+    COMPLEX64 = 6,
+    COMPLEX128 = 7,
 } matrix_type_t;
 
 #define NUM_TYPES (COMPLEX128+1)
 
 typedef enum {
-    ZERO,
-    ONE,
-    COPY,
-    NEGATE,
-    IDENTITY,
-    SIGMOID,
-    SIGMOID_PRIME,
-    SOFTPLUS,
-    SOFTPLUS_PRIME,
-    RELU,
-    RELU_PRIME,
-    LEAKY_RELU,
-    LEAKY_RELU_PRIME,    
-    TANH,
-    TANH_PRIME,
-    UNIFORM,
-    NORMAL,
+    ZERO = 0,
+    ONE  = 1,
+    COPY = 2,
+    NEGATE = 3,
+    SIGMOID = 4,
+    SIGMOID_PRIME = 5,
+    SIGMOID_PRIME1 = 6,
+    SOFTPLUS = 7,
+    SOFTPLUS_PRIME = 8,
+    RELU = 9,
+    RELU_PRIME = 10,
+    LEAKY_RELU = 11,
+    LEAKY_RELU_PRIME = 12,
+    TANH = 13,
+    TANH_PRIME = 14,
+    TANH_PRIME1 = 15,
+    EXP = 16,
+    UNIFORM = 17,
+    NORMAL = 18,
 } unary_operation_t;
 
-#define NUM_UNARY_OPERATIONS (NORMAL+1)
+#define NUM_UNARYOP (NORMAL+1)
 
 typedef enum {
-    PLUS,
-    MINUS,
-    TIMES,
+    ADD = 0,
+    SUB = 1,
+    MUL = 2,
 } binary_operation_t;
+
+#define NUM_BINOP (MUL+1)
 
 typedef enum {
     FALSE = 0,
@@ -155,7 +157,6 @@ typedef complex128_t vcomplex128_t;
 
 #endif
 
-
 #define is_aligned(x) ((((uintptr_t)(x)) & (ALIGN-1)) == 0)
 
 #define align_ptr(ptr,align)						\
@@ -187,6 +188,27 @@ typedef complex128_t vcomplex128_t;
 
 #define TYPE_ZERO   CAT2(TYPE,_zero)
 
+// a union to represent all possible scalar data types
+typedef union {
+    int8_t        i8;
+    int16_t       i16;
+    int32_t       i32;
+    int64_t       i64;
+    float32_t     f32;
+    float64_t     f64;
+    complex64_t   c64;
+    complex128_t  c128;
+    vint8_t       vi8;
+    vint16_t      vi16;
+    vint32_t      vi32;
+    vint64_t      vi64;
+    vfloat32_t    vf32;
+    vfloat64_t    vf64;
+    vcomplex64_t  vc64;
+    vcomplex128_t vc128;
+    byte_t        data[VSIZE];
+} scalar_t;
+
 typedef struct {
     unsigned int n;
     unsigned int m;
@@ -200,7 +222,22 @@ typedef struct {
     byte_t* data;        // aligned data
     byte_t* first;       // pointer to first element within data
     uintptr_t ptr;       // resource pointer (may be self)
+    scalar_t sdata;      // raw scalar data
 } matrix_t;
+
+// Global data (store in env?)
+static ErlNifResourceType* matrix_r;
+static ErlNifTSDKey matrix_k;
+
+static inline size_t matrix_num_rows(matrix_t* ap)
+{
+    return (ap->rowmajor) ? ap->n : ap->m;
+}
+
+static inline size_t matrix_num_columns(matrix_t* ap)
+{
+    return (ap->rowmajor) ? ap->m : ap->n;
+}
 
 // read lock matrix if lock is defined
 static inline void matrix_r_lock(matrix_t* ap)
@@ -247,9 +284,23 @@ static inline void matrix_rr_lock(matrix_t* ap, matrix_t* bp)
     matrix_r_lock(bp);
 }
 
+static inline void matrix_rrr_lock(matrix_t* ap, matrix_t* bp, matrix_t* cp)
+{
+    matrix_r_lock(ap);
+    matrix_r_lock(bp);
+    matrix_r_lock(cp);
+}
+
 // read, read unlock (binary operation)
 static inline void matrix_rr_unlock(matrix_t* ap, matrix_t* bp)
 {
+    matrix_r_unlock(bp);
+    matrix_r_unlock(ap);
+}
+
+static inline void matrix_rrr_unlock(matrix_t* ap, matrix_t* bp, matrix_t* cp)
+{
+    matrix_r_unlock(cp);
     matrix_r_unlock(bp);
     matrix_r_unlock(ap);
 }
@@ -275,6 +326,15 @@ static inline void matrix_rrw_lock(matrix_t* ap, matrix_t* bp, matrix_t* cp)
     matrix_w_lock(cp);
 }
 
+static inline void matrix_rrrw_lock(matrix_t* ap, matrix_t* bp, matrix_t* kp,
+				    matrix_t* cp)
+{
+    matrix_cr_lock(cp, ap);
+    matrix_cr_lock(cp, bp);
+    matrix_cr_lock(cp, kp);
+    matrix_w_lock(cp);
+}
+
 // read, read and write unlock (binary operatin)
 static inline void matrix_rrw_unlock(matrix_t* ap, matrix_t* bp, matrix_t* cp)
 {
@@ -283,24 +343,15 @@ static inline void matrix_rrw_unlock(matrix_t* ap, matrix_t* bp, matrix_t* cp)
     matrix_cr_unlock(cp, ap);
 }
 
+static inline void matrix_rrrw_unlock(matrix_t* ap, matrix_t* bp, matrix_t* kp,
+				      matrix_t* cp)
+{
+    matrix_w_unlock(cp);
+    matrix_cr_unlock(cp, kp);
+    matrix_cr_unlock(cp, bp);
+    matrix_cr_unlock(cp, ap);
+}
 
-// a union to represent all possible scalar data types
-typedef union {
-    int8_t   i8;
-    int16_t  i16;
-    int32_t  i32;
-    int64_t  i64;
-    // int128_t i128;
-    float32_t  f32;
-    float64_t  f64;
-    // float128_t f128;
-    complex64_t  c64;
-    complex128_t c128;
-    byte_t       data[16];
-} scalar_t;
-
-static ErlNifResourceType* matrix_r;
-static ErlNifTSDKey matrix_k;
 
 static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info);
 static int matrix_upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data,
@@ -309,18 +360,26 @@ static void matrix_unload(ErlNifEnv* env, void* priv_data);
 
 static ERL_NIF_TERM matrix_create(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_element(ErlNifEnv* env, int argc,
+				   const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_setelement(ErlNifEnv* env, int argc,
+				      const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc,
 			       const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_subtract(ErlNifEnv* env, int argc,
 				    const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc,
 				 const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc,
+				  const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc,
 				    const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_kmultiply(ErlNifEnv* env, int argc,
+				     const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_topk(ErlNifEnv* env, int argc,
+				const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_negate(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[]);
-static ERL_NIF_TERM matrix_scale(ErlNifEnv* env, int argc,
-				 const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_mulsum(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_l2pool(ErlNifEnv* env, int argc,
@@ -341,10 +400,16 @@ static ERL_NIF_TERM matrix_copy(ErlNifEnv* env, int argc,
 				const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_fill(ErlNifEnv* env, int argc,
 				const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_identity(ErlNifEnv* env, int argc,
+				    const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_apply1(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_max(ErlNifEnv* env, int argc,
+			       const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_min(ErlNifEnv* env, int argc,
+			       const ERL_NIF_TERM argv[]);
 
 #if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 12))
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
@@ -358,18 +423,23 @@ static ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 ErlNifFunc matrix_funcs[] =
 {
     NIF_FUNC("create_",       5, matrix_create),
+    NIF_FUNC("element_",      3, matrix_element),
+    NIF_FUNC("setelement_",   4, matrix_setelement),
     NIF_FUNC("add_",          2, matrix_add),
     NIF_FUNC("add_",          3, matrix_add),
     NIF_FUNC("subtract_",     2, matrix_subtract),
     NIF_FUNC("subtract_",     3, matrix_subtract),
     NIF_FUNC("times_",        2, matrix_times),
     NIF_FUNC("times_",        3, matrix_times),
+    NIF_FUNC("ktimes_",       3, matrix_ktimes),
+    NIF_FUNC("ktimes_",       4, matrix_ktimes),    
     NIF_FUNC("multiply_",     2, matrix_multiply),
     NIF_FUNC("multiply_",     3, matrix_multiply),
+    NIF_FUNC("kmultiply_",    3, matrix_kmultiply),
+    NIF_FUNC("kmultiply_",    4, matrix_kmultiply),
+    NIF_FUNC("topk_",         2, matrix_topk),
     NIF_FUNC("negate_",       1, matrix_negate),
     NIF_FUNC("negate_",       2, matrix_negate),
-    NIF_FUNC("scale_",        2, matrix_scale),
-    NIF_FUNC("scale_",        3, matrix_scale),
     NIF_FUNC("mulsum_",       2, matrix_mulsum),
     NIF_FUNC("l2pool_",       5, matrix_l2pool),
     NIF_FUNC("l2pool_",       6, matrix_l2pool),
@@ -380,7 +450,7 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("transpose_data",1, matrix_transpose_data),
     NIF_FUNC("transpose_data",2, matrix_transpose_data),
     NIF_FUNC("sigmoid_",      1, matrix_sigmoid),
-    NIF_FUNC("sigmoid_prime_",1, matrix_sigmoid_prime),
+    NIF_FUNC("sigmoid_prime_",2, matrix_sigmoid_prime),
     NIF_FUNC("relu",          1, matrix_relu),
     NIF_FUNC("copy",          1, matrix_copy),
     NIF_FUNC("copy",          2, matrix_copy),
@@ -388,11 +458,35 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("fill",          2, matrix_fill),
     NIF_FUNC("apply1_",       2, matrix_apply1),
     NIF_FUNC("apply1_",       3, matrix_apply1),
+    NIF_FUNC("identity_",     3, matrix_identity),
     NIF_FUNC("argmax",        2, matrix_argmax),
+    NIF_FUNC("max_",          1, matrix_max),
+    NIF_FUNC("max_",          2, matrix_max),
+    NIF_FUNC("min_",          1, matrix_min),
+    NIF_FUNC("min_",          2, matrix_min),
 };
 
-size_t element_size_exp_[10] = { 0, 1, 2, 3, 4,  2, 3, 4,  3, 4 };
-size_t element_size_[10]     = { 1, 2, 4, 8, 16, 4, 8, 16, 8, 16 };
+size_t element_size_exp_[NUM_TYPES] = {
+    [INT8]  = 0,
+    [INT16] = 1,
+    [INT32] = 2,
+    [INT64] = 3,
+    [FLOAT32] = 2,
+    [FLOAT64] = 3,
+    [COMPLEX64] = 3,
+    [COMPLEX128] = 4
+};
+
+size_t element_size_[NUM_TYPES] = {
+    [INT8] = 1,
+    [INT16] = 2,
+    [INT32] = 4,
+    [INT64] = 8,
+    [FLOAT32] = 4,
+    [FLOAT64] = 8,
+    [COMPLEX64] = 8,
+    [COMPLEX128] = 16
+};
 
 typedef enum {
     XOR_SHIFT_32,
@@ -415,12 +509,14 @@ typedef struct _rand_state_t {
 DECL_ATOM(matrix);
 DECL_ATOM(sigmoid);
 DECL_ATOM(sigmoid_prime);
+DECL_ATOM(sigmoid_prime1);
 DECL_ATOM(relu);
 DECL_ATOM(relu_prime);
 DECL_ATOM(leaky_relu);
 DECL_ATOM(leaky_relu_prime);
 DECL_ATOM(tanh);
 DECL_ATOM(tanh_prime);
+DECL_ATOM(tanh_prime1);
 DECL_ATOM(softplus);
 DECL_ATOM(softplus_prime);
 DECL_ATOM(negate);
@@ -428,10 +524,11 @@ DECL_ATOM(uniform);
 DECL_ATOM(normal);
 DECL_ATOM(zero);
 DECL_ATOM(one);
-DECL_ATOM(identity);
 DECL_ATOM(copy);
 DECL_ATOM(true);
 DECL_ATOM(false);
+DECL_ATOM(undefined);
+DECL_ATOM(exp);
 
 static size_t element_size(matrix_type_t type)
 {
@@ -463,112 +560,379 @@ static matrix_type_t combine_type(matrix_type_t at, matrix_type_t bt)
     return (at > bt) ? at : bt;
 }
 
-// read and convert/trunc a number to a integer
-static int64_t read_int(matrix_type_t type, byte_t* ptr)
+/////////////////////////////////////////////////////////////////////////////
+// read an int64
+/////////////////////////////////////////////////////////////////////////////
+
+static int64_t read_int64_int8(byte_t* ptr)
 {
-    switch(type) {
-    case INT8:    return (int64_t) *((int8_t*)ptr);
-    case INT16:   return (int64_t) *((int16_t*)ptr);
-    case INT32:   return (int64_t) *((int32_t*)ptr);
-    case INT64:   return (int64_t) *((int64_t*)ptr);
-    case FLOAT32: return (int64_t) *((float32_t*)ptr);
-    case FLOAT64: return (int64_t) *((float64_t*)ptr);
-    case COMPLEX64: return (int64_t) *((float32_t*)ptr);
-    case COMPLEX128: return (int64_t) *((float64_t*)ptr);
-    default: return 0;  // fixme: fail
-    }
+    return (int64_t) *((int8_t*)ptr);
 }
 
-// convert and write an integer to matrix memory
-static void write_int(matrix_type_t type, byte_t* ptr, int64_t v)
+static int64_t read_int64_int16(byte_t* ptr)
 {
-    switch(type) {
-    case INT8:    *((int8_t*)ptr) = (int8_t) v;  break;
-    case INT16:   *((int16_t*)ptr) = (int16_t) v;  break;
-    case INT32:   *((int32_t*)ptr) = (int32_t) v;  break;
-    case INT64:   *((int64_t*)ptr) = (int64_t) v;  break;
-    case FLOAT32: *((float32_t*)ptr) = (float32_t) v; break;
-    case FLOAT64: *((float64_t*)ptr) = (float64_t) v;  break;
-    case COMPLEX64:
-	((float32_t*)ptr)[0] = (float32_t) v;
-	((float32_t*)ptr)[1] = 0.0;
-	break;
-    case COMPLEX128:
-	((float64_t*)ptr)[0] = (float64_t) v;
-	((float64_t*)ptr)[1] = 0.0;
-	break;
-    default: break;
-    }
+    return (int64_t) *((int16_t*)ptr);
 }
 
-// read and convert/trunc a number to a integer
-static float64_t read_float(matrix_type_t type, byte_t* ptr)
+static int64_t read_int64_int32(byte_t* ptr)
 {
-    switch(type) {
-    case INT8:    return (float64_t) *((int8_t*)ptr);
-    case INT16:   return (float64_t) *((int16_t*)ptr);
-    case INT32:   return (float64_t) *((int32_t*)ptr);
-    case INT64:   return (float64_t) *((int64_t*)ptr);
-    case FLOAT32: return (float64_t) *((float32_t*)ptr);
-    case FLOAT64: return (float64_t) *((float64_t*)ptr);
-    case COMPLEX64: return (float64_t) *((float32_t*)ptr);
-    case COMPLEX128: return (float64_t) *((float64_t*)ptr);
-    default: return 0;  // fixme: fail
-    }
+    return (int64_t) *((int32_t*)ptr);
 }
 
-// convert and write an integer to matrix memory
-static void write_float(matrix_type_t type, byte_t* ptr, float64_t v)
+static int64_t read_int64_int64(byte_t* ptr)
 {
-    switch(type) {
-    case INT8:    *((int8_t*)ptr) = (int8_t) v;  break;
-    case INT16:   *((int16_t*)ptr) = (int16_t) v;  break;
-    case INT32:   *((int32_t*)ptr) = (int32_t) v;  break;
-    case INT64:   *((int64_t*)ptr) = (int64_t) v;  break;
-    case FLOAT32: *((float32_t*)ptr) = (float32_t) v; break;
-    case FLOAT64: *((float64_t*)ptr) = (float64_t) v;  break;
-    case COMPLEX64:
-	((float32_t*)ptr)[0] = (float32_t) v;
-	((float32_t*)ptr)[1] = 0.0;
-	break;
-    case COMPLEX128:
-	((float64_t*)ptr)[0] = (float64_t) v;
-	((float64_t*)ptr)[1] = 0.0;
-	break;
-    default: break;
-    }
+    return (int64_t) *((int64_t*)ptr);
 }
+
+static int64_t read_int64_float32(byte_t* ptr)
+{
+    return (int64_t) *((float32_t*)ptr);
+}
+
+static int64_t read_int64_float64(byte_t* ptr)
+{
+    return (int64_t) *((float64_t*)ptr);
+}
+
+static int64_t read_int64_complex64(byte_t* ptr)
+{
+    return (int64_t) crealf(*((complex64_t*)ptr));
+}
+
+static int64_t read_int64_complex128(byte_t* ptr)
+{
+    return (int64_t) creal(*((complex128_t*)ptr));
+}
+
+static int64_t (*read_int64_func[NUM_TYPES])(byte_t*) =
+{
+    [INT8] = read_int64_int8,
+    [INT16] = read_int64_int16,
+    [INT32] = read_int64_int32,
+    [INT64] = read_int64_int64,
+    [FLOAT32] = read_int64_float32,
+    [FLOAT64] = read_int64_float64,
+    [COMPLEX64] = read_int64_complex64,
+    [COMPLEX128] = read_int64_complex128
+};
+
 
 // read and convert/trunc a number to a integer
-static complex128_t read_complex(matrix_type_t type, byte_t* ptr)
+static int64_t read_int64(matrix_type_t type, byte_t* ptr)
 {
-    switch(type) {
-    case INT8:    return (complex128_t) *((int8_t*)ptr);
-    case INT16:   return (complex128_t) *((int16_t*)ptr);
-    case INT32:   return (complex128_t) *((int32_t*)ptr);
-    case INT64:   return (complex128_t) *((int64_t*)ptr);
-    case FLOAT32: return (complex128_t) *((float32_t*)ptr);
-    case FLOAT64: return (complex128_t) *((float64_t*)ptr);
-    case COMPLEX64: return (complex128_t) *((complex64_t*)ptr);
-    case COMPLEX128: return (complex128_t) *((complex128_t*)ptr);
-    default: return 0;  // fixme: fail
-    }
+    return (read_int64_func[type])(ptr);
 }
 
-// convert and write an integer to matrix memory
-static void write_complex(matrix_type_t type, byte_t* ptr, complex128_t v)
+/////////////////////////////////////////////////////////////////////////////
+// write an int64
+/////////////////////////////////////////////////////////////////////////////
+
+static void write_int64_int8(byte_t* ptr, int64_t v)
 {
-    switch(type) {
-    case INT8:    *((int8_t*)ptr) = (int8_t) creal(v);  break;
-    case INT16:   *((int16_t*)ptr) = (int16_t) creal(v);  break;
-    case INT32:   *((int32_t*)ptr) = (int32_t) creal(v);  break;
-    case INT64:   *((int64_t*)ptr) = (int64_t) creal(v);  break;
-    case FLOAT32: *((float32_t*)ptr) = (float32_t) creal(v); break;
-    case FLOAT64: *((float64_t*)ptr) = (float64_t) creal(v);  break;
-    case COMPLEX64: *((complex64_t*)ptr) = (complex64_t) v; break;
-    case COMPLEX128: *((complex64_t*)ptr) = v; break;
-    default: break;
-    }
+    *((int8_t*)ptr) = (int8_t) v;
+}
+
+static void write_int64_int16(byte_t* ptr, int64_t v)
+{
+    *((int16_t*)ptr) = (int16_t) v;
+}
+
+static void write_int64_int32(byte_t* ptr, int64_t v)
+{
+    *((int32_t*)ptr) = (int32_t) v;
+}
+
+static void write_int64_int64(byte_t* ptr, int64_t v)
+{
+    *((int64_t*)ptr) = (int64_t) v;
+}
+
+static void write_int64_float32(byte_t* ptr, int64_t v)
+{
+    *((float32_t*)ptr) = (float32_t) v;
+}
+
+static void write_int64_float64(byte_t* ptr, int64_t v)
+{
+    *((float64_t*)ptr) = (float64_t) v;
+}
+
+static void write_int64_complex64(byte_t* ptr, int64_t v)
+{
+    *((complex64_t*)ptr) = CMPLXF((float32_t) v, 0.0);
+}
+
+static void write_int64_complex128(byte_t* ptr, int64_t v)
+{
+    *((complex128_t*)ptr) = CMPLX((float64_t) v, 0.0);
+}
+
+static void (*write_int64_func[NUM_TYPES])(byte_t*,int64_t) =
+{
+    [INT8] = write_int64_int8,
+    [INT16] = write_int64_int16,
+    [INT32] = write_int64_int32,
+    [INT64] = write_int64_int64,
+    [FLOAT32] = write_int64_float32,
+    [FLOAT64] = write_int64_float64,
+    [COMPLEX64] = write_int64_complex64,
+    [COMPLEX128] = write_int64_complex128
+};
+
+// convert and write an integer to matrix memory
+static void write_int64(matrix_type_t type, byte_t* ptr, int64_t v)
+{
+    (write_int64_func[type])(ptr, v);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// read an float64
+/////////////////////////////////////////////////////////////////////////////
+
+static float64_t read_float64_int8(byte_t* ptr)
+{
+    return (float64_t) *((int8_t*)ptr);
+}
+
+static float64_t read_float64_int16(byte_t* ptr)
+{
+    return (float64_t) *((int16_t*)ptr);
+}
+
+static float64_t read_float64_int32(byte_t* ptr)
+{
+    return (float64_t) *((int32_t*)ptr);
+}
+
+static float64_t read_float64_int64(byte_t* ptr)
+{
+    return (float64_t) *((int64_t*)ptr);
+}
+
+static float64_t read_float64_float32(byte_t* ptr)
+{
+    return (float64_t) *((float32_t*)ptr);
+}
+
+static float64_t read_float64_float64(byte_t* ptr)
+{
+    return (float64_t) *((float64_t*)ptr);
+}
+
+static float64_t read_float64_complex64(byte_t* ptr)
+{
+    return (float64_t) crealf(*((complex64_t*)ptr));
+}
+
+static float64_t read_float64_complex128(byte_t* ptr)
+{
+    return (float64_t) creal(*((complex128_t*)ptr));
+}
+
+static float64_t (*read_float64_func[NUM_TYPES])(byte_t*) =
+{
+    [INT8] = read_float64_int8,
+    [INT16] = read_float64_int16,
+    [INT32] = read_float64_int32,
+    [INT64] = read_float64_int64,
+    [FLOAT32] = read_float64_float32,
+    [FLOAT64] = read_float64_float64,
+    [COMPLEX64] = read_float64_complex64,
+    [COMPLEX128] = read_float64_complex128
+};
+
+// read and convert/trunc a number to a integer
+static float64_t read_float64(matrix_type_t type, byte_t* ptr)
+{
+    return (read_float64_func[type])(ptr);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// write an float64
+/////////////////////////////////////////////////////////////////////////////
+
+static void write_float64_int8(byte_t* ptr, float64_t v)
+{
+    *((int8_t*)ptr) = (int8_t) v;
+}
+
+static void write_float64_int16(byte_t* ptr, float64_t v)
+{
+    *((int16_t*)ptr) = (int16_t) v;
+}
+
+static void write_float64_int32(byte_t* ptr, float64_t v)
+{
+    *((int32_t*)ptr) = (int32_t) v;
+}
+
+static void write_float64_int64(byte_t* ptr, float64_t v)
+{
+    *((int64_t*)ptr) = (int64_t) v;
+}
+
+static void write_float64_float32(byte_t* ptr, float64_t v)
+{
+    *((float32_t*)ptr) = (float32_t) v;
+}
+
+static void write_float64_float64(byte_t* ptr, float64_t v)
+{
+    *((float64_t*)ptr) = (float64_t) v;
+}
+
+static void write_float64_complex64(byte_t* ptr, float64_t v)
+{
+    *((complex64_t*)ptr) = CMPLXF((float32_t) v, 0.0);
+}
+
+static void write_float64_complex128(byte_t* ptr, float64_t v)
+{
+    *((complex128_t*)ptr) = CMPLX((float64_t) v, 0.0);
+}
+
+static void (*write_float64_func[NUM_TYPES])(byte_t*,float64_t) =
+{
+    [INT8] = write_float64_int8,
+    [INT16] = write_float64_int16,
+    [INT32] = write_float64_int32,
+    [INT64] = write_float64_int64,
+    [FLOAT32] = write_float64_float32,
+    [FLOAT64] = write_float64_float64,
+    [COMPLEX64] = write_float64_complex64,
+    [COMPLEX128] = write_float64_complex128,
+};
+
+// convert and write an integer to matrix memory
+static void write_float64(matrix_type_t type, byte_t* ptr, float64_t v)
+{
+    (write_float64_func[type])(ptr, v);
+}
+
+
+/////////////////////////////////////////////////////////////////////////////
+// read an complex128
+/////////////////////////////////////////////////////////////////////////////
+
+static complex128_t read_complex128_int8(byte_t* ptr)
+{
+    return CMPLX(*((int8_t*)ptr), 0.0);
+}
+
+static complex128_t read_complex128_int16(byte_t* ptr)
+{
+    return CMPLX(*((int16_t*)ptr), 0.0);
+}
+
+static complex128_t read_complex128_int32(byte_t* ptr)
+{
+    return CMPLX(*((int32_t*)ptr), 0.0);
+}
+
+static complex128_t read_complex128_int64(byte_t* ptr)
+{
+    return CMPLX(*((int64_t*)ptr), 0.0);
+}
+
+static complex128_t read_complex128_float32(byte_t* ptr)
+{
+    return CMPLX(*((float32_t*)ptr), 0.0);
+}
+
+static complex128_t read_complex128_float64(byte_t* ptr)
+{
+    return CMPLX(*((float64_t*)ptr), 0.0);
+}
+
+static complex128_t read_complex128_complex64(byte_t* ptr)
+{
+    return (complex128_t) *((complex64_t*)ptr);
+}
+
+static complex128_t read_complex128_complex128(byte_t* ptr)
+{
+    return (complex128_t) *((complex128_t*)ptr);
+}
+
+static complex128_t (*read_complex128_func[NUM_TYPES])(byte_t*) =
+{
+    [INT8] = read_complex128_int8,
+    [INT16] = read_complex128_int16,
+    [INT32] = read_complex128_int32,
+    [INT64] = read_complex128_int64,
+    [FLOAT32] = read_complex128_float32,
+    [FLOAT64] = read_complex128_float64,
+    [COMPLEX64] = read_complex128_complex64,
+    [COMPLEX128] = read_complex128_complex128
+};
+
+// read and convert/trunc a number to a integer
+static complex128_t read_complex128(matrix_type_t type, byte_t* ptr)
+{
+    return (read_complex128_func[type])(ptr);
+}
+
+
+/////////////////////////////////////////////////////////////////////////////
+// write a complex128
+/////////////////////////////////////////////////////////////////////////////
+
+static void write_complex128_int8(byte_t* ptr, complex128_t v)
+{
+    *((int8_t*)ptr) = (int8_t) creal(v);
+}
+
+static void write_complex128_int16(byte_t* ptr, complex128_t v)
+{
+    *((int16_t*)ptr) = (int16_t) creal(v);
+}
+
+static void write_complex128_int32(byte_t* ptr, complex128_t v)
+{
+    *((int32_t*)ptr) = (int32_t) creal(v);
+}
+
+static void write_complex128_int64(byte_t* ptr, complex128_t v)
+{
+    *((int64_t*)ptr) = (int64_t) creal(v);
+}
+
+static void write_complex128_float32(byte_t* ptr, complex128_t v)
+{
+    *((float32_t*)ptr) = (float32_t) creal(v);
+}
+
+static void write_complex128_float64(byte_t* ptr, complex128_t v)
+{
+    *((float64_t*)ptr) = (float64_t) creal(v);
+}
+
+static void write_complex128_complex64(byte_t* ptr, complex128_t v)
+{
+    *((complex64_t*)ptr) = (complex64_t) v;
+}
+
+static void write_complex128_complex128(byte_t* ptr, complex128_t v)
+{
+    *((complex128_t*)ptr) = (complex128_t) v;
+}
+
+static void (*write_complex128_func[NUM_TYPES])(byte_t*,complex128_t) =
+{
+    [INT8] = write_complex128_int8,
+    [INT16] = write_complex128_int16,
+    [INT32] = write_complex128_int32,
+    [INT64] = write_complex128_int64,
+    [FLOAT32] = write_complex128_float32,
+    [FLOAT64] = write_complex128_float64,
+    [COMPLEX64] = write_complex128_complex64,
+    [COMPLEX128] = write_complex128_complex128
+};
+
+// convert and write an integer to matrix memory
+static void write_complex128(matrix_type_t type, byte_t* ptr, complex128_t v)
+{
+    (write_complex128_func[type])(ptr, v);
 }
 
 // convert scalar to erlang term
@@ -578,7 +942,7 @@ static ERL_NIF_TERM read_term(ErlNifEnv* env, matrix_type_t type, byte_t* ptr)
     case INT8:    return enif_make_int(env, (int) *((int8_t*)ptr));
     case INT16:   return enif_make_int(env, (int) *((int16_t*)ptr));
     case INT32:   return enif_make_int(env, (int) *((int32_t*)ptr));
-    case INT64:   return enif_make_int(env, (ErlNifSInt64) *((int64_t*)ptr));
+    case INT64:   return enif_make_int64(env, (ErlNifSInt64) *((int64_t*)ptr));
     case FLOAT32: return enif_make_double(env, *((float32_t*)ptr));
     case FLOAT64: return enif_make_double(env, *((float64_t*)ptr));
     case COMPLEX64:
@@ -593,8 +957,6 @@ static ERL_NIF_TERM read_term(ErlNifEnv* env, matrix_type_t type, byte_t* ptr)
 	return enif_make_badarg(env);
     }
 }
-
-
 
 #ifdef USE_GCC_VECTOR
 #ifdef __x86_64__
@@ -812,6 +1174,18 @@ complex128_t complex128_max(complex128_t a, complex128_t b)
 {
     return (cabs(a) > cabs(b)) ? a : b;
 }
+
+// use cabs to compare comlex
+complex128_t complex128_lt(complex128_t a, complex128_t b)
+{
+    return (cabs(a) < cabs(b));
+}
+
+complex128_t complex128_gt(complex128_t a, complex128_t b)
+{
+    return (cabs(a) > cabs(b));
+}
+
 
 #define cop_sigmoid(z)    (1.0/(1.0 + cexp(-(z))))
 
@@ -1143,118 +1517,6 @@ static inline float64_t op_sigmoid_prime(float64_t x)
     return z*(1-z);
 }
 
-
-static void zero_int8(int8_t* xp, int8_t* yp) { UNUSED(xp); *yp = 0; }
-static void zero_int16(int16_t* xp, int16_t* yp) { UNUSED(xp); *yp = 0; }
-static void zero_int32(int32_t* xp, int32_t* yp) { UNUSED(xp); *yp = 0; }
-static void zero_int64(int64_t* xp, int64_t* yp) { UNUSED(xp); *yp = 0; }
-static void zero_float32(float32_t* xp, float32_t* yp) { UNUSED(xp); *yp = 0.0; }
-static void zero_float64(float64_t* xp, float64_t* yp) { UNUSED(xp); *yp = 0.0; }
-static void zero_complex64(complex64_t* xp, complex64_t* yp) { UNUSED(xp); *yp = CMPLXF(0.0,0.0); }
-static void zero_complex128(complex128_t* xp, complex128_t* yp) { UNUSED(xp); *yp = CMPLX(0.0,0.0); }
-
-static void one_int8(int8_t* xp,int8_t* yp) { UNUSED(xp); *yp = 1; }
-static void one_int16(int16_t* xp, int16_t* yp) { UNUSED(xp); *yp = 1; }
-static void one_int32(int32_t* xp, int32_t* yp) { UNUSED(xp); *yp = 1; }
-static void one_int64(int64_t* xp, int64_t* yp) { UNUSED(xp); *yp = 1; }
-static void one_float32(float32_t* xp, float32_t* yp) { UNUSED(xp); *yp = 1.0; }
-static void one_float64(float64_t* xp, float64_t* yp) { UNUSED(xp); *yp = 1.0; }
-static void one_complex64(complex64_t* xp, complex64_t* yp) { UNUSED(xp); *yp = CMPLXF(1.0,0.0); }
-static void one_complex128(complex128_t* xp, complex128_t* yp) { UNUSED(xp); *yp = CMPLX(1.0,0.0); }
-
-static void copy_int8(int8_t* xp, int8_t* yp) { *yp = *xp; }
-static void copy_int16(int16_t* xp, int16_t* yp) { *yp = *xp; }
-static void copy_int32(int32_t* xp, int32_t* yp) { *yp = *xp; }
-static void copy_int64(int64_t* xp, int64_t* yp) { *yp = *xp; }
-static void copy_float32(float32_t* xp, float32_t* yp) { *yp = *xp; }
-static void copy_float64(float64_t* xp, float64_t* yp) { *yp = *xp; }
-static void copy_complex64(complex64_t* xp, complex64_t* yp) { *yp = *xp; }
-static void copy_complex128(complex128_t* xp, complex128_t* yp) { *yp = *xp; }
-
-static void negate_int8(int8_t* xp, int8_t* yp) { *yp = op_neg(*xp); }
-static void negate_int16(int16_t* xp, int16_t* yp) { *yp = op_neg(*xp); }
-static void negate_int32(int32_t* xp, int32_t* yp) { *yp = op_neg(*xp); }
-static void negate_int64(int64_t* xp, int64_t* yp) { *yp = op_neg(*xp); }
-static void negate_float32(float32_t* xp, float32_t* yp) { *yp = op_neg(*xp); }
-static void negate_float64(float64_t* xp, float64_t* yp) { *yp = op_neg(*xp); }
-static void negate_complex64(complex64_t* xp, complex64_t* yp) { *yp = op_neg(*xp); }
-static void negate_complex128(complex128_t* xp, complex128_t* yp) { *yp = op_neg(*xp); }
-
-static void sigmoid_int8(int8_t* xp, int8_t* yp) { *yp = op_sigmoid(*xp); }
-static void sigmoid_int16(int16_t* xp, int16_t* yp) { *yp = op_sigmoid(*xp); }
-static void sigmoid_int32(int32_t* xp, int32_t* yp) { *yp = op_sigmoid(*xp); }
-static void sigmoid_int64(int64_t* xp, int64_t* yp) { *yp = op_sigmoid(*xp); }
-static void sigmoid_float32(float32_t* xp, float32_t* yp) { *yp = op_sigmoid(*xp); }
-static void sigmoid_float64(float64_t* xp, float64_t* yp) { *yp = op_sigmoid(*xp); }
-static void sigmoid_complex64(complex64_t* xp, complex64_t* yp) { *yp = cop_sigmoid(*xp); }
-static void sigmoid_complex128(complex128_t* xp,complex128_t* yp) { *yp = cop_sigmoid(*xp); }
-
-static void (*unary_int8[NUM_UNARY_OPERATIONS])(int8_t *,int8_t *)  = {
-    [ZERO] = zero_int8,
-    [ONE]  = one_int8,
-    [COPY] = copy_int8,
-    [NEGATE] = negate_int8,
-    [SIGMOID] = sigmoid_int8,
-};
-
-static void (*unary_int16[NUM_UNARY_OPERATIONS])(int16_t *,int16_t *)  = {
-    [ZERO] = zero_int16,
-    [ONE]  = one_int16,
-    [COPY] = copy_int16,
-    [NEGATE] = negate_int16,
-    [SIGMOID] = sigmoid_int16,
-};
-
-static void (*unary_int32[NUM_UNARY_OPERATIONS])(int32_t*,int32_t*)  = {
-    [ZERO] = zero_int32,
-    [ONE]  = one_int32,
-    [COPY] = copy_int32,
-    [NEGATE] = negate_int32,    
-    [SIGMOID] = sigmoid_int32,
-};
-
-static void (*unary_int64[NUM_UNARY_OPERATIONS])(int64_t*,int64_t*)  = {
-    [ZERO] = zero_int64,
-    [ONE]  = one_int64,
-    [COPY] = copy_int64,
-    [NEGATE] = negate_int64,
-    [SIGMOID] = sigmoid_int64,    
-};
-
-static void (*unary_float32[NUM_UNARY_OPERATIONS])(float32_t*,float32_t*)  = {
-    [ZERO] = zero_float32,
-    [ONE]  = one_float32,
-    [COPY] = copy_float32,
-    [NEGATE] = negate_float32,
-    [SIGMOID] = sigmoid_float32,
-};
-
-static void (*unary_float64[NUM_UNARY_OPERATIONS])(float64_t*,float64_t*)  = {
-    [ZERO] = zero_float64,
-    [ONE]  = one_float64,
-    [COPY] = copy_float64,
-    [NEGATE] = negate_float64,    
-    [SIGMOID] = sigmoid_float64,    
-};
-
-static void (*unary_complex64[NUM_UNARY_OPERATIONS])(complex64_t*,complex64_t*)  = {
-    [ZERO] = zero_complex64,
-    [ONE]  = one_complex64,
-    [COPY] = copy_complex64,
-    [NEGATE] = negate_complex64,
-    [SIGMOID] = sigmoid_complex64,
-};
-
-static void (*unary_complex128[NUM_UNARY_OPERATIONS])(complex128_t*,complex128_t*)  = {
-    [ZERO] = zero_complex128,
-    [ONE]  = one_complex128,
-    [COPY] = copy_complex128,
-    [NEGATE] = negate_complex128,
-    [SIGMOID] = sigmoid_complex128,    
-};
-
-typedef void (*unaryf_t)(byte_t*, byte_t*);
-
 ///////////////////////////////////////////////////////////////////////////////
 //  matrix_op.i
 //  (soon generated) contain all operations
@@ -1262,47 +1524,383 @@ typedef void (*unaryf_t)(byte_t*, byte_t*);
 
 #include "matrix_op.i"
 
-///////////////////////////////////////////////////////////////////////////////
-// a more general function for unary operations but a lot slower
-///////////////////////////////////////////////////////////////////////////////
-
-// at == ct
-static void t_apply1(unary_operation_t func,
-		     matrix_type_t at, byte_t* ap, int au, int av,
-		     matrix_type_t ct, byte_t* cp, int cu, int cv,
-		     size_t n, size_t m)
+// float unary functions
+static float64_t sigmoid_float64(float64_t a)
 {
-    size_t i, j;
-    unaryf_t unaryf;
-
-    au = size_of_array(at,au);
-    av = size_of_array(at,av);
-    cu = size_of_array(ct,cu);
-    cv = size_of_array(ct,cv);
-
-    switch(at) {
-    case INT8:  unaryf = (unaryf_t) unary_int8[func]; break;
-    case INT16: unaryf = (unaryf_t) unary_int16[func]; break;
-    case INT32: unaryf = (unaryf_t) unary_int32[func]; break;
-    case INT64: unaryf = (unaryf_t) unary_int64[func]; break;
-    case FLOAT32: unaryf = (unaryf_t) unary_float32[func]; break;
-    case FLOAT64: unaryf = (unaryf_t) unary_float64[func]; break;
-    case COMPLEX64: unaryf = (unaryf_t) unary_complex64[func]; break;
-    case COMPLEX128: unaryf = (unaryf_t) unary_complex128[func]; break;
-    }
-    for (i=0; i<n; i++) {
-	byte_t* ap1 = ap;
-	byte_t* cp1 = cp;
-	for (j = 0; j < m; j++) {
-	    unaryf(ap1, cp1);
-	    ap1 += av;
-	    cp1 += cv;
-	}
-	ap += au;
-	cp += cu;
-    }
+    return op_sigmoid(a);
 }
 
+static float64_t sigmoid_prime_float64(float64_t a)
+{
+    return op_sigmoid_prime(a);
+}
+
+static float64_t sigmoid_prime1_float64(float64_t a)
+{
+    return a*(1.0-a);
+}
+
+static float64_t softplus_float64(float64_t a)
+{
+    return log(1.0+exp(a));
+}
+
+static float64_t softplus_prime_float64(float64_t a)
+{
+    return op_sigmoid(a);
+}
+
+static float64_t relu_float64(float64_t a)
+{
+    return op_max(0.0,a);
+}
+
+static float64_t relu_prime_float64(float64_t a)
+{
+    return (a>0.0)? 1.0 : 0.0;
+}
+
+static float64_t leaky_relu_float64(float64_t a)
+{
+    return (a>0.0)?a:0.1*a;
+}
+
+static float64_t leaky_relu_prime_float64(float64_t a)
+{
+    return (a>0.0)?1.0:0.1;
+}
+
+static float64_t exp_float64(float64_t a)
+{
+    return exp(a);
+}
+
+static float64_t tanh_float64(float64_t a)
+{
+    return tanh(a);
+}
+
+static float64_t tanh_prime_float64(float64_t a)
+{
+    double th = tanh(a);
+    return 1.0-th*th;
+}
+
+static float64_t tanh_prime1_float64(float64_t a)
+{
+    return 1.0-a*a;
+}
+
+static float64_t negate_float64(float64_t a)
+{
+    return -a;
+}
+
+static float64_t copy_float64(float64_t a)
+{
+    return a;
+}
+
+static float64_t uniform_float64(float64_t a)
+{
+    UNUSED(a);
+    return uniform_64(MATRIX_RAND_ALG);
+}
+
+static float64_t normal_float64(float64_t a)
+{
+    UNUSED(a);    
+    return normal_64(MATRIX_RAND_ALG,0.0,1.0);
+}
+
+static float64_t zero_float64(float64_t a)
+{
+    UNUSED(a);
+    return 0.0;
+}
+
+static float64_t one_float64(float64_t a)
+{
+    UNUSED(a);
+    return 1.0;
+}
+
+static float64_t (*unaryop_float64[NUM_UNARYOP])(float64_t) = {
+    [ZERO] = zero_float64,
+    [ONE]  = one_float64,
+    [COPY] = copy_float64,
+    [NEGATE] = negate_float64,
+    [SIGMOID] = sigmoid_float64,
+    [SIGMOID_PRIME] = sigmoid_prime_float64,
+    [SIGMOID_PRIME1] = sigmoid_prime1_float64,
+    [SOFTPLUS] = softplus_float64,
+    [SOFTPLUS_PRIME] = softplus_prime_float64,
+    [RELU] = relu_float64,
+    [RELU_PRIME] = relu_prime_float64,
+    [LEAKY_RELU] = leaky_relu_float64,
+    [LEAKY_RELU_PRIME] = leaky_relu_prime_float64,
+    [TANH] = tanh_float64,
+    [TANH_PRIME] = tanh_prime_float64,
+    [TANH_PRIME1] = tanh_prime1_float64,
+    [EXP] = exp_float64,
+    [UNIFORM] = uniform_float64,
+    [NORMAL] = normal_float64,
+};
+
+// Complex unary functions
+
+static complex128_t sigmoid_complex128(complex128_t a)
+{
+    return cop_sigmoid(a);
+}
+
+static complex128_t sigmoid_prime_complex128(complex128_t a)
+{
+    return cop_sigmoid_prime(a);
+}
+
+static complex128_t sigmoid_prime1_complex128(complex128_t a)
+{
+    return a*(1.0-a);
+}
+
+static complex128_t softplus_complex128(complex128_t a)
+{
+    return clog(1.0+cexp(a));
+}
+
+static complex128_t softplus_prime_complex128(complex128_t a)
+{
+    return cop_sigmoid(a);
+}
+
+static complex128_t relu_complex128(complex128_t a)
+{
+    float64_t ar = creal(a);
+    float64_t ai = cimag(a);
+    return CMPLX(ar>0.0?ar:0.0,ai>0.0?ai:0.0);
+}
+
+static complex128_t relu_prime_complex128(complex128_t a)
+{
+    float64_t ar = creal(a);
+    float64_t ai = cimag(a);
+    return CMPLX(ar>0.0?1.0:0.0,ai>0?1.0:0.0);
+}
+
+static complex128_t leaky_relu_complex128(complex128_t a)
+{
+    float64_t ar = creal(a);
+    float64_t ai = cimag(a);
+    return CMPLX(ar>0.0?ar:0.1*ar,ai>0.0?ai:0.1*ai);    
+}
+
+static complex128_t leaky_relu_prime_complex128(complex128_t a)
+{
+    float64_t ar = creal(a);
+    float64_t ai = cimag(a);
+    return CMPLX(ar>0.0?1.0:0.1,ai>0.0?1.0:0.1);
+}
+
+static complex128_t exp_complex128(complex128_t a)
+{
+    return cexp(a);
+}
+
+static complex128_t tanh_complex128(complex128_t a)
+{
+    return ctanh(a);
+}
+
+static complex128_t tanh_prime_complex128(complex128_t a)
+{
+    complex128_t th = ctanh(a);
+    return 1.0-th*th;
+}
+
+static complex128_t tanh_prime1_complex128(complex128_t a)
+{
+    return 1.0-a*a;
+}
+
+static complex128_t negate_complex128(complex128_t a)
+{
+    return -a;
+}
+
+static complex128_t copy_complex128(complex128_t a)
+{
+    return a;
+}
+
+static complex128_t uniform_complex128(complex128_t a)
+{
+    UNUSED(a);
+    return uniform_c128(MATRIX_RAND_ALG);
+}
+
+static complex128_t normal_complex128(complex128_t a)
+{
+    UNUSED(a);
+    return normal_c128(MATRIX_RAND_ALG,0.0,1.0);
+}
+
+static complex128_t zero_complex128(complex128_t a)
+{
+    UNUSED(a);
+    return CMPLX(0.0,0.0);
+}
+
+static complex128_t one_complex128(complex128_t a)
+{
+    UNUSED(a);
+    return CMPLX(1.0,0.0);
+}
+
+static complex128_t (*unaryop_complex128[NUM_UNARYOP])(complex128_t) = {
+    [ZERO] = zero_complex128,
+    [ONE]  = one_complex128,
+    [COPY] = copy_complex128,
+    [NEGATE] = negate_complex128,
+    [SIGMOID] = sigmoid_complex128,
+    [SIGMOID_PRIME] = sigmoid_prime_complex128,
+    [SIGMOID_PRIME1] = sigmoid_prime1_complex128,
+    [SOFTPLUS] = softplus_complex128,
+    [SOFTPLUS_PRIME] = softplus_prime_complex128,
+    [RELU] = relu_complex128,
+    [RELU_PRIME] = relu_prime_complex128,
+    [LEAKY_RELU] = leaky_relu_complex128,
+    [LEAKY_RELU_PRIME] = leaky_relu_prime_complex128,
+    [TANH] = tanh_complex128,
+    [TANH_PRIME] = tanh_prime_complex128,
+    [TANH_PRIME1] = tanh_prime1_complex128,
+    [EXP] = exp_complex128,
+    [UNIFORM] = uniform_complex128,
+    [NORMAL] = normal_complex128,
+};
+
+// integer unary functions (FIXME!!!)
+static int64_t sigmoid_int64(int64_t a)
+{
+    return op_sigmoid(a);
+}
+
+static int64_t sigmoid_prime_int64(int64_t a)
+{
+    return op_sigmoid_prime(a);
+}
+
+static int64_t sigmoid_prime1_int64(int64_t a)
+{
+    return a*(1-a);
+}
+
+static int64_t softplus_int64(int64_t a)
+{
+    return log(1.0+exp(a));
+}
+
+static int64_t softplus_prime_int64(int64_t a)
+{
+    return op_sigmoid(a);
+}
+
+static int64_t relu_int64(int64_t a)
+{
+    return op_max(0,a);
+}
+
+static int64_t relu_prime_int64(int64_t a)
+{
+    return (a>0)? 1 : 0;
+}
+
+static int64_t leaky_relu_int64(int64_t a)
+{
+    return (a>0)? a : 0.1*a;
+}
+
+static int64_t leaky_relu_prime_int64(int64_t a)
+{
+    return (a>0)?1:0;
+}
+
+static int64_t exp_int64(int64_t a)
+{
+    return exp(a);
+}
+
+static int64_t tanh_int64(int64_t a)
+{
+    return tanh(a);
+}
+
+static int64_t tanh_prime_int64(int64_t a)
+{
+    double th = tanh(a);
+    return 1.0-th*th;
+}
+
+static int64_t tanh_prime1_int64(int64_t a)
+{
+    return 1.0-a*a;
+}
+
+static int64_t negate_int64(int64_t a)
+{
+    return -a;
+}
+
+static int64_t copy_int64(int64_t a)
+{
+    return a;
+}
+
+static int64_t uniform_int64(int64_t a)
+{
+    UNUSED(a);
+    return rand_64(MATRIX_RAND_ALG);
+}
+
+static int64_t normal_int64(int64_t a)
+{
+    UNUSED(a);
+    return 0;
+}
+
+static int64_t zero_int64(int64_t a)
+{
+    UNUSED(a);
+    return 0;
+}
+
+static int64_t one_int64(int64_t a)
+{
+    UNUSED(a);
+    return 1;
+}
+
+static int64_t (*unaryop_int64[NUM_UNARYOP])(int64_t) = {
+    [ZERO] = zero_int64,
+    [ONE]  = one_int64,
+    [COPY] = copy_int64,
+    [NEGATE] = negate_int64,
+    [SIGMOID] = sigmoid_int64,
+    [SIGMOID_PRIME] = sigmoid_prime_int64,
+    [SIGMOID_PRIME1] = sigmoid_prime1_int64,
+    [SOFTPLUS] = softplus_int64,
+    [SOFTPLUS_PRIME] = softplus_prime_int64,
+    [RELU] = relu_int64,
+    [RELU_PRIME] = relu_prime_int64,
+    [LEAKY_RELU] = leaky_relu_int64,
+    [LEAKY_RELU_PRIME] = leaky_relu_prime_int64,
+    [TANH] = tanh_int64,
+    [TANH_PRIME] = tanh_prime_int64,
+    [TANH_PRIME1] = tanh_prime1_int64,
+    [EXP] = exp_int64,
+    [UNIFORM] = uniform_int64,
+    [NORMAL] = normal_int64,
+};
 
 static void apply1(unary_operation_t func,
 		   matrix_type_t at, byte_t* ap, int au, int av,
@@ -1317,38 +1915,19 @@ static void apply1(unary_operation_t func,
     cv = size_of_array(ct,cv);
 
     if (is_float(ct)) {
+	float64_t (*read_af)(byte_t*) = read_float64_func[at];
+	void (*write_cf)(byte_t*, float64_t) = write_float64_func[ct];
+	float64_t (*unaryf)(float64_t) = unaryop_float64[func];
+	
 	for (i=0; i<n; i++) {
 	    byte_t* ap1 = ap;
 	    byte_t* cp1 = cp;
 	    for (j = 0; j < m; j++) {
-		float64_t a = read_float(at, ap1);
+		float64_t a = read_af(ap1);
 		float64_t c;
 		ap1 += av;
-		switch(func) {
-		case SIGMOID:        c = op_sigmoid(a); break;
-		case SIGMOID_PRIME:  c = op_sigmoid_prime(a); break;
-		case SOFTPLUS:       c = log(1.0+exp(a)); break;
-		case SOFTPLUS_PRIME: c = op_sigmoid(a); break;		    
-		case RELU:           c = op_max(0.0,a); break;
-		case RELU_PRIME:     c = (a>0.0)?1.0:0.0; break;
-		case LEAKY_RELU:     c = op_max(0.1*a,a); break;
-		case LEAKY_RELU_PRIME:  c = (a>0.0)?1.0:0.1; break;
-		case TANH:          c = tanh(a); break;
-		case TANH_PRIME: {
-		    double th = tanh(a);
-		    c = 1.0-th*th;
-		    break;
-		}
-		case NEGATE:  c = -a; break;
-		case COPY:    c = a;  break;
-		case UNIFORM: c = uniform_64(MATRIX_RAND_ALG); break;
-		case NORMAL:  c = normal_64(MATRIX_RAND_ALG,0.0,1.0); break;
-		case ONE:     c = 1.0; break;
-		case ZERO:     c= 0.0; break;
-		case IDENTITY: c = (i==j)?1.0:0.0; break;
-		default:      c = 0.0; break;
-		}
-		write_float(ct, cp1, c);
+		c = unaryf(a);
+		write_cf(cp1, c);
 		cp1 += cv;
 	    }
 	    ap += au;
@@ -1356,59 +1935,19 @@ static void apply1(unary_operation_t func,
 	}
     }
     else if (is_complex(ct)) {
+	complex128_t (*read_af)(byte_t*) = read_complex128_func[at];	
+	void (*write_cf)(byte_t*, complex128_t) = write_complex128_func[ct];
+	complex128_t (*unaryf)(complex128_t) = unaryop_complex128[func];
+	
 	for (i=0; i<n; i++) {
 	    byte_t* ap1 = ap;
 	    byte_t* cp1 = cp;
 	    for (j = 0; j < m; j++) {
-		complex128_t a = read_complex(at, ap1);
+		complex128_t a = read_af(ap1);
 		complex128_t c;
 		ap1 += av;
-		switch(func) {
-		case SIGMOID:        c = cop_sigmoid(a); break;
-		case SIGMOID_PRIME:  c = cop_sigmoid_prime(a); break;
-		case SOFTPLUS:       c = log(1.0+cexp(a)); break;
-		case SOFTPLUS_PRIME: c = cop_sigmoid(a); break;
-		case RELU: {
-		    float64_t ar = creal(a);
-		    float64_t ai = cimag(a);
-		    c = CMPLX(op_max(0.0,ar),op_max(0.0,ai));
-		    break;
-		}
-		case RELU_PRIME: {
-		    float64_t ar = creal(a);
-		    float64_t ai = cimag(a);
-		    c = CMPLX(ar>0.0?1.0:0.0,
-			      ai>0?1.0:0.0);
-		    break;
-		}
-		case LEAKY_RELU: {
-		    float64_t ar = creal(a);
-		    float64_t ai = cimag(a);
-		    c = CMPLX(op_max(0.1*ar,ar),op_max(0.1*ai,ai));
-		    break;
-		}
-		case LEAKY_RELU_PRIME: {
-		    float64_t ar = creal(a);
-		    float64_t ai = cimag(a);
-		    c = CMPLX(ar>0.0?1.0:0.1,ai>0.0?1.0:0.1);
-		    break;
-		}
-		case TANH:          c = ctanh(a); break;
-		case TANH_PRIME: {
-		    complex128_t cth = ctanh(a);
-		    c = 1-cth*cth;
-		    break;
-		}
-		case NEGATE:        c = -a; break;
-		case COPY:          c = a; break;
-		case UNIFORM:  c = uniform_c128(MATRIX_RAND_ALG); break;
-		case NORMAL:   c = normal_c128(MATRIX_RAND_ALG,0.0,1.0); break;
-		case ONE:      c = CMPLX(1.0,0.0); break;
-		case ZERO:     c = CMPLX(0.0,0.0); break;
-		case IDENTITY: c = (i==j)?CMPLX(1.0,0.0):CMPLX(0.0,0.0); break;
-		default:       c = CMPLX(0.0,0.0); break;
-		}
-		write_complex(ct, cp1, c);
+		c = unaryf(a);
+		write_cf(cp1, c);
 		cp1 += cv;
 	    }
 	    ap += au;
@@ -1416,38 +1955,18 @@ static void apply1(unary_operation_t func,
 	}
     }
     else {
+	int64_t (*read_af)(byte_t*) = read_int64_func[at];
+	void    (*write_cf)(byte_t*, int64_t) = write_int64_func[ct];
+	int64_t (*unaryf)(int64_t) = unaryop_int64[func];
 	for (i=0; i<n; i++) {
 	    byte_t* ap1 = ap;
 	    byte_t* cp1 = cp;
 	    for (j = 0; j < m; j++) {
-		int64_t a = read_int(at, ap1);
+		int64_t a = read_af(ap1);
 		int64_t c;
 		ap1 += av;
-		switch(func) {
-		case SIGMOID:        c = op_sigmoid(a); break;
-		case SIGMOID_PRIME:  c = op_sigmoid_prime(a); break;
-		case SOFTPLUS:       c = log(1+exp(a)); break;
-		case SOFTPLUS_PRIME: c = op_sigmoid(a); break;		    
-		case RELU:           c = op_max(0,a); break;
-		case RELU_PRIME:     c = (a>0)?1:0; break;
-		case LEAKY_RELU:     c = op_max(0.1*a,a); break;
-		case LEAKY_RELU_PRIME: c = (a>0)?1:0; break;
-		case TANH:           c = tanh(a); break;
-		case TANH_PRIME: {
-		    double th = tanh(a);
-		    c = 1-th*th;
-		    break;
-		}
-		case NEGATE:    c = -a; break;
-		case COPY:      c = a; break;
-		case UNIFORM:   c = rand_64(MATRIX_RAND_ALG); break;
-		case ONE:       c = 1; break;
-		case ZERO:      c = 0; break;
-		case IDENTITY:  c = (i==j); break;
-		case NORMAL:    c = 0; break;
-		default:        c = 0; break;
-		}
-		write_int(ct, cp1, c);
+		c = unaryf(a);
+		write_cf(cp1, c);
 		cp1 += cv;
 	    }
 	    ap += au;
@@ -1456,39 +1975,106 @@ static void apply1(unary_operation_t func,
     }
 }
 
+// int64 operation add/sub/mul
+static int64_t add_int64(int64_t a, int64_t b)
+{
+    return op_add(a,b);
+}
+
+static int64_t sub_int64(int64_t a, int64_t b)
+{
+    return op_sub(a,b);
+}
+
+static int64_t mul_int64(int64_t a, int64_t b)
+{
+    return op_mul(a,b);
+}
+
+static int64_t (*binop_int64[NUM_BINOP])(int64_t, int64_t) = {
+    [ADD] = add_int64,
+    [SUB] = sub_int64,
+    [MUL] = mul_int64,
+};
+
+// float64 operation add/sub/mul
+static float64_t add_float64(float64_t a, float64_t b)
+{
+    return op_add(a,b);
+}
+
+static float64_t sub_float64(float64_t a, float64_t b)
+{
+    return op_sub(a,b);
+}
+
+static float64_t mul_float64(float64_t a, float64_t b)
+{
+    return op_mul(a,b);
+}
+
+static float64_t (*binop_float64[NUM_BINOP])(float64_t, float64_t) = {
+    [ADD] = add_float64,
+    [SUB] = sub_float64,
+    [MUL] = mul_float64,
+};
+
+// complex128 operation add/sub/mul
+static complex128_t add_complex128(complex128_t a, complex128_t b)
+{
+    return op_add(a,b);
+}
+
+static complex128_t sub_complex128(complex128_t a, complex128_t b)
+{
+    return op_sub(a,b);
+}
+
+static complex128_t mul_complex128(complex128_t a, complex128_t b)
+{
+    return op_mul(a,b);
+}
+
+static complex128_t (*binop_complex128[NUM_BINOP])(complex128_t,complex128_t)={
+    [ADD] = add_complex128,
+    [SUB] = sub_complex128,
+    [MUL] = mul_complex128,
+};
+
 // a more general function for binary operations but a lot slower
-static void apply2(int func,
+static void apply2(binary_operation_t func,
 		   matrix_type_t at, byte_t* ap, int au, int av,
 		   matrix_type_t bt, byte_t* bp, int bu, int bv,
 		   matrix_type_t ct, byte_t* cp, int cu, int cv,
 		   size_t n, size_t m)
 {
+    matrix_type_t t = combine_type(at, bt);
     au = size_of_array(at,au);
     av = size_of_array(at,av);
     bu = size_of_array(bt,bu);
     bv = size_of_array(bt,bv);
     cu = size_of_array(ct,cu);
     cv = size_of_array(ct,cv);
-
-    if (is_float(ct)) {
+    
+    if (is_float(t)) {
+	float64_t (*read_af)(byte_t*) = read_float64_func[at];
+	float64_t (*read_bf)(byte_t*) = read_float64_func[bt];
+	void (*write_cf)(byte_t*, float64_t) = write_float64_func[ct];
+	float64_t (*binop)(float64_t, float64_t) = binop_float64[func];
+	
 	while(n--) {
 	    byte_t* ap1 = ap;
 	    byte_t* bp1 = bp;
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_float(at, ap1);
-		float64_t b = read_float(bt, bp1);
+		float64_t a = read_af(ap1);
+		float64_t b = read_bf(bp1);
 		float64_t c;
 		ap1 += av;
 		bp1 += bv;
-		switch(func) {
-		case PLUS:   c = op_add(a,b); break;
-		case MINUS:  c = op_sub(a,b); break;
-		case TIMES:  c = op_mul(a,b); break;
-		default:     c = 0; break;
-		}
-		write_float(ct, cp1, c);
+		c = binop(a,b);
+		write_cf(cp1, c);
 		cp1 += cv;
 	    }
 	    ap += au;
@@ -1496,25 +2082,25 @@ static void apply2(int func,
 	    cp += cu;
 	}
     }
-    else if (is_complex(ct)) {
+    else if (is_complex(t)) {
+	complex128_t (*read_af)(byte_t*) = read_complex128_func[at];
+	complex128_t (*read_bf)(byte_t*) = read_complex128_func[bt];
+	void (*write_cf)(byte_t*, complex128_t) = write_complex128_func[ct];
+	complex128_t (*binop)(complex128_t,complex128_t)=binop_complex128[func];
+
 	while(n--) {
 	    byte_t* ap1 = ap;
 	    byte_t* bp1 = bp;
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		complex128_t a = read_complex(at, ap1);
-		complex128_t b = read_complex(bt, bp1);
+		complex128_t a = read_af(ap1);
+		complex128_t b = read_bf(bp1);
 		complex128_t c;
 		ap1 += av;
 		bp1 += bv;
-		switch(func) {
-		case PLUS:   c = op_add(a,b); break;
-		case MINUS:  c = op_sub(a,b); break;
-		case TIMES:  c = op_mul(a,b); break;
-		default:     c = 0; break;
-		}
-		write_complex(ct, cp1, c);
+		c = binop(a, b);
+		write_cf(cp1, c);
 		cp1 += cv;
 	    }
 	    ap += au;
@@ -1523,24 +2109,24 @@ static void apply2(int func,
 	}
     }
     else {
+	int64_t (*read_af)(byte_t*) = read_int64_func[at];
+	int64_t (*read_bf)(byte_t*) = read_int64_func[bt];
+	void    (*write_cf)(byte_t*, int64_t) = write_int64_func[ct];
+	int64_t (*binop)(float64_t, int64_t) = binop_int64[func];
+	
 	while(n--) {
 	    byte_t* ap1 = ap;
 	    byte_t* bp1 = bp;
 	    byte_t* cp1 = cp;
 	    size_t m1 = m;
 	    while(m1--) {
-		int64_t a = read_int(at, ap1);
-		int64_t b = read_int(bt, bp1);
+		int64_t a = read_af(ap1);
+		int64_t b = read_bf(bp1);
 		int64_t c;
 		ap1 += av;
 		bp1 += bv;
-		switch(func) {
-		case PLUS:   c = op_add(a,b); break;
-		case MINUS:  c = op_sub(a,b); break;
-		case TIMES:  c = op_mul(a,b); break;
-		default:     c = 0; break;
-		}
-		write_int(ct, cp1, c);
+		c = binop(a, b);
+		write_cf(cp1, c);
 		cp1 += cv;
 	    }
 	    ap += au;
@@ -1562,14 +2148,17 @@ static void add(bool_t use_vector,
 {
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_GCC_VECTOR
-	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
+	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
 	    mtv_add(at, ap, au, bp, bu, cp, cu, n, m);
-	else
+	}
+	else 
 #endif
+	{
 	    mt_add(at, ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
+	}
     }
     else {
-	apply2(PLUS, at, ap, au, av, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
+	apply2(ADD, at, ap, au, av, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
     }
 }
 
@@ -1585,14 +2174,17 @@ static void subtract(bool_t use_vector,
 {
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_GCC_VECTOR
-	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
+	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
 	    mtv_subtract(at, ap, au, bp, bu, cp, cu, n, m);
+	}
 	else
 #endif
+	{
 	    mt_subtract(at, ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
+	}
     }
     else {
-	apply2(MINUS, at, ap, au, bv, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
+	apply2(SUB, at, ap, au, av, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
     }
 }
 
@@ -1608,14 +2200,17 @@ static void times(bool_t use_vector,
 {
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_GCC_VECTOR
-	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
+	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
 	    mtv_times(at, ap, au, bp, bu, cp, cu, n, m);
+	}
 	else
 #endif
+	{
 	    mt_times(at, ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
+	}
     }
     else {
-	apply2(TIMES, at, ap, au, av, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
+	apply2(MUL, at, ap, au, av, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
     }
 }
 
@@ -1630,177 +2225,17 @@ static void negate(bool_t use_vector,
 {
     if (at == ct) {
 #ifdef USE_GCC_VECTOR
-	if (use_vector && is_aligned(ap) && is_aligned(cp))
+	if (use_vector && is_aligned(ap) && is_aligned(cp)) {
 	    mtv_negate(at, ap, au, cp, cu, n, m);
+	}
 	else
 #endif
+	{
 	    mt_negate(at, ap, au, av, cp, cu, cv, n, m);
+	}
     }
     else {
 	apply1(NEGATE, at, ap, au, av, ct, cp, cu, cv, n, m);
-    }
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// scale_i with integer factor
-///////////////////////////////////////////////////////////////////////////////
-
-static void scale_i(bool_t use_vector,
-		    matrix_type_t at, byte_t* ap, int au, int av,
-		    matrix_type_t ct, byte_t* cp, int cu, int cv,
-		    size_t n, size_t m, int64_t factor)
-{
-    if (at == ct) {
-#ifdef USE_GCC_VECTOR
-	if (use_vector && is_aligned(ap) && is_aligned(cp))
-	    mtv_scale_i(at, ap, au, cp, cu, n, m, factor);
-	else
-#endif
-	    mt_scale_i(at, ap, au, av, cp, cu, cv, n, m, factor);
-    }
-    else {
-	au = size_of_array(at,au);
-	av = size_of_array(at,av);
-	cu = size_of_array(ct,cu);
-	cv = size_of_array(ct,cv);
-
-	if (is_integer(ct)) {
-	    while(n--) {
-		byte_t* ap1 = ap;
-		byte_t* cp1 = cp;
-		size_t m1 = m;
-		while(m1--) {
-		    int64_t a = read_int(at, ap1);
-		    ap1 += av;
-		    write_int(ct, cp1, a*factor);
-		    cp1 += cv;
-		}
-		ap += au;
-		cp += au;
-	    }
-	}
-	else if (is_float(ct)) {
-	    while(n--) {
-		byte_t* ap1 = ap;
-		byte_t* cp1 = cp;
-		size_t m1 = m;
-		while(m1--) {
-		    float64_t a = read_float(at, ap1);
-		    ap1 += av;
-		    write_float(ct, cp1, a*factor);
-		    cp1 += cv;
-		}
-		ap += au;
-		cp += cu;
-	    }
-	}
-	else if (is_complex(ct)) {
-	    while(n--) {
-		byte_t* ap1 = ap;
-		byte_t* cp1 = cp;
-		size_t m1 = m;
-		while(m1--) {
-		    complex128_t a = read_complex(at, ap1);
-		    ap1 += av;
-		    write_complex(ct, cp1, a*factor);
-		    cp1 += cv;
-		}
-		ap += au;
-		cp += cu;
-	    }
-	}
-    }
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// scale_f with floating point factor
-///////////////////////////////////////////////////////////////////////////////
-
-static void scale_f(bool_t use_vector,
-		    matrix_type_t at, byte_t* ap, int au, int av,
-		    matrix_type_t ct, byte_t* cp, int cu, int cv,
-		    size_t n, size_t m, float64_t factor)
-{
-    if (at == ct) {
-#ifdef USE_GCC_VECTOR
-	if (use_vector && is_aligned(ap) && is_aligned(cp))
-	    mtv_scale_f(at, ap, au, cp, cu, n, m, factor);
-	else
-#endif
-	    mt_scale_f(at, ap, au, av, cp, cu, cv, n, m, factor);
-    }
-    else {
-	au = size_of_array(at,au);
-	av = size_of_array(at,av);
-	cu = size_of_array(ct,cu);
-	cv = size_of_array(ct,cv);
-
-	if (is_complex(ct)) {
-	    while(n--) {
-		byte_t* ap1 = ap;
-		byte_t* cp1 = cp;
-		size_t m1 = m;
-		while(m1--) {
-		    complex64_t a = read_complex(at, ap1);
-		    ap1 += av;
-		    write_complex(ct, cp1, a*factor);
-		    cp1 += cv;
-		}
-		ap += au;
-		cp += cu;
-	    }
-	}
-	else { // a is integer or float
-	    while(n--) {
-		byte_t* ap1 = ap;
-		byte_t* cp1 = cp;
-		size_t m1 = m;
-		while(m1--) {
-		    float64_t a = read_float(at, ap1);
-		    ap1 += av;
-		    write_float(ct, cp1, a*factor);
-		    cp1 += cv;
-		}
-		ap += au;
-		cp += cu;
-	    }
-	}
-    }
-}
-
-
-static void scale_c(bool_t use_vector,
-		    matrix_type_t at, byte_t* ap, int au, int av,
-		    matrix_type_t ct, byte_t* cp, int cu, int cv,
-		    size_t n, size_t m, complex128_t factor)
-{
-    if (at == ct) {
-#ifdef USE_GCC_VECTOR
-	if (use_vector && is_aligned(ap) && is_aligned(cp))
-	    mtv_scale_c(at, ap, au, cp, cu, n, m, factor);
-	else
-#endif
-	    mt_scale_c(at, ap, au, av, cp, cu, cv, n, m, factor);
-    }
-    else {
-	au = size_of_array(at,au);
-	av = size_of_array(at,av);
-	cu = size_of_array(ct,cu);
-	cv = size_of_array(ct,cv);
-
-	while(n--) {
-	    byte_t* ap1 = ap;
-	    byte_t* cp1 = cp;
-	    size_t m1 = m;
-	    while(m1--) {
-		complex128_t a = read_complex(at, ap1);
-		ap1 += av;
-		write_complex(ct, cp1, a*factor);
-		cp1 += cv;
-	    }
-	    ap += au;
-	    cp += cu;
-	}
     }
 }
 
@@ -1814,36 +2249,17 @@ static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
     au = size_of_array(at,au);
     av = size_of_array(at,av);
 
-    if (is_integer(at)) {
+    if (is_float(at)) {
 	while(m--) {
 	    byte_t* ap1 = ap;
 	    size_t  n1 = n-1;
 	    int32_t i = 1;
 	    int32_t max_i = 1;
-	    int64_t max_v = read_int(at, ap1);
+	    float64_t max_v = read_float64(at, ap1);
 
 	    ap1 += au;
 	    while(n1--) {
-		int64_t v = read_int(at, ap1);
-		ap1 += au;
-		i++;
-		if (v > max_v) { max_v = v; max_i = i; }
-	    }
-	    *cp++ = max_i;
-	    ap += av;
-	}
-    }
-    else if (is_float(at)) {
-	while(m--) {
-	    byte_t* ap1 = ap;
-	    size_t  n1 = n-1;
-	    int32_t i = 1;
-	    int32_t max_i = 1;
-	    float64_t max_v = read_float(at, ap1);
-
-	    ap1 += au;
-	    while(n1--) {
-		float64_t v = read_float(at, ap1);
+		float64_t v = read_float64(at, ap1);
 		ap1 += au;
 		i++;
 		if (v > max_v) { max_v = v; max_i = i; }
@@ -1858,11 +2274,11 @@ static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
 	    size_t  n1 = n-1;
 	    int32_t i = 1;
 	    int32_t max_i = 1;
-	    complex128_t max_v = read_complex(at, ap1);
+	    complex128_t max_v = read_complex128(at, ap1);
 
 	    ap1 += au;
 	    while(n1--) {
-		complex128_t v = read_complex(at, ap1);
+		complex128_t v = read_complex128(at, ap1);
 		ap1 += au;
 		i++;
 		if (cabs(v) > cabs(max_v)) { max_v = v; max_i = i; }
@@ -1870,6 +2286,174 @@ static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
 	    *cp++ = max_i;
 	    ap += av;
 
+	}
+    }
+    else {
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n-1;
+	    int32_t i = 1;
+	    int32_t max_i = 1;
+	    int64_t max_v = read_int64(at, ap1);
+
+	    ap1 += au;
+	    while(n1--) {
+		int64_t v = read_int64(at, ap1);
+		ap1 += au;
+		i++;
+		if (v > max_v) { max_v = v; max_i = i; }
+	    }
+	    *cp++ = max_i;
+	    ap += av;
+	}
+    }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// max
+///////////////////////////////////////////////////////////////////////////////
+
+static void t_max(matrix_type_t at,byte_t* ap, int au, int av,
+		  matrix_type_t ct,byte_t* cp, int cv,
+		  size_t n, size_t m)
+{
+    au = size_of_array(at,au);
+    av = size_of_array(at,av);
+    cv = size_of_array(ct,cv);
+
+    if (is_float(ct)) {
+	float64_t max_v = read_float64(at, ap);
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n;
+	    if (cv) {
+		max_v = read_float64(at, ap1);
+		ap1 += au;
+		n1--;
+	    }
+	    while(n1--) {
+		float64_t v = read_float64(at, ap1);
+		ap1 += au;
+		if (v > max_v) { max_v = v; }
+	    }
+	    write_float64(ct, cp, max_v);
+	    cp += cv;
+	    ap += av;
+	}
+    }
+    else if (is_complex(ct)) {
+	complex128_t max_v = read_complex128(at, ap);
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n;
+	    if (cv) {
+		max_v = read_complex128(at, ap1);
+		ap1 += au;
+		n1--;
+	    }
+	    while(n1--) {
+		complex128_t v = read_complex128(at, ap1);
+		ap1 += au;
+		if (cabs(v) > cabs(max_v)) { max_v = v; }
+	    }
+	    write_complex128(ct, cp, max_v);
+	    cp += cv;
+	    ap += av;
+	}
+    }
+    else {
+	int64_t max_v = read_int64(at, ap);
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n;
+	    if (cv) {
+		max_v = read_int64(at, ap1);
+		ap1 += au;
+		n1--;
+	    }
+	    while(n1--) {
+		int64_t v = read_int64(at, ap1);
+		ap1 += au;
+		if (v > max_v) { max_v = v; }
+	    }
+	    write_int64(ct, cp, max_v);
+	    cp += cv;
+	    ap += av;
+	}
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// min
+///////////////////////////////////////////////////////////////////////////////
+
+static void t_min(matrix_type_t at,byte_t* ap, int au, int av,
+		  matrix_type_t ct,byte_t* cp, int cv,
+		  size_t n, size_t m)
+{
+    au = size_of_array(at,au);
+    av = size_of_array(at,av);
+    cv = size_of_array(ct,cv);    
+
+    if (is_float(ct)) {
+	float64_t min_v = read_float64(at, ap);
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n;
+	    if (cv) {
+		min_v = read_float64(at, ap1);
+		ap1 += au;
+		n1--;
+	    }
+	    while(n1--) {
+		float64_t v = read_float64(at, ap1);
+		ap1 += au;
+		if (v < min_v) { min_v = v; }
+	    }
+	    write_float64(ct, cp, min_v);
+	    cp += cv;
+	    ap += av;
+	}
+    }
+    else if (is_complex(ct)) {
+	complex128_t min_v = read_complex128(at, ap);
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n;
+	    if (cv) {
+		min_v = read_complex128(at, ap1);
+		ap1 += au;
+		n1--;
+	    }
+	    while(n1--) {
+		complex128_t v = read_complex128(at, ap1);
+		ap1 += au;
+		if (cabs(v) < cabs(min_v)) { min_v = v; }
+	    }
+	    write_complex128(ct, cp, min_v);
+	    cp += cv;
+	    ap += av;
+	}
+    }
+    else {
+	int64_t min_v = read_int64(at, ap);
+	while(m--) {
+	    byte_t* ap1 = ap;
+	    size_t  n1 = n-1;
+	    if (cv) {
+		min_v = read_int64(at, ap1);
+		ap1 += au;
+		n1--;
+	    }	    
+	    while(n1--) {
+		int64_t v = read_int64(at, ap1);
+		ap1 += au;
+		if (v > min_v) { min_v = v; }
+	    }
+	    write_int64(ct, cp, min_v);	    
+	    cp += cv;
+	    ap += av;
 	}
     }
 }
@@ -1907,10 +2491,21 @@ static void sigmoid_prime(matrix_type_t at, byte_t* ap, int au, int av,
     }
 }
 
+static void sigmoid_prime1(matrix_type_t at, byte_t* ap, int au, int av,
+			   matrix_type_t ct, byte_t* cp, int cu, int cv,
+			   size_t n, size_t m)
+{
+    if (at == ct) {
+	mt_sigmoid_prime1(at, ap, au, av, cp, cu, cv, n, m);
+    }
+    else {
+	apply1(SIGMOID_PRIME1, at, ap, au, av, ct, cp, cu, av, n, m);
+    }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // rectifier
 ///////////////////////////////////////////////////////////////////////////////
-
 
 static void rectifier(matrix_type_t at, byte_t* ap, int au, int av,
 		      matrix_type_t ct, byte_t* cp, int cu, int cv,
@@ -1934,18 +2529,18 @@ static void multiply(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
-    byte_t* dp,int du,int dv,
+    byte_t* kp,int ku,int kv,
     matrix_type_t ct,byte_t* cp,int cu,int cv)
 {
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_GCC_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
-	    mtv_multiply(at,ap,au,an,am,bp,bu,bn,bm,cp,cu,cv);
+	    mtv_multiply(at,ap,au,an,am,bp,bu,bn,bm,kp,ku,kv,cp,cu,cv);
 	}
 	else
 #endif
 	{
-	    mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,dp,du,dv,cp,cu,cv);
+	    mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,kp,ku,kv,cp,cu,cv);
 	}
     }
     else {
@@ -1960,91 +2555,101 @@ static void multiply(
 	if (is_float(ct)) {
 	    while(an--) {
 		byte_t* cp1 = cp;
-		byte_t* dp1 = dp;
 		size_t m = bm;
-		bp = bp0;
-		while(m--) {
-		    float64_t sum = 0.0;
-		    if (*dp1) {
+		if (*kp) {
+		    bp = bp0;
+		    while(m--) {
+			float64_t sum = 0.0;
 			byte_t* bp1 = bp;
 			byte_t* ap1 = ap;
 			size_t  k = am;
 			while(k--) {
-			    float64_t a = read_float(at, ap1);
-			    float64_t b = read_float(bt, bp1);
+			    float64_t a = read_float64(at, ap1);
+			    float64_t b = read_float64(bt, bp1);
 			    sum += a*b;
 			    ap1 += av;
 			    bp1 += bu;
 			}
+			write_float64(ct, cp1, sum);
+			cp1 += cv;
+			bp += bv;
 		    }
-		    write_float(ct, cp1, sum);
-		    cp1 += cv;
-		    bp += bv;
-		    dp1 += dv;
+		}
+		else {
+		    while(m--) {
+			write_float64(ct, cp1, 0.0);
+			cp1 += cv;
+		    }
 		}
 		ap += au;
 		cp += cu;
-		dp += du;
+		kp += kv;
 	    }
 	}
 	else if (is_complex(ct)) {
 	    while(an--) {
 		byte_t* cp1 = cp;
-		byte_t* dp1 = dp;
 		size_t m = bm;
-		bp = bp0;
-		while(m--) {
-		    complex128_t sum =  CMPLX(0.0,0.0);;
-		    if (*dp1) {
+		if (*kp) {
+		    bp = bp0;
+		    while(m--) {
+			complex128_t sum =  CMPLX(0.0,0.0);
 			byte_t* bp1 = bp;
 			byte_t* ap1 = ap;
 			size_t  k = am;
 			while(k--) {
-			    complex128_t a = read_complex(at, ap1);
-			    complex128_t b = read_complex(bt, bp1);
+			    complex128_t a = read_complex128(at, ap1);
+			    complex128_t b = read_complex128(bt, bp1);
 			    sum += a*b;
 			    ap1 += av;
 			    bp1 += bu;
 			}
-			write_complex(ct, cp1, sum);
+			write_complex128(ct, cp1, sum);
 			cp1 += cv;
 			bp += bv;
-			dp1 += dv;
+		    }
+		}
+		else {
+		    while(m--) {
+			write_complex128(ct, cp1, CMPLX(0.0,0.0));
+			cp1 += cv;
 		    }
 		}
 		ap += au;
 		cp += cu;
-		dp += du;
+		kp += kv;
 	    }
 	}
 	else {
 	    while(an--) {
 		byte_t* cp1 = cp;
-		byte_t* dp1 = dp;
 		size_t m = bm;
-		bp = bp0;
-		while(m--) {
-		    int64_t sum = 0;
-		    if (*dp1) {
+		if (*kp) {
+		    bp = bp0;
+		    while(m--) {
+			int64_t sum = 0;
 			byte_t* bp1 = bp;
 			byte_t* ap1 = ap;
 			size_t  k = am;
 			while(k--) {
-			    int64_t a = read_int(at, ap1);
-			    int64_t b = read_int(bt, bp1);
+			    int64_t a = read_int64(at, ap1);
+			    int64_t b = read_int64(bt, bp1);
 			    sum += a*b;
 			    ap1 += av;
 			    bp1 += bu;
 			}
-			write_int(ct, cp1, sum);
+			write_int64(ct, cp1, sum);
 			cp1 += cv;
 			bp += bv;
-			dp1 += dv;
 		    }
+		}
+		else {
+		    write_int64(ct, cp1, 0);
+		    cp1 += cv;
 		}
 		ap += au;
 		cp += cu;
-		dp += du;
+		kp += kv;
 	    }
 	}
     }
@@ -2058,17 +2663,18 @@ static void multiply_t(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
-    byte_t* dp,int du,int dv,
+    byte_t* kp,int ku,int kv,
     matrix_type_t ct,byte_t* cp,int cu,int cv)
 {
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_GCC_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
-	    mtv_multiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,cp,cu,cv);
+	    mtv_multiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,
+				    kp,ku,kv,cp,cu,cv);
 	else
 #endif
 	    mt_multiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,
-				   dp,du,dv,cp,cu,cv);
+				   kp,ku,kv,cp,cu,cv);
     }
     else {
 	byte_t* bp0 = bp;
@@ -2082,91 +2688,103 @@ static void multiply_t(
 	if (is_float(ct)) {
 	    while(an--) {
 		byte_t* cp1 = cp;
-		byte_t* dp1 = dp;
 		size_t n = bn;
-		bp = bp0;
-		while(n--) {
-		    float64_t sum = 0.0;
-		    if (*dp1) {
+		if (*kp) {
+		    bp = bp0;
+		    while(n--) {
+			float64_t sum = 0.0;
 			byte_t* ap1 = ap;
 			byte_t* bp1 = bp;
 			size_t k = bm;
 			while(k--) {
-			    float64_t a = read_float(at, ap1);
-			    float64_t b = read_float(bt, bp1);
+			    float64_t a = read_float64(at, ap1);
+			    float64_t b = read_float64(bt, bp1);
 			    sum += a*b;
 			    ap1 += av;
 			    bp1 += bv;
 			}
+			write_float64(ct, cp1, sum);
+			cp1 += cv;
+			bp  += bu;
 		    }
-		    write_float(ct, cp1, sum);
-		    cp1 += cv;
-		    bp  += bu;
-		    dp1 += du;
+		}
+		else {
+		    while(n--) {
+			write_float64(ct, cp1, 0.0);			
+			cp1 += cv;
+		    }
 		}
 		ap += au;
 		cp += cu;
-		dp += dv;
+		kp += kv;
 	    }
 	}
 	else if (is_complex(ct)) {
 	    while(an--) {
 		byte_t* cp1 = cp;
-		byte_t* dp1 = dp;		
 		size_t n = bn;
-		bp = bp0;
-		while(n--) {
-		    complex128_t sum = CMPLX(0.0,0.0);
-		    if (*dp1) {
+		if (*kp) {
+		    bp = bp0;
+		    while(n--) {
+			complex128_t sum = CMPLX(0.0,0.0);
 			byte_t* ap1 = ap;
 			byte_t* bp1 = bp;
 			size_t k = bm;
 			while(k--) {
-			    complex128_t a = read_complex(at, ap1);
-			    complex128_t b = read_complex(bt, bp1);
+			    complex128_t a = read_complex128(at, ap1);
+			    complex128_t b = read_complex128(bt, bp1);
 			    sum += a*b;
 			    ap1 += av;
 			    bp1 += bv;
 			}
+			write_complex128(ct, cp1, sum);
+			cp1 += cv;
+			bp += bu;
 		    }
-		    write_complex(ct, cp1, sum);
-		    cp1 += cv;
-		    bp += bu;
-		    dp1 += du;
+		}
+		else {
+		    while(n--) {
+			write_complex128(ct, cp1, CMPLX(0.0,0.0));
+			cp1 += cv;
+		    }
 		}
 		ap += au;
 		cp += cu;
-		dp += dv;
+		kp += kv;
 	    }
 	}
 	else {
 	    while(an--) {
 		byte_t* cp1 = cp;
-		byte_t* dp1 = dp;
 		size_t n = bn;
-		bp = bp0;
-		while(n--) {
-		    int64_t sum = 0;
-		    if (*dp1) {
+		if (*kp) {
+		    bp = bp0;
+		    while(n--) {
+			int64_t sum = 0;
 			byte_t* ap1 = ap;
 			byte_t* bp1 = bp;
 			size_t k = bm;
 			while(k--) {
-			    int64_t a = read_int(at, ap1);
-			    int64_t b = read_int(bt, bp1);
+			    int64_t a = read_int64(at, ap1);
+			    int64_t b = read_int64(bt, bp1);
 			    sum += a*b;
 			    ap1 += av;
 			    bp1 += bv;
 			}
+			write_int64(ct, cp1, sum);
+			cp1 += cv;
+			bp += bu;
 		    }
-		    write_int(ct, cp1, sum);
-		    cp1 += cv;
-		    bp += bu;
-		    dp1 += du;
+		}
+		else {
+		    while(n--) {
+			write_int64(ct, cp1, 0);
+			cp1 += cv;
+		    }
 		}
 		ap += au;
 		cp += cu;
-		dp += dv;
+		kp += kv;
 	    }
 	}
     }
@@ -2356,8 +2974,8 @@ static void tile(matrix_type_t at,byte_t* ap,int au,int av,
 		    aj = 0;
 		    ap1 = ap;
 		}
-		value = read_float(at, ap1);
-		write_float(ct, cp1, value);
+		value = read_float64(at, ap1);
+		write_float64(ct, cp1, value);
 		cp1 += cv;
 		ap1 += av;
 		aj++;
@@ -2391,8 +3009,8 @@ static void tile(matrix_type_t at,byte_t* ap,int au,int av,
 		    aj = 0;
 		    ap1 = ap;
 		}
-		value = read_complex(at, ap1);
-		write_complex(ct, cp1, value);
+		value = read_complex128(at, ap1);
+		write_complex128(ct, cp1, value);
 		cp1 += cv;
 		ap1 += av;
 		aj++;
@@ -2425,8 +3043,8 @@ static void tile(matrix_type_t at,byte_t* ap,int au,int av,
 		    aj = 0;
 		    ap1 = ap;
 		}
-		value = read_int(at, ap1);
-		write_int(ct,cp1,value);
+		value = read_int64(at, ap1);
+		write_int64(ct,cp1,value);
 		cp1 += cv;
 		ap1 += av;
 		aj++;
@@ -2487,8 +3105,8 @@ static void fill(matrix_type_t at,byte_t* ap,int au,int av,
 		float64_t value;
 		if (aj >= am) { aj = 0; ai++; ap += au; ap1 = ap; }
 		if (ai >= an) { ai = 0; ap = ap0; ap1 = ap; }
-		value = read_float(at, ap1);
-		write_float(ct, cp1, value);
+		value = read_float64(at, ap1);
+		write_float64(ct, cp1, value);
 		cp1 += cv;
 		ap1 += av;
 		aj++;
@@ -2505,8 +3123,8 @@ static void fill(matrix_type_t at,byte_t* ap,int au,int av,
 		complex128_t value;
 		if (aj >= am) { aj = 0; ai++; ap += au; ap1 = ap; }
 		if (ai >= an) { ai = 0; ap = ap0; ap1 = ap; }
-		value = read_complex(at, ap1);
-		write_complex(ct, cp1, value);
+		value = read_complex128(at, ap1);
+		write_complex128(ct, cp1, value);
 		cp1 += cv;
 		ap1 += av;
 		aj++;
@@ -2523,8 +3141,8 @@ static void fill(matrix_type_t at,byte_t* ap,int au,int av,
 		int64_t value;
 		if (aj >= am) { aj = 0; ai++; ap += au; ap1 = ap; }
 		if (ai >= an) { ai = 0; ap = ap0; ap1 = ap; }
-		value = read_int(at, ap1);
-		write_int(ct,cp1,value);
+		value = read_int64(at, ap1);
+		write_int64(ct,cp1,value);
 		cp1 += cv;
 		ap1 += av;
 		aj++;
@@ -2532,6 +3150,27 @@ static void fill(matrix_type_t at,byte_t* ap,int au,int av,
 	    cp += cu;
 	}
     }
+}
+
+// initialize a static matrix, used for constants etc
+static matrix_t* init_matrix(matrix_t* mp,
+			     unsigned int n, unsigned int m,
+			     bool_t rowmajor, unsigned int stride,
+			     matrix_type_t type, byte_t* data)
+{
+    mp->n       = n;
+    mp->m       = m;
+    mp->type    = type;
+    mp->size    = n*m*element_size(type);
+    mp->stride  = stride;
+    mp->offset  = 0;
+    mp->rowmajor = rowmajor;
+    mp->base    = NULL;
+    mp->data    = data;
+    mp->first   = data;
+    mp->rw_lock = NULL;
+    mp->ptr     = 0;
+    return mp;
 }
 
 matrix_t* alloc_matrix_resource(size_t n, size_t m,
@@ -2552,10 +3191,7 @@ matrix_t* alloc_matrix_resource(size_t n, size_t m,
 	mp->data    = NULL;
 	mp->first   = NULL;
 	mp->rw_lock = NULL;
-	mp->ptr     = (uintptr_t)mp; // keep track of uniqness
-	// fixme: maybe make sure that n is also padded to alignment
-	// by adding zero pads in the end. This may simplify code
-	// that extract columns and code that transpose using vectors
+	mp->ptr     = (uintptr_t)mp;
 
 	if ((mp->base = enif_alloc(size+align-1)) != NULL) {
 	    mp->size   = size;
@@ -2578,9 +3214,12 @@ int create_matrix(ErlNifEnv* env, unsigned int n, unsigned int m,
 		  ERL_NIF_TERM* resp)
 {
     matrix_t* np;
+
     if ((np = alloc_matrix_resource(n, m, rowmajor, type, ALIGN)) != NULL) {
 	*resp = enif_make_resource_binary(env,np,np->data,np->size);
-	*mp = *np;
+	// NOTE! compiler generate code that crash on *mp = *np!
+	// probalbly bad opcodes generated because of vector elements!
+	memcpy(mp, np, sizeof(matrix_t));
 	enif_release_resource(np);
 	return 1;
     }
@@ -2625,6 +3264,35 @@ static int get_complex(ErlNifEnv* env, ERL_NIF_TERM arg, complex128_t* cmplx)
     *cmplx = CMPLX(real, imag);
     return 1;
 }
+
+static int get_scalar(ErlNifEnv* env, ERL_NIF_TERM arg, bool_t coerce,
+		      matrix_type_t type, matrix_type_t* otype, scalar_t* sp)
+{
+    double dv;
+    ErlNifSInt64 iv;
+    complex128_t cv;
+    
+    if (enif_get_double(env, arg, &dv)) {
+	if (coerce && !is_float(type))
+	    type = combine_type(type, FLOAT64);
+	write_float64(type, sp->data, dv);
+    }
+    else if (enif_get_int64(env, arg, &iv)) {
+	if (coerce && !is_integer(type))
+	    type = combine_type(type, INT64);
+	write_int64(type, sp->data, iv);
+    }
+    else if (get_complex(env, arg, &cv)) {
+	if (coerce && !is_complex(type))
+	    type = combine_type(type, COMPLEX128);
+	write_complex128(type, sp->data, cv);
+    }
+    else
+	return 0;
+    if (otype != NULL) *otype = type;
+    return 1;
+}
+
 
 // Get matrix argument
 // { 'matrix', n, m, type, ptr, offset, stride, row-major, binary-data }
@@ -2686,6 +3354,22 @@ static int get_matrix(ErlNifEnv* env, ERL_NIF_TERM arg, matrix_t* mp)
 	mp->rw_lock = NULL;
 	mp->ptr  = 0;
     }
+    return 1;
+}
+
+// get_scalar_matrix
+// get a scalar and represent it as a nxm matrix
+// stride=0 signal scalar (repetetive) data! for now.
+// if the base type is the same as the erlang scalar base type
+// i.e base type = integer,float or comlex
+//
+static int get_scalar_matrix(ErlNifEnv* env, ERL_NIF_TERM arg, matrix_t* mp,
+			     bool_t rowmajor, matrix_type_t type,
+			     unsigned int n, unsigned int m)
+{
+    if (!get_scalar(env, arg, TRUE, type, &type, &mp->sdata))
+	return 0;
+    init_matrix(mp, n, m, rowmajor, 0, type, mp->sdata.data);
     return 1;
 }
 
@@ -2753,6 +3437,87 @@ ERL_NIF_TERM matrix_create(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 }
 
+// element(I, J, A) -> A[I][J]   I and J are 1-based
+
+ERL_NIF_TERM matrix_element(ErlNifEnv* env, int argc,
+			    const ERL_NIF_TERM argv[])
+{
+    unsigned int i, j;
+    matrix_t a;
+    byte_t* ptr;
+    ERL_NIF_TERM r;
+    UNUSED(argc);
+
+    if (!enif_get_uint(env, argv[0], &i))	    
+	return enif_make_badarg(env);
+    if (!enif_get_uint(env, argv[1], &j))    
+	return enif_make_badarg(env);	
+    if (!get_matrix(env, argv[2], &a))
+	return enif_make_badarg(env);
+    if (a.rowmajor) {
+	if ((i < 1) || (i > a.n))
+	    return enif_make_badarg(env);
+	if ((j < 1) || (j > a.m))
+	    return enif_make_badarg(env);
+	ptr = a.first + (i-1)*size_of_array(a.type, a.stride) +
+	    size_of_array(a.type, j-1);
+    }
+    else {
+	if ((j < 1) || (j > a.n)) // row when column major
+	    return enif_make_badarg(env);
+	if ((i < 1) || (i > a.m))
+	    return enif_make_badarg(env);
+	ptr = a.first + (j-1)*size_of_array(a.type, a.stride) +
+	    size_of_array(a.type, i-1);
+    }
+    matrix_r_lock(&a);
+    r = read_term(env, a.type, ptr);
+    matrix_r_unlock(&a);
+    return r;
+}
+
+// DESTRUCTIVE
+// setelement(I, J, A, V) -> A[I][J] = V  I and J are 1-based
+ERL_NIF_TERM matrix_setelement(ErlNifEnv* env, int argc,
+			       const ERL_NIF_TERM argv[])
+{
+    unsigned int i, j;
+    matrix_t a;
+    byte_t* ptr;
+    scalar_t value;
+    UNUSED(argc);
+    
+    if (!enif_get_uint(env, argv[0], &i))
+	return enif_make_badarg(env);
+    if (!enif_get_uint(env, argv[1], &j))    
+	return enif_make_badarg(env);	
+    if (!get_matrix(env, argv[2], &a))
+	return enif_make_badarg(env);
+    if (!get_scalar(env, argv[3], FALSE, a.type, NULL, &value))
+	return enif_make_badarg(env);
+    
+    if (a.rowmajor) {
+	if ((i < 1) || (i > a.n))
+	    return enif_make_badarg(env);
+	if ((j < 1) || (j > a.m))
+	    return enif_make_badarg(env);
+	ptr = a.first + (i-1)*size_of_array(a.type, a.stride) +
+	    size_of_array(a.type, j-1);
+    }
+    else {
+	if ((j < 1) || (j > a.n)) // row when column major
+	    return enif_make_badarg(env);
+	if ((i < 1) || (i > a.m))
+	    return enif_make_badarg(env);
+	ptr = a.first + (j-1)*size_of_array(a.type, a.stride) +
+	    size_of_array(a.type, i-1);
+    }
+    matrix_w_lock(&a);
+    memcpy(ptr, value.data, element_size(a.type));
+    matrix_w_unlock(&a);
+    return argv[2];
+}
+
 // matrix apply1(func,A,B) -> C, check all rowmajor variants
 // with and without accelerations
 static void m_apply1(
@@ -2762,13 +3527,16 @@ static void m_apply1(
 		 size_t n, size_t m),
     matrix_t* ap, matrix_t* cp)
 {
+    int av = ap->stride ? 1 : 0;
+    bool_t use_vector = av;
+    
     if (cp->rowmajor == ap->rowmajor)
-	func(TRUE,
-	     ap->type, ap->first, ap->stride, 1,
+	func(use_vector,
+	     ap->type, ap->first, ap->stride, av,
 	     cp->type, cp->first, cp->stride, 1, cp->n, cp->m);
     else
 	func(FALSE,
-	     ap->type, ap->first, 1, ap->stride,
+	     ap->type, ap->first, av, ap->stride,
 	     cp->type, cp->first, cp->stride, 1, cp->n, cp->m);
 }
 
@@ -2784,55 +3552,59 @@ static void m_apply2(
 		 size_t n, size_t m),
     matrix_t* ap, matrix_t* bp, matrix_t* cp)
 {
+    int av = ap->stride ? 1 : 0;
+    int bv = bp->stride ? 1 : 0;
+    bool_t use_vector = av && bv;
+
     if (cp->rowmajor) {
 	if (ap->rowmajor && bp->rowmajor)
-	    func(TRUE,
-		ap->type, ap->first, ap->stride, 1,
-		bp->type, bp->first, bp->stride, 1,
+	    func(use_vector,
+		ap->type, ap->first, ap->stride, av,
+		bp->type, bp->first, bp->stride, bv,
 		cp->type, cp->first, cp->stride, 1,
 		cp->n, cp->m);
 	else if (!ap->rowmajor && bp->rowmajor)
 	    func(FALSE,
-		ap->type, ap->first, 1, ap->stride,
-		bp->type, bp->first, bp->stride, 1,
+		ap->type, ap->first, av, ap->stride,
+		bp->type, bp->first, bp->stride, bv,
 		cp->type, cp->first, cp->stride, 1,
 		cp->n, cp->m);
 	else if (ap->rowmajor && !bp->rowmajor)
 	    func(FALSE,
-		ap->type, ap->first, ap->stride, 1,
-		bp->type, bp->first, 1, bp->stride,
+		ap->type, ap->first, ap->stride, av,
+		bp->type, bp->first, bv, bp->stride,
 		cp->type, cp->first, cp->stride, 1,
 		cp->n, cp->m);
 	else
 	    func(FALSE,
-		ap->type, ap->first, 1, ap->stride,
-		bp->type, bp->first, 1, bp->stride,
+		ap->type, ap->first, av, ap->stride,
+		bp->type, bp->first, bv, bp->stride,
 		cp->type, cp->first, cp->stride, 1,
 		cp->n, cp->m);
     }
     else {
 	if (ap->rowmajor && bp->rowmajor)
 	    func(FALSE,
-		ap->type, ap->first, 1, ap->stride,
-		bp->type, bp->first, 1, bp->stride,
+		ap->type, ap->first, av, ap->stride,
+		bp->type, bp->first, bv, bp->stride,
 		cp->type, cp->first, cp->stride, 1,
 		cp->n, cp->m);
 	else if (!ap->rowmajor && bp->rowmajor)
 	    func(FALSE,
-		ap->type, ap->first, ap->stride, 1,
-		bp->type, bp->first, 1, bp->stride,
+		ap->type, ap->first, ap->stride, av,
+		bp->type, bp->first, bv, bp->stride,
 		cp->type, cp->first, cp->stride, 1,
 		cp->n, cp->m);
 	else if (ap->rowmajor && !bp->rowmajor)
 	    func(FALSE,
-		ap->type, ap->first, 1, ap->stride,
-		bp->type, bp->first, bp->stride, 1,
+		ap->type, ap->first, av, ap->stride,
+		bp->type, bp->first, bp->stride, bv,
 		cp->type, cp->first, cp->stride, 1,
 		cp->n, cp->m);
 	else
-	    func(TRUE,
-		ap->type, ap->first, ap->stride, 1,
-		bp->type, bp->first, bp->stride, 1,
+	    func(use_vector,
+		ap->type, ap->first, ap->stride, av,
+		bp->type, bp->first, bp->stride, bv,
 		cp->type, cp->first, cp->stride, 1,
 		cp->n, cp->m);
     }
@@ -2873,15 +3645,28 @@ static void s_apply2(
 	     ct, cp, bp->m, bp->n);
 }
 
-// add two matrices
+//
+// add(matrix(), matrix() [,matrix()]) -> matrix();
+//    (matrix(), scalar() [,matrix()]) -> matrix();
+//    (scalar(), matrix() [,matrix()]) -> matrix();
+//
 ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     matrix_t a, b, c;
 
-    if (!get_matrix(env, argv[0], &a))
-	return enif_make_badarg(env);
-    if (!get_matrix(env, argv[1], &b))
-	return enif_make_badarg(env);
+    if (get_matrix(env, argv[0], &a)) {
+	if (!get_matrix(env, argv[1], &b)) {
+	    if (!get_scalar_matrix(env,argv[1],&b,a.rowmajor,a.type,a.n,a.m))
+		return enif_make_badarg(env);
+	}
+    }
+    else {
+	if (!get_matrix(env, argv[1], &b))
+	    return enif_make_badarg(env);
+	if (!get_scalar_matrix(env,argv[0],&a,b.rowmajor,b.type,b.n,b.m))
+	    return enif_make_badarg(env);
+    }
+    
     if ((a.rowmajor == b.rowmajor) && ((a.n != b.n) || (a.m != b.m)))
 	return enif_make_badarg(env);
     else if ((a.rowmajor != b.rowmajor) && ((a.n != b.m) || (a.m != b.n)))
@@ -2892,10 +3677,8 @@ ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	matrix_type_t ct;
 
 	ct = combine_type(a.type, b.type);
-
 	if (!create_matrix(env,a.n,a.m,a.rowmajor,ct,&c,&bin))
 	    return enif_make_badarg(env);
-
 	matrix_rr_lock(&a, &b);
 	m_apply2(add, &a, &b, &c);
 	matrix_rr_unlock(&a, &b);
@@ -2915,22 +3698,34 @@ ERL_NIF_TERM matrix_add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	return argv[2];
     }
 }
-
-// subtract two matrices
+//
+// subtract(matrix(), matrix() [,matrix()]) -> matrix();
+//         (matrix(), scalar() [,matrix()]) -> matrix();
+//         (scalar(), matrix() [,matrix()]) -> matrix();
+//
 ERL_NIF_TERM matrix_subtract(ErlNifEnv* env, int argc,
 			     const ERL_NIF_TERM argv[])
 {
-    matrix_t a, b, c;
+    matrix_t a, b, c;    
 
-    if (!get_matrix(env, argv[0], &a))
-	return enif_make_badarg(env);
-    if (!get_matrix(env, argv[1], &b))
-	return enif_make_badarg(env);
+    if (get_matrix(env, argv[0], &a)) {
+	if (!get_matrix(env, argv[1], &b)) {
+	    if (!get_scalar_matrix(env,argv[1],&b,a.rowmajor,a.type,a.n,a.m))
+		return enif_make_badarg(env);
+	}
+    }
+    else {
+	if (!get_matrix(env, argv[1], &b))
+	    return enif_make_badarg(env);
+	if (!get_scalar_matrix(env,argv[0],&a,b.rowmajor,b.type,b.n,b.m))
+	    return enif_make_badarg(env);
+    }
+    
     if ((a.rowmajor == b.rowmajor) && ((a.n != b.n) || (a.m != b.m)))
 	return enif_make_badarg(env);
     else if ((a.rowmajor != b.rowmajor) && ((a.n != b.m) || (a.m != b.n)))
 	return enif_make_badarg(env);
-
+    
     if (argc == 2) {
 	ERL_NIF_TERM bin;
 	matrix_type_t ct;
@@ -2961,21 +3756,31 @@ ERL_NIF_TERM matrix_subtract(ErlNifEnv* env, int argc,
     }
 }
 
+
 // multiply two matrices element wise
 ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     matrix_t a, b, c;
 
-    if (!get_matrix(env, argv[0], &a))
-	return enif_make_badarg(env);
-    if (!get_matrix(env, argv[1], &b))
-	return enif_make_badarg(env);
+    if (get_matrix(env, argv[0], &a)) {
+	if (!get_matrix(env, argv[1], &b)) {
+	    if (!get_scalar_matrix(env,argv[1],&b,a.rowmajor,a.type,a.n,a.m))
+		return enif_make_badarg(env);
+	}
+    }
+    else {
+	if (!get_matrix(env, argv[1], &b))
+	    return enif_make_badarg(env);
+	if (!get_scalar_matrix(env,argv[0],&a,b.rowmajor,b.type,b.n,b.m))
+	    return enif_make_badarg(env);
+    }
+
     if ((a.rowmajor == b.rowmajor) && ((a.n != b.n) || (a.m != b.m)))
 	return enif_make_badarg(env);
     else if ((a.rowmajor != b.rowmajor) && ((a.n != b.m) || (a.m != b.n)))
 	return enif_make_badarg(env);
 
-    if (argc == 2) {
+    if (argc == 2) {  // FIXME: maybe coerce type argument for result?
 	ERL_NIF_TERM bin;
 	matrix_type_t ct;
 
@@ -2991,6 +3796,61 @@ ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     }
     else {  // argc == 3
 	if (!get_matrix(env, argv[2], &c))
+	    return enif_make_badarg(env);
+	if ((a.rowmajor == c.rowmajor) && ((a.n != c.n) || (a.m != c.m)))
+	    return enif_make_badarg(env);
+	else if ((a.rowmajor != c.rowmajor) && ((a.n != c.m) || (a.m != c.n)))
+	    return enif_make_badarg(env);
+
+	matrix_rrw_lock(&a, &b, &c);
+	m_apply2(times, &a, &b, &c);
+	matrix_rrw_unlock(&a, &b, &c);
+	return argv[2];
+    }
+}
+
+// multiply A and B element wise but only the positions
+// as controled by matrix K
+// 
+ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    matrix_t a, b, c, k;
+
+    if (!get_matrix(env, argv[0], &a))
+	return enif_make_badarg(env);
+    if (!get_matrix(env, argv[1], &b))
+	return enif_make_badarg(env);
+    if (!get_matrix(env, argv[2], &k))
+	return enif_make_badarg(env);
+    
+    if ((a.rowmajor == b.rowmajor) && ((a.n != b.n) || (a.m != b.m)))
+	return enif_make_badarg(env);
+    else if ((a.rowmajor != b.rowmajor) && ((a.n != b.m) || (a.m != b.n)))
+	return enif_make_badarg(env);
+    
+    if (k.type != INT8)
+	return enif_make_badarg(env);
+    if (!k.rowmajor || (k.n != 1) ||
+	(a.rowmajor && (k.m != a.n)) ||
+	(!a.rowmajor && (k.m != a.m)))
+	return enif_make_badarg(env);
+
+    if (argc == 3) {
+	ERL_NIF_TERM bin;
+	matrix_type_t ct;
+
+	ct = combine_type(a.type, b.type);
+
+	if (!create_matrix(env,a.n,a.m,a.rowmajor,ct,&c,&bin))
+	    return enif_make_badarg(env);
+
+	matrix_rr_lock(&a,&b);
+	m_apply2(times,&a, &b, &c);
+	matrix_rr_unlock(&a,&b);
+	return make_matrix(env, c.n, c.m, c.rowmajor, c.type, &c, bin);
+    }
+    else {  // argc == 4
+	if (!get_matrix(env, argv[3], &c))
 	    return enif_make_badarg(env);
 	if ((a.rowmajor == c.rowmajor) && ((a.n != c.n) || (a.m != c.m)))
 	    return enif_make_badarg(env);
@@ -3136,6 +3996,333 @@ ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc,
     }
 }
 
+
+static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
+		       matrix_t* cp)
+{
+    if (cp->rowmajor) {
+	if (ap->rowmajor && bp->rowmajor) {
+	    multiply(TRUE,
+		     ap->type,ap->first,ap->stride,1,ap->n,ap->m,
+		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     kp->first,kp->stride,1,
+		     cp->type,cp->first,cp->stride,1);
+	} else if (ap->rowmajor && !bp->rowmajor) {
+	    multiply_t(TRUE,
+		       ap->type,ap->first,ap->stride,1,ap->n,ap->m,
+		       bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		       kp->first,kp->stride,1,
+		       cp->type,cp->first,cp->stride,1);
+	} else if (!ap->rowmajor && bp->rowmajor) {
+	    multiply(FALSE,
+		     ap->type,ap->first,1,ap->stride,ap->m,ap->n,
+		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     kp->first,kp->stride,1,
+		     cp->type,cp->first,cp->stride,1);
+	}
+	else { // !ap->rowmajor && !bp->rowmajor (NOTE A/B swap!)
+	    // FIXME: check how to check k in this case	    
+	    multiply(TRUE,
+		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     ap->type,ap->first,ap->stride,1,ap->n,ap->m,
+		     kp->first,kp->stride,1,
+		     cp->type,cp->first,1,cp->stride);
+	}
+    }
+    else { // !cp->rowmajor
+	if (ap->rowmajor && bp->rowmajor) {
+	    multiply(TRUE,
+		     ap->type,ap->first,ap->stride,1,ap->n,ap->m,
+		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     kp->first,kp->stride,1,
+		     cp->type,cp->first,1,cp->stride);
+	} else if (ap->rowmajor && !bp->rowmajor) {
+	    multiply_t(TRUE,
+		       ap->type,ap->first,ap->stride,1,ap->n,ap->m,
+		       bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		       kp->first,kp->stride,1,
+		       cp->type,cp->first,1,cp->stride);
+	} else if (!ap->rowmajor && bp->rowmajor) {
+	    multiply(FALSE,
+		     ap->type,ap->first,1,ap->stride,ap->m,ap->n,
+		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     kp->first,kp->stride,1,
+		     cp->type,cp->first,1,cp->stride);
+	}
+	else { // !ap->rowmajor && !bp->rowmajor
+	    // FIXME: check how to check k in this case
+	    multiply(TRUE,
+		     bp->type,bp->first,bp->stride,1,bp->n,bp->m,
+		     ap->type,ap->first,ap->stride,1,ap->n,ap->m,
+		     kp->first,kp->stride,1,
+		     cp->type,cp->first,cp->stride,1);
+	}
+    }
+}
+
+// multiply (A*B) o K = C matrices
+// K is a bit/byte matrix of same size as B
+// each element signal if that element is present or not.
+// This element could be implemented as a pos scale factor if
+// needed. Now we use it to optimise, to remove the dot multiplication
+// for the corresponding row/column.
+//
+// kmultiply(A,B,K) -> C  (row major)
+// kmultiply(A,B,K,true)  -> C (row major)
+// kmultiply(A,B,K,false) -> C (coumn major)
+// kmultiply(A,B,K,C) -> C
+//
+
+ERL_NIF_TERM matrix_kmultiply(ErlNifEnv* env, int argc,
+			     const ERL_NIF_TERM argv[])
+{
+    matrix_t a, b, k, c;
+    size_t n, m;
+    bool_t rowmajor = TRUE;
+    UNUSED(argc);
+
+    if (!get_matrix(env, argv[0], &a))
+	return enif_make_badarg(env);
+    if (!get_matrix(env, argv[1], &b))
+	return enif_make_badarg(env);
+    if (!get_matrix(env, argv[2], &k))
+	return enif_make_badarg(env);
+
+    if (a.rowmajor) {
+	if (b.rowmajor) {
+	    if (a.m != b.n) return enif_make_badarg(env);
+	    n = a.n; m = b.m;
+	} else {
+	    if (a.m != b.m) return enif_make_badarg(env);
+	    n = a.n; m = b.n;
+	}
+    }
+    else {
+	if (b.rowmajor) {
+	    if (a.n != b.n) return enif_make_badarg(env);
+	    n = a.m; m = b.m;
+	} else {
+	    if (a.n != b.m) return enif_make_badarg(env);
+	    n = a.m; m = b.n;
+	}
+    }
+
+    // K is a row of boolean data 
+    if (k.type != INT8)
+	return enif_make_badarg(env);
+    if (!k.rowmajor || (k.n != 1) || (k.m != n))
+	return enif_make_badarg(env);
+
+    if ((argc == 3) ||
+	((argc == 4) && get_bool(env, argv[3], &rowmajor))) {
+	matrix_type_t ct = combine_type(a.type, b.type);
+	ERL_NIF_TERM bin = 0;
+
+	if (rowmajor) {
+	    if (!create_matrix(env,n,m,TRUE,ct,&c,&bin))
+		return enif_make_badarg(env);
+	}
+	else {
+	    if (!create_matrix(env,m,n,FALSE,ct,&c,&bin))
+		return enif_make_badarg(env);
+	}
+	matrix_rrr_lock(&a, &b, &k);
+	k_multiply(&a, &b, &k, &c);
+	matrix_rrr_unlock(&a, &b, &k);
+	return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+    }
+    else { // argc == 4
+	if (!get_matrix(env, argv[3], &c))
+	    return enif_make_badarg(env);
+	if (c.rowmajor && ((c.n != n) || (c.m != m)))
+	    return enif_make_badarg(env);
+	if (!c.rowmajor && ((c.n != m) || (c.m != n)))
+	    return enif_make_badarg(env);
+
+	matrix_rrrw_lock(&a, &b, &k, &c);
+	// FIXME if a, b or both is equal to c then C
+	// must be computed in a copy then copied back!
+	k_multiply(&a, &b, &k, &c);
+	matrix_rrrw_unlock(&a, &b, &k, &c);
+	return argv[3];
+    }
+}
+
+#define swap(a,i,j) do { \
+    typeof((a)[0]) _tmp = (a)[i];		\
+    (a)[i] = a[j];				\
+    (a)[j] = _tmp;				\
+    } while(0)
+
+// partition around a pivot element high -> low !!!
+static int topk_partition_f(float64_t* ap, int* ip, int l, int h)
+{
+    float64_t p = ap[l];
+    int i = l-1;
+    int j = h+1;
+
+    while(1) {
+	do { i++; } while(ap[i] > p);
+	do { j--; } while(ap[j] < p);
+	if (i >= j) return j;
+	swap(ap, i, j);
+	swap(ip, i, j);
+    }
+    return -1;
+}
+
+// partition around a pivot element high -> low !!!
+static int topk_partition_c(complex128_t* ap, int* ip, int l, int h)
+{
+    complex128_t p = ap[l];
+    int i = l-1;
+    int j = h+1;
+
+    while(1) {
+	do { i++; } while(complex128_gt(ap[i], p));
+	do { j--; } while(complex128_lt(ap[j], p));
+	if (i >= j) return j;
+	swap(ap, i, j);
+	swap(ip, i, j);
+    }
+    return -1;
+}
+
+static int topk_partition_i(int64_t* ap, int* ip, int l, int h)
+{
+    int64_t p = ap[l];
+    int i = l-1;
+    int j = h+1;
+
+    while(1) {
+	do { i++; } while(ap[i] > p);
+	do { j--; } while(ap[j] < p);
+	if (i >= j) return j;
+	swap(ap, i, j);
+	swap(ip, i, j);
+    }
+    return -1;
+}
+
+// simple topk select algorithm
+// get data as integer, float, complex and label data with index
+static void topk(int k, matrix_type_t at,byte_t* ap,int au,
+		 byte_t* cp,int cv,size_t m)
+{
+    int index[m];
+    int i, p, l, h;
+    int ki = k;
+
+    au = size_of_array(at,au);
+    cv = size_of_array(INT8,cv);
+    
+    if (is_float(at)) {
+	float64_t value[m];
+	float64_t (*read_af)(byte_t*) = read_float64_func[at];
+	for (i = 0; i < (int)m; i++) {
+	    index[i] = i;
+	    value[i] = read_af(ap);
+	    ap += au;
+	}
+	l = 0;
+	h = m-1;
+	while((ki > 0) && (ki < (int)m)) {
+	    int nl;
+	    p = topk_partition_f(value,index,l,h);
+	    nl = (p-l)+1;
+	    if (nl == ki) break;
+	    else if (nl > ki) h = p;
+	    else { // p < k
+		l = p+1;
+		ki -= nl;
+	    }
+	}
+    }
+    else if (is_complex(at)) {
+	complex128_t value[m];
+	complex128_t (*read_af)(byte_t*) = read_complex128_func[at];	
+	for (i = 0; i < (int)m; i++) {
+	    index[i] = i;	    
+	    value[i] = read_af(ap);
+	    ap += au;
+	}
+	l = 0;
+	h = m-1;
+	while((ki > 0) && (ki < (int)m)) {
+	    int nl;
+	    p = topk_partition_c(value,index,l,h);
+	    nl = (p-l)+1;
+	    if (nl == ki) break;
+	    else if (nl > ki) h = p;
+	    else { // p < k
+		l = p+1;
+		ki -= nl;
+	    }
+	}	
+    }
+    else {
+	int64_t value[m];
+	int64_t (*read_af)(byte_t*) = read_int64_func[at];	
+	for (i = 0; i < (int)m; i++) {
+	    index[i] = i;
+	    value[i] = read_af(ap);
+	    ap += au;
+	}
+	l = 0;
+	h = m-1;
+	while((ki > 0) && (ki < (int)m)) {
+	    int nl;
+	    p = topk_partition_i(value,index,l,h);
+	    nl = (p-l)+1;
+	    if (nl == ki) break;
+	    else if (nl > ki) h = p;
+	    else { // p < k
+		l = p+1;
+		ki -= nl;
+	    }
+	}	
+    }
+    for (i = 0; (i < k) && (i < (int)m); i++)
+	cp[index[i]] = 1;
+}
+
+
+ERL_NIF_TERM matrix_topk(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    matrix_t a, c;
+    ERL_NIF_TERM bin;    
+    int k;
+    size_t m;
+    UNUSED(argc);
+    
+    if (!get_matrix(env, argv[0], &a))
+	return enif_make_badarg(env);
+    if (a.rowmajor) { // column vector
+	if (a.m != 1) return enif_make_badarg(env);
+	m = a.n;
+    }
+    else { // column vector
+	if (!a.rowmajor && (a.n != 1))
+	    return enif_make_badarg(env);
+	m = a.m;
+    }
+    if (!enif_get_int(env, argv[1], &k) || (k < 0))
+	return enif_make_badarg(env);
+    if (k == 0)
+	return ATOM(undefined);
+    // c matrix is a 1xM matrix of INT8
+    if (!create_matrix(env,1,m,TRUE,INT8,&c,&bin))
+	return enif_make_badarg(env);
+    // the elements in A are split and top K elements are marked
+    // by index in the "boolean" C vector
+    if (a.rowmajor)
+	topk(k, a.type, a.first, a.stride, c.first, 1, m);
+    else
+	topk(k, a.type, a.first, 1, c.first, 1, m);
+
+    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+}
+
 // negate a matrix
 ERL_NIF_TERM matrix_negate(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
@@ -3192,8 +4379,8 @@ static void mulsum(bool_t use_vector, bool_t square_root,
 	    byte_t* bp1 = bp;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_float(at, ap1);
-		float64_t b = read_float(bt, bp1);
+		float64_t a = read_float64(at, ap1);
+		float64_t b = read_float64(bt, bp1);
 		float64_t c;
 		ap1 += av;
 		bp1 += bv;
@@ -3204,7 +4391,7 @@ static void mulsum(bool_t use_vector, bool_t square_root,
 	    bp += bu;
 	}
 	if (square_root) sum = sqrt(sum);
-	write_float(ct, cp, sum);
+	write_float64(ct, cp, sum);
     }
     else if (is_complex(ct)) {
 	complex128_t sum = CMPLX(0.0,0.0);
@@ -3213,8 +4400,8 @@ static void mulsum(bool_t use_vector, bool_t square_root,
 	    byte_t* bp1 = bp;
 	    size_t m1 = m;
 	    while(m1--) {
-		complex128_t a = read_complex(at, ap1);
-		complex128_t b = read_complex(bt, bp1);
+		complex128_t a = read_complex128(at, ap1);
+		complex128_t b = read_complex128(bt, bp1);
 		complex128_t c;
 		ap1 += av;
 		bp1 += bv;
@@ -3225,7 +4412,7 @@ static void mulsum(bool_t use_vector, bool_t square_root,
 	    bp += bu;
 	}
 	if (square_root) sum = csqrt(sum);
-	write_complex(ct, cp, sum);
+	write_complex128(ct, cp, sum);
     }
     else {
 	int64_t sum = 0;
@@ -3234,8 +4421,8 @@ static void mulsum(bool_t use_vector, bool_t square_root,
 	    byte_t* bp1 = bp;
 	    size_t m1 = m;
 	    while(m1--) {
-		int64_t a = read_int(at, ap1);
-		int64_t b = read_int(bt, bp1);
+		int64_t a = read_int64(at, ap1);
+		int64_t b = read_int64(bt, bp1);
 		int64_t c;
 		ap1 += av;
 		bp1 += bv;
@@ -3246,7 +4433,7 @@ static void mulsum(bool_t use_vector, bool_t square_root,
 	    bp += bu;
 	}
 	if (square_root) sum = (int64_t) sqrt((double)sum);
-	write_int(ct, cp, sum);
+	write_int64(ct, cp, sum);
     }
 }
 
@@ -3410,46 +4597,46 @@ static void mmax(bool_t use_vector,
     av = size_of_array(at,av);
 
     if (is_float(ct)) {
-	float64_t mx = read_float(at, ap);
+	float64_t mx = read_float64(at, ap);
 	while(n--) {
 	    byte_t* ap1 = ap;
 	    size_t m1 = m;
 	    while(m1--) {
-		float64_t a = read_float(at, ap1);
+		float64_t a = read_float64(at, ap1);
 		ap1 += av;
 		mx = op_max(mx,a);
 	    }
 	    ap += au;
 	}
-	write_float(ct, cp, mx);
+	write_float64(ct, cp, mx);
     }
     else if (is_complex(ct)) {
-	complex128_t mx = read_complex(at, ap);
+	complex128_t mx = read_complex128(at, ap);
 	while(n--) {
 	    byte_t* ap1 = ap;
 	    size_t m1 = m;
 	    while(m1--) {
-		complex128_t a = read_complex(at, ap1);
+		complex128_t a = read_complex128(at, ap1);
 		ap1 += av;
 		mx = complex128_max(mx, a);
 	    }
 	    ap += au;
 	}
-	write_complex(ct, cp, mx);
+	write_complex128(ct, cp, mx);
     }
     else {
-	int64_t mx = read_int(at, ap);
+	int64_t mx = read_int64(at, ap);
 	while(n--) {
 	    byte_t* ap1 = ap;
 	    size_t m1 = m;
 	    while(m1--) {
-		int64_t a = read_int(at, ap1);
+		int64_t a = read_int64(at, ap1);
 		ap1 += av;
 		mx = op_max(mx, a);
 	    }
 	    ap += au;
 	}
-	write_int(ct, cp, mx);
+	write_int64(ct, cp, mx);
     }
 }
 
@@ -3761,107 +4948,6 @@ ERL_NIF_TERM matrix_fill(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     return argv[1];
 }
 
-// scale a matrix
-//   factor * A =>  A'
-//   factor * A =>  C
-//
-ERL_NIF_TERM matrix_scale(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
-{
-    matrix_t a;
-    ErlNifSInt64 i_scale = 0;
-    float64_t    f_scale = 0.0;
-    complex128_t c_scale = CMPLX(0.0, 0.0);
-    int arg_int=0, arg_float=0, arg_complex=0;
-    UNUSED(argc);
-
-    if (!get_matrix(env, argv[1], &a))
-	return enif_make_badarg(env);
-
-    if (enif_get_int64(env, argv[0], &i_scale))
-	arg_int = 1;
-    else if (enif_get_double(env, argv[0], &f_scale))
-	arg_float = 1;
-    else if (get_complex(env, argv[0], &c_scale))
-	arg_complex = 1;
-    else
-	return enif_make_badarg(env);
-
-    if (argc == 2) {
-	matrix_t c;
-	ERL_NIF_TERM bin;
-
-	if (!create_matrix(env,a.n,a.m,a.rowmajor,a.type,&c,&bin))
-	    return enif_make_badarg(env);
-
-	matrix_r_lock(&a);
-	if (arg_int)
-	    scale_i(TRUE,
-		    a.type, a.first, a.stride, 1,
-		    c.type, c.first, c.stride, 1,
-		    a.n, a.m, i_scale);
-	else if (arg_float)
-	    scale_f(!is_integer(c.type),
-		    a.type, a.first, a.stride, 1,
-		    c.type, c.first, c.stride, 1,
-		    a.n, a.m, f_scale);
-	else if (arg_complex)
-	    scale_c(!is_integer(c.type)&&!is_float(c.type),
-		    a.type, a.first, a.stride, 1,
-		    c.type, c.first, c.stride, 1,
-		    a.n, a.m, c_scale);
-	matrix_r_unlock(&a);
-	return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
-    }
-    else {
-	matrix_t c;
-	if (!get_matrix(env, argv[2], &c))
-	    return enif_make_badarg(env);
-
-	if ((a.rowmajor == c.rowmajor) && ((a.n != c.n) || (a.m != c.m)))
-	    return enif_make_badarg(env);
-	else if ((a.rowmajor != c.rowmajor) && ((a.n != c.m) || (a.m != c.n)))
-	    return enif_make_badarg(env);
-
-	matrix_rw_lock(&a, &c);
-	if (c.rowmajor == a.rowmajor) {
-	    if (arg_int)
-		scale_i(TRUE,
-			a.type, a.first, a.stride, 1,
-			c.type, c.first, c.stride, 1,
-			c.n, c.m, i_scale);
-	    else if (arg_float)
-		scale_f(!is_integer(c.type),
-			a.type, a.first, a.stride, 1,
-			c.type, c.first, c.stride, 1,
-			c.n, c.m, f_scale);
-	    else if (arg_complex)
-		scale_c(!is_integer(c.type)&&!is_float(c.type),
-			a.type, a.first, a.stride, 1,
-			c.type, c.first, c.stride, 1,
-			c.n, c.m, c_scale);
-	}
-	else {
-	    if (arg_int)
-		scale_i(FALSE,
-			a.type, a.first, 1, a.stride,
-			c.type, c.first, c.stride, 1,
-			c.n, c.m, i_scale);
-	    else if (arg_float)
-		scale_f(FALSE,
-			a.type, a.first, 1, a.stride,
-			c.type, c.first, c.stride, 1,
-			c.n, c.m, f_scale);
-	    else if (arg_complex)
-		scale_c(FALSE,
-			a.type, a.first, 1, a.stride,
-			c.type, c.first, c.stride, 1,
-			c.n, c.m, c_scale);
-	}
-	matrix_rw_unlock(&a, &c);
-	return argv[2];
-    }
-}
-
 // sigmoid a matrix
 ERL_NIF_TERM matrix_sigmoid(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
@@ -3884,26 +4970,28 @@ ERL_NIF_TERM matrix_sigmoid(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 }
 
-// sigmoid a matrix
+// sigmoid_prime a matrix use the output version d(y) = y*(1-y)
 ERL_NIF_TERM matrix_sigmoid_prime(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[])
 {
-    matrix_t a;
+    matrix_t a,y;
     matrix_t c;
     ERL_NIF_TERM bin;
     UNUSED(argc);
 
     if (!get_matrix(env, argv[0], &a))
 	return enif_make_badarg(env);
+    if (!get_matrix(env, argv[1], &y))
+	return enif_make_badarg(env);
 
     if (!create_matrix(env,a.n,a.m,a.rowmajor,a.type,&c,&bin))
 	return enif_make_badarg(env);
 
-    matrix_r_lock(&a);
-    sigmoid_prime(a.type, a.first, a.stride, 1,
+    matrix_r_lock(&y);
+    sigmoid_prime1(y.type, y.first, y.stride, 1,
 		  c.type, c.first, c.stride, 1,
 		  c.n, c.m);
-    matrix_r_unlock(&a);
+    matrix_r_unlock(&y);
     return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 }
 
@@ -3930,6 +5018,53 @@ ERL_NIF_TERM matrix_relu(ErlNifEnv* env, int argc,
     return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 }
 
+// n m and type
+ERL_NIF_TERM matrix_identity(ErlNifEnv* env, int argc,
+			     const ERL_NIF_TERM argv[])
+{
+    unsigned int n, m, k, type;
+    unsigned int i;
+    matrix_t c;
+    ERL_NIF_TERM bin;
+    size_t elem_size;
+    size_t row_step;
+    size_t col_step;
+    byte_t* cp;
+    scalar_t one;
+    
+    
+    if (!enif_get_uint(env, argv[0], &n))  // rows
+	return enif_make_badarg(env);
+    if (!enif_get_uint(env, argv[1], &m))   // columns
+	return enif_make_badarg(env);
+    if (!enif_get_uint(env, argv[2], &type)) // type
+	return enif_make_badarg(env);
+    if (type >= NUM_TYPES)
+	return enif_make_badarg(env);
+    if (!create_matrix(env,n,m,TRUE,type,&c,&bin))
+	return enif_make_badarg(env);
+
+    memset(c.base, 0, c.size);  // set to zero
+
+    elem_size     = element_size(type);
+    col_step = elem_size;
+    row_step = size_of_array(type, c.stride);
+    // format the 1 element
+    if (is_float(type))
+	write_float64(type, one.data, 1.0);
+    else if (is_complex(type))
+	write_complex128(type, one.data, CMPLX(1.0,0.0));
+    else
+	write_int64(type, one.data, 1);
+    k = (n<m) ? n : m;
+    cp = c.first;
+    for (i = 0; i < k; i++) {
+	memcpy(cp, one.data, elem_size);
+	cp += row_step;
+	cp += col_step;
+    }
+    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+}
 
 // matrix_apply1 (func, Src [,Dst])
 ERL_NIF_TERM matrix_apply1(ErlNifEnv* env, int argc,
@@ -3941,23 +5076,26 @@ ERL_NIF_TERM matrix_apply1(ErlNifEnv* env, int argc,
 
     if (!enif_is_atom(env, argv[0]))
 	return enif_make_badarg(env);
-    if (argv[0] == ATOM(sigmoid))            op = SIGMOID;
+    if (argv[0] == ATOM(zero))               op = ZERO;
+    else if (argv[0] == ATOM(one))           op = ONE;
+    else if (argv[0] == ATOM(copy))          op = COPY;
+    else if (argv[0] == ATOM(negate))        op = NEGATE;
+    
+    else if (argv[0] == ATOM(sigmoid))       op = SIGMOID;
     else if (argv[0] == ATOM(sigmoid_prime)) op = SIGMOID_PRIME;
+    else if (argv[0] == ATOM(sigmoid_prime1)) op = SIGMOID_PRIME1;
     else if (argv[0] == ATOM(relu))          op = RELU;
     else if (argv[0] == ATOM(relu_prime))    op = RELU_PRIME;
     else if (argv[0] == ATOM(leaky_relu))    op = LEAKY_RELU;
     else if (argv[0] == ATOM(leaky_relu_prime)) op = LEAKY_RELU_PRIME;    
     else if (argv[0] == ATOM(tanh))          op = TANH;
     else if (argv[0] == ATOM(tanh_prime))    op = TANH_PRIME;
+    else if (argv[0] == ATOM(tanh_prime1))   op = TANH_PRIME1;
     else if (argv[0] == ATOM(softplus))      op = SOFTPLUS;
     else if (argv[0] == ATOM(softplus_prime)) op = SOFTPLUS_PRIME;
-    else if (argv[0] == ATOM(negate))        op = NEGATE;
-    else if (argv[0] == ATOM(copy))          op = COPY;
     else if (argv[0] == ATOM(uniform))       op = UNIFORM;
     else if (argv[0] == ATOM(normal))        op = NORMAL;
-    else if (argv[0] == ATOM(zero))          op = ZERO;
-    else if (argv[0] == ATOM(one))           op = ONE;
-    else if (argv[0] == ATOM(identity))      op = IDENTITY;
+    else if (argv[0] == ATOM(exp))           op = EXP;
     else return enif_make_badarg(env);
     
     if (!get_matrix(env, argv[1], &a))
@@ -4023,7 +5161,7 @@ ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 		return enif_make_badarg(env);
 	    matrix_r_lock(&a);
 	    argmax(a.type, a.first,a.stride,1,a.n,a.m,
-		   (int32_t*)c.data);
+		   (int32_t*)c.first);
 	    matrix_r_unlock(&a);
 	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 	}
@@ -4033,7 +5171,7 @@ ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 		return enif_make_badarg(env);
 	    matrix_r_lock(&a);
 	    argmax(a.type, a.first,1,a.stride,a.m,a.n,
-		   (int32_t*)c.data);
+		   (int32_t*)c.first);
 	    matrix_r_unlock(&a);
 	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 	}
@@ -4045,7 +5183,7 @@ ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 		return enif_make_badarg(env);
 	    matrix_r_lock(&a);
 	    argmax(a.type, a.first,1,a.stride,a.m,a.n,
-		   (int32_t*)c.data);
+		   (int32_t*)c.first);
 	    matrix_r_unlock(&a);
 	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 	}
@@ -4055,12 +5193,191 @@ ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 		return enif_make_badarg(env);
 	    matrix_r_lock(&a);
 	    argmax(a.type, a.first,a.stride,1,a.n,a.m,
-		   (int32_t*)c.data);
+		   (int32_t*)c.first);
 	    matrix_r_unlock(&a);
 	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 	}
     }
 }
+
+// find max in matrix
+ERL_NIF_TERM matrix_max(ErlNifEnv* env, int argc,
+			const ERL_NIF_TERM argv[])
+{
+    matrix_t a;
+    int axis;
+    matrix_t c;
+    ERL_NIF_TERM bin;
+    UNUSED(argc);
+
+    if (!get_matrix(env, argv[0], &a))
+	return enif_make_badarg(env);
+    if (argc == 1)
+	axis = -1;
+    else {
+	if (!enif_get_int(env, argv[1], &axis))
+	    return enif_make_badarg(env);
+	if ((axis < -1) || (axis > 1))
+	    return enif_make_badarg(env);
+    }
+
+    if (a.rowmajor) {
+	if (axis == -1) {
+	    scalar_t max_v;
+	    matrix_r_lock(&a);
+	    t_max(a.type, a.first, a.stride, 1,
+		  a.type, max_v.data, 0,
+		  a.n,a.m);
+	    matrix_r_unlock(&a);
+	    return read_term(env, a.type, max_v.data);
+	}
+	else if (axis == 0) {
+	    // max for each column is returned (as a row)
+	    if (!create_matrix(env,1,a.m,TRUE,a.type,&c,&bin))
+		return enif_make_badarg(env);
+	    matrix_r_lock(&a);
+	    t_max(a.type, a.first, a.stride, 1,
+		  c.type, c.first, 1,
+		  a.n,a.m);
+	    matrix_r_unlock(&a);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+	else { // axis == 1
+	    // max for each row is returned (as a column)
+	    if (!create_matrix(env,1,a.n,FALSE,a.type,&c,&bin))
+		return enif_make_badarg(env);
+	    matrix_r_lock(&a);
+	    t_max(a.type, a.first, 1, a.stride,
+		  c.type, c.first, 1,
+		  a.m,a.n);
+	    matrix_r_unlock(&a);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+    }
+    else { // !a.rowmajor
+	if (axis == -1) {
+	    scalar_t max_v;
+	    matrix_r_lock(&a);
+	    t_max(a.type, a.first, 1, a.stride,
+		  a.type, max_v.data, 0,
+		  a.n,a.m);
+	    matrix_r_unlock(&a);
+	    return read_term(env, a.type, max_v.data);
+	}	
+	else if (axis == 0) {
+	    // max for each column is returned (as a row)
+	    if (!create_matrix(env,1,a.n,TRUE,a.type,&c,&bin))
+		return enif_make_badarg(env);
+	    matrix_r_lock(&a);
+	    t_max(a.type, a.first, 1, a.stride,
+		  c.type, c.first, 1,
+		  a.m, a.n);
+	    matrix_r_unlock(&a);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+	else {
+	    // max for each row is returned (as a column)
+	    if (!create_matrix(env,1,a.m,FALSE,INT32,&c,&bin))
+		return enif_make_badarg(env);
+	    matrix_r_lock(&a);
+	    t_max(a.type, a.first, a.stride, 1,
+		  c.type, c.first, 1,
+		  a.n, a.m);
+	    matrix_r_unlock(&a);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+    }
+}
+
+// find min in matrix
+ERL_NIF_TERM matrix_min(ErlNifEnv* env, int argc,
+			const ERL_NIF_TERM argv[])
+{
+    matrix_t a;
+    int axis;
+    matrix_t c;
+    ERL_NIF_TERM bin;
+    UNUSED(argc);
+
+    if (!get_matrix(env, argv[0], &a))
+	return enif_make_badarg(env);
+    if (argc == 1)
+	axis = -1;
+    else {
+	if (!enif_get_int(env, argv[1], &axis))
+	    return enif_make_badarg(env);
+	if ((axis < -1) || (axis > 1))
+	    return enif_make_badarg(env);
+    }
+
+    if (a.rowmajor) {
+	if (axis == -1) {
+	    scalar_t min_v;
+	    matrix_r_lock(&a);
+	    t_min(a.type, a.first, a.stride, 1,
+		  a.type, min_v.data, 0,
+		  a.n,a.m);
+	    matrix_r_unlock(&a);
+	    return read_term(env, a.type, min_v.data);
+	}	
+	else if (axis == 0) {
+	    // min for each column is returned (as a row)
+	    if (!create_matrix(env,1,a.m,TRUE,a.type,&c,&bin))
+		return enif_make_badarg(env);
+	    matrix_r_lock(&a);
+	    t_min(a.type, a.first, a.stride, 1,
+		  c.type, c.first, 1,
+		  a.n,a.m);
+	    matrix_r_unlock(&a);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+	else {
+	    // min for each row is returned (as a column)
+	    if (!create_matrix(env,1,a.n,FALSE,a.type,&c,&bin))
+		return enif_make_badarg(env);
+	    matrix_r_lock(&a);
+	    t_min(a.type, a.first, 1, a.stride,
+		  c.type, c.first, 1,
+		  a.m,a.n);
+	    matrix_r_unlock(&a);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+    }
+    else { // !a.rowmajor
+	if (axis == -1) {
+	    scalar_t min_v;
+	    matrix_r_lock(&a);
+	    t_min(a.type, a.first, 1, a.stride,
+		  a.type, min_v.data, 0,
+		  a.n,a.m);
+	    matrix_r_unlock(&a);
+	    return read_term(env, a.type, min_v.data);
+	}		
+	else if (axis == 0) {
+	    // min for each column is returned (as a row)
+	    if (!create_matrix(env,1,a.n,TRUE,a.type,&c,&bin))
+		return enif_make_badarg(env);
+	    matrix_r_lock(&a);
+	    t_min(a.type, a.first, 1, a.stride,
+		  c.type, c.first, 1,
+		  a.m, a.n);
+	    matrix_r_unlock(&a);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+	else {
+	    // min for each row is returned (as a column)
+	    if (!create_matrix(env,1,a.m,FALSE,INT32,&c,&bin))
+		return enif_make_badarg(env);
+	    matrix_r_lock(&a);
+	    t_min(a.type, a.first, a.stride, 1,
+		  c.type, c.first, 1,
+		  a.n, a.m);
+	    matrix_r_unlock(&a);
+	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
+	}
+    }
+}
+
 
 
 // transpose data rather then toggle rowmajor
@@ -4101,10 +5418,10 @@ ERL_NIF_TERM matrix_transpose_data(ErlNifEnv* env, int argc,
 static void matrix_dtor(ErlNifEnv* env, matrix_t* mat)
 {
     UNUSED(env);
-    DBG("matrix_dtor: %p\r\n", mat);
     if (mat->rw_lock)
 	enif_rwlock_destroy(mat->rw_lock);
-    enif_free(mat->base);
+    if (mat->base)
+	enif_free(mat->base);
 }
 
 
@@ -4118,12 +5435,14 @@ static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     LOAD_ATOM(matrix);
     LOAD_ATOM(sigmoid);
     LOAD_ATOM(sigmoid_prime);
+    LOAD_ATOM(sigmoid_prime1);
     LOAD_ATOM(relu);
     LOAD_ATOM(relu_prime);
     LOAD_ATOM(leaky_relu);
     LOAD_ATOM(leaky_relu_prime);    
     LOAD_ATOM(tanh);
     LOAD_ATOM(tanh_prime);
+    LOAD_ATOM(tanh_prime1);
     LOAD_ATOM(softplus);
     LOAD_ATOM(softplus_prime);
     LOAD_ATOM(negate);
@@ -4131,11 +5450,12 @@ static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     LOAD_ATOM(normal);
     LOAD_ATOM(zero);
     LOAD_ATOM(one);
-    LOAD_ATOM(identity);
     LOAD_ATOM(copy);
     LOAD_ATOM(true);
     LOAD_ATOM(false);
-
+    LOAD_ATOM(undefined);
+    LOAD_ATOM(exp);
+    
     matrix_r = enif_open_resource_type(env, 0, "matrix",
 				       (ErlNifResourceDtor*) matrix_dtor,
 				       ERL_NIF_RT_CREATE, &tried);

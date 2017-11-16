@@ -15,22 +15,9 @@
  *
  ***************************************************************************/
 
-static TYPE2 CAT2(PROCEDURE,_dot_mulop)(TYPE* ap,int av,TYPE* bp,int bu,size_t n)
-{
-    TYPE2 sum = 0;
-
-    while(n--) {
-	TYPE2 p = OPERATION(*ap,*bp);
-	sum = OPERATION2(sum, p);
-	ap += av;
-	bp += bu;
-    }
-    return sum;
-}
-
 static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
 		      TYPE* bp, int bu, int bv, size_t bn, size_t bm,
-		      byte_t* dp,int du,int dv,
+		      byte_t* kp,int ku,int kv,
 		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
@@ -40,22 +27,25 @@ static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
     
     while(an--) {
         TYPE* cp1 = cp;
-	byte_t* dp1 = dp;
 	size_t m = bm;
-	bp = bp0;
-	while(m--) {
-	    if (*dp1)
-		*cp1 = CAT2(PROCEDURE,_dot_mulop)(ap,av,bp,bu,bn);
-	    else
+	if (*kp) {
+	    bp = bp0;
+	    while(m--) {
+		*cp1 = CAT2(mt_dot_,TYPE)(ap,av,bp,bu,bn);
+		cp1 += cv;
+		bp  += bv;
+	    }
+	}
+	else {
+	    while(m--) {
 		*cp1 = TYPE_ZERO;
-	    cp1 += cv;
-	    bp  += bv;
-	    dp1 += dv;
+		cp1 += cv;
+	    }
 	}
 	ap += au;
 	cp += cu;
-	dp += du;
-    }
+	kp += kv;
+    }    
 }
 
 #undef PROCEDURE

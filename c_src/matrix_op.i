@@ -580,436 +580,6 @@
 #endif
 
 /////////////////////////////////////////////////////////////////////////////
-//   SCALE * int64
-/////////////////////////////////////////////////////////////////////////////
-
-#define PROCEDURE      mt_scale_int64_int8
-#define TYPE           int8_t
-#define PARAMS_DECL    ,int64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_int64_int16
-#define TYPE           int16_t
-#define PARAMS_DECL    ,int64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_int64_int32
-#define TYPE           int32_t
-#define PARAMS_DECL    ,int64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_int64_int64
-#define TYPE           int64_t
-#define PARAMS_DECL    ,int64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_int64_float32
-#define TYPE           float32_t
-#define PARAMS_DECL    ,int64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_int64_float64
-#define TYPE           float64_t
-#define PARAMS_DECL    ,int64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_int64_complex64
-#define TYPE           complex64_t
-#define PARAMS_DECL    ,int64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_int64_complex128
-#define TYPE           complex128_t
-#define PARAMS_DECL    ,int64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define SELECT mt_scale_i
-#define NAME scale_int64
-#define PARAMS_DECL ,int64_t arg
-#define PARAMS      ,arg
-#define LOCALS_DECL
-#include "mt_unary_op_select.i"
-
-// vector version
-#ifdef USE_GCC_VECTOR
-
-#define PROCEDURE      mtv_scale_int64_int8
-#define TYPE           int8_t
-#define PARAMS_DECL    ,int64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_int64_int16
-#define TYPE           int16_t
-#define PARAMS_DECL    ,int64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_int64_int32
-#define TYPE           int32_t
-#define PARAMS_DECL    ,int64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_int64_int64
-#define TYPE           int64_t
-#define PARAMS_DECL    ,int64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_int64_float32
-#define TYPE           float32_t
-#define PARAMS_DECL    ,int64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_int64_float64
-#define TYPE           float64_t
-#define PARAMS_DECL    ,int64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_int64_complex64
-#define TYPE           complex64_t
-#define PARAMS_DECL    ,int64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  complex64_multiply((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_int64_complex128
-#define TYPE           complex128_t
-#define PARAMS_DECL    ,int64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  complex128_multiply((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define SELECT mtv_scale_i
-#define NAME scale_int64
-#define LOCALS_DECL
-#define PARAMS_DECL ,int64_t arg
-#define PARAMS      ,arg
-#include "mtv_unary_op_select.i"
-
-#endif
-
-/////////////////////////////////////////////////////////////////////////////
-//   SCALE * float64
-/////////////////////////////////////////////////////////////////////////////
-
-#define PROCEDURE      mt_scale_float64_int8
-#define TYPE           int8_t
-#define PARAMS_DECL    ,float64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_float64_int16
-#define TYPE           int16_t
-#define PARAMS_DECL    ,float64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_float64_int32
-#define TYPE           int32_t
-#define PARAMS_DECL    ,float64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_float64_int64
-#define TYPE           int64_t
-#define PARAMS_DECL    ,float64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_float64_float32
-#define TYPE           float32_t
-#define PARAMS_DECL    ,float64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_float64_float64
-#define TYPE           float64_t
-#define PARAMS_DECL    ,float64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_float64_complex64
-#define TYPE           complex64_t
-#define PARAMS_DECL    ,float64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_float64_complex128
-#define TYPE           complex128_t
-#define PARAMS_DECL    ,float64_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define SELECT mt_scale_f
-#define NAME scale_float64
-#define LOCALS_DECL
-#define PARAMS_DECL ,float64_t arg
-#define PARAMS      ,arg
-#include "mt_unary_op_select.i"
-
-
-// vector version
-#ifdef USE_GCC_VECTOR
-
-#define PROCEDURE      mtv_scale_float64_int8
-#define TYPE           int8_t
-#define PARAMS_DECL    ,float64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_float64_int16
-#define TYPE           int16_t
-#define PARAMS_DECL    ,float64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_float64_int32
-#define TYPE           int32_t
-#define PARAMS_DECL    ,float64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_float64_int64
-#define TYPE           int64_t
-#define PARAMS_DECL    ,float64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_float64_float32
-#define TYPE           float32_t
-#define PARAMS_DECL    ,float64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_float64_float64
-#define TYPE           float64_t
-#define PARAMS_DECL    ,float64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_float64_complex64
-#define TYPE           complex64_t
-#define PARAMS_DECL    ,float64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  complex64_multiply((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_float64_complex128
-#define TYPE           complex128_t
-#define PARAMS_DECL    ,float64_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  complex128_multiply((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define SELECT mtv_scale_f
-#define NAME scale_float64
-#define LOCALS_DECL
-#define PARAMS_DECL ,float64_t arg
-#define PARAMS      ,arg
-#include "mtv_unary_op_select.i"
-
-#endif
-
-/////////////////////////////////////////////////////////////////////////////
-//   SCALE * complex128
-/////////////////////////////////////////////////////////////////////////////
-
-#define PROCEDURE      mt_scale_complex128_int8
-#define TYPE           int8_t
-#define PARAMS_DECL    ,complex128_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_complex128_int16
-#define TYPE           int16_t
-#define PARAMS_DECL    ,complex128_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_complex128_int32
-#define TYPE           int32_t
-#define PARAMS_DECL    ,complex128_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_complex128_int64
-#define TYPE           int64_t
-#define PARAMS_DECL    ,complex128_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_complex128_float32
-#define TYPE           float32_t
-#define PARAMS_DECL    ,complex128_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_complex128_float64
-#define TYPE           float64_t
-#define PARAMS_DECL    ,complex128_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_complex128_complex64
-#define TYPE           complex64_t
-#define PARAMS_DECL    ,complex128_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define PROCEDURE      mt_scale_complex128_complex128
-#define TYPE           complex128_t
-#define PARAMS_DECL    ,complex128_t factor
-#define LOCALS_DECL
-#define OPERATION(a)   op_mul((a),factor)
-#include "mt_unary_op.i"
-
-#define SELECT mt_scale_c
-#define NAME scale_complex128
-#define LOCALS_DECL
-#define PARAMS_DECL ,complex128_t arg
-#define PARAMS      ,arg
-#include "mt_unary_op_select.i"
-
-// vector version
-#ifdef USE_GCC_VECTOR
-
-#define PROCEDURE      mtv_scale_complex128_int8
-#define TYPE           int8_t
-#define PARAMS_DECL    ,complex128_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_complex128_int16
-#define TYPE           int16_t
-#define PARAMS_DECL    ,complex128_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_complex128_int32
-#define TYPE           int32_t
-#define PARAMS_DECL    ,complex128_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_complex128_int64
-#define TYPE           int64_t
-#define PARAMS_DECL    ,complex128_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_complex128_float32
-#define TYPE           float32_t
-#define PARAMS_DECL    ,complex128_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_complex128_float64
-#define TYPE           float64_t
-#define PARAMS_DECL    ,complex128_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  op_mul((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_complex128_complex64
-#define TYPE           complex64_t
-#define PARAMS_DECL    ,complex128_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  complex64_multiply((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define PROCEDURE      mtv_scale_complex128_complex128
-#define TYPE           complex128_t
-#define PARAMS_DECL    ,complex128_t arg
-#define LOCALS_DECL    TYPE sarg = arg; VTYPE varg = VTYPE_CONST(sarg);
-#define VOPERATION(a)  complex128_multiply((a),varg)
-#define OPERATION(a)   op_mul((a),sarg)
-#include "mtv_unary_op.i"
-
-#define SELECT mtv_scale_c
-#define NAME scale_complex128
-#define LOCALS_DECL
-#define PARAMS_DECL ,complex128_t arg
-#define PARAMS      ,arg
-#include "mtv_unary_op_select.i"
-
-#endif
-
-/////////////////////////////////////////////////////////////////////////////
 //   SIGMOID
 /////////////////////////////////////////////////////////////////////////////
 
@@ -1146,6 +716,75 @@
 #define PARAMS
 #include "mt_unary_op_select.i"
 
+
+/////////////////////////////////////////////////////////////////////////////
+//   SIGMOID_PRIME1
+/////////////////////////////////////////////////////////////////////////////
+
+#define PROCEDURE      mt_sigmoid_prime1_int8
+#define TYPE           int8_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),op_sub(1.0,(a)))
+#include "mt_unary_op.i"
+
+#define PROCEDURE      mt_sigmoid_prime1_int16
+#define TYPE           int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),op_sub(1.0,(a)))
+#include "mt_unary_op.i"
+
+
+#define PROCEDURE      mt_sigmoid_prime1_int32
+#define TYPE           int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),op_sub(1.0,(a)))
+#include "mt_unary_op.i"
+
+#define PROCEDURE      mt_sigmoid_prime1_int64
+#define TYPE           int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),op_sub(1.0,(a)))
+#include "mt_unary_op.i"
+
+#define PROCEDURE      mt_sigmoid_prime1_float32
+#define TYPE           float32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),op_sub(1.0,(a)))
+#include "mt_unary_op.i"
+
+#define PROCEDURE      mt_sigmoid_prime1_float64
+#define TYPE           float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),op_sub(1.0,(a)))
+#include "mt_unary_op.i"
+
+#define PROCEDURE      mt_sigmoid_prime1_complex64
+#define TYPE           complex64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),op_sub(1.0,(a)))
+#include "mt_unary_op.i"
+
+#define PROCEDURE      mt_sigmoid_prime1_complex128
+#define TYPE           complex128_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a)   op_mul((a),op_sub(1.0,(a)))
+#include "mt_unary_op.i"
+
+#define SELECT mt_sigmoid_prime1
+#define NAME sigmoid_prime1
+#define LOCALS_DECL
+#define PARAMS_DECL
+#define PARAMS
+#include "mt_unary_op_select.i"
+
 /////////////////////////////////////////////////////////////////////////////
 //   RECTIFIER
 /////////////////////////////////////////////////////////////////////////////
@@ -1213,6 +852,170 @@
 #define PARAMS_DECL
 #define PARAMS
 #include "mt_unary_op_select.i"
+
+/////////////////////////////////////////////////////////////////////////////
+//   DOT used by MULTIPLY
+/////////////////////////////////////////////////////////////////////////////
+
+#define PROCEDURE      mt_dot_int8_t
+#define TYPE           int8_t
+#define TYPE2          int16_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#include "mt_dot.i"
+
+#define PROCEDURE      mt_dot_int16_t
+#define TYPE           int16_t
+#define TYPE2          int32_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#include "mt_dot.i"
+
+#define PROCEDURE      mt_dot_int32_t
+#define TYPE           int32_t
+#define TYPE2          int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#include "mt_dot.i"
+
+#define PROCEDURE      mt_dot_int64_t
+#define TYPE           int64_t
+#define TYPE2          int64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#include "mt_dot.i"
+
+#define PROCEDURE      mt_dot_float32_t
+#define TYPE           float32_t
+#define TYPE2          float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b) op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#include "mt_dot.i"
+
+#define PROCEDURE      mt_dot_float64_t
+#define TYPE           float64_t
+#define TYPE2          float64_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#include "mt_dot.i"
+
+#define PROCEDURE      mt_dot_complex64_t
+#define TYPE           complex64_t
+#define TYPE2          complex128_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#include "mt_dot.i"
+
+#define PROCEDURE      mt_dot_complex128_t
+#define TYPE           complex128_t
+#define TYPE2          complex128_t
+#define PARAMS_DECL
+#define LOCALS_DECL
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#include "mt_dot.i"
+
+/////////////////////////////////////////////////////////////////////////////
+//   SIMD/DOT used by MULTIPLY
+/////////////////////////////////////////////////////////////////////////////
+#ifdef USE_GCC_VECTOR
+
+#define PROCEDURE      mtv_dot_int8_t
+#define TYPE           int8_t
+#define TYPE2          int16_t
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#define VOPERATION(a,b)  op_mul((a),(b))
+#define VOPERATION2(a,b) op_add((a),(b))
+#define VELEMENT(a,i)    ((a)[(i)])
+#include "mtv_dot.i"
+
+#define PROCEDURE      mtv_dot_int16_t
+#define TYPE           int16_t
+#define TYPE2          int32_t
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#define VOPERATION(a,b)  op_mul((a),(b))
+#define VOPERATION2(a,b) op_add((a),(b))
+#define VELEMENT(a,i)    ((a)[(i)])
+#include "mtv_dot.i"
+
+#define PROCEDURE      mtv_dot_int32_t
+#define TYPE           int32_t
+#define TYPE2          int64_t
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#define VOPERATION(a,b)  op_mul((a),(b))
+#define VOPERATION2(a,b) op_add((a),(b))
+#define VELEMENT(a,i)    ((a)[(i)])
+#define VSETELEMENT(a,i,v) ((a)[(i)]=(v))
+#include "mtv_dot.i"
+
+#define PROCEDURE      mtv_dot_int64_t
+#define TYPE           int64_t
+#define TYPE2          int64_t
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#define VOPERATION(a,b)  op_mul((a),(b))
+#define VOPERATION2(a,b) op_add((a),(b))
+#define VELEMENT(a,i)    ((a)[(i)])
+#include "mtv_dot.i"
+
+#define PROCEDURE      mtv_dot_float32_t
+#define TYPE           float32_t
+#define TYPE2          float64_t
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#define VOPERATION(a,b)  op_mul((a),(b))
+#define VOPERATION2(a,b) op_add((a),(b))
+#define VELEMENT(a,i)    ((a)[(i)])
+#include "mtv_dot.i"
+
+#define PROCEDURE      mtv_dot_float64_t
+#define TYPE           float64_t
+#define TYPE2          float64_t
+#define OPERATION(a,b)  op_mul((a),(b))
+#define OPERATION2(a,b) op_add((a),(b))
+#define VOPERATION(a,b)  op_mul((a),(b))
+#define VOPERATION2(a,b) op_add((a),(b))
+#define VELEMENT(a,i)    ((a)[(i)])
+#include "mtv_dot.i"
+
+#define PROCEDURE      mtv_dot_complex64_t
+#define TYPE           complex64_t
+#define TYPE2          complex128_t
+#define OPERATION(a,b)   op_mul((a),(b))
+#define OPERATION2(a,b)  op_add((a),(b))
+#define VOPERATION(a,b)  complex64_multiply((a),(b))
+#define VOPERATION2(a,b) complex64_add((a),(b))
+#define VELEMENT(a,i)    complex64_velement((a),(i))
+#include "mtv_dot.i"
+
+#define PROCEDURE      mtv_dot_complex128_t
+#define TYPE           complex128_t
+#define TYPE2          complex128_t
+#define OPERATION(a,b)   op_mul((a),(b))
+#define OPERATION2(a,b)  op_add((a),(b))
+#define VOPERATION(a,b)  complex128_multiply((a),(b))
+#define VOPERATION2(a,b) complex128_add((a),(b))
+#define VELEMENT(a,i)    complex128_velement((a),(i))
+#include "mtv_dot.i"
+
+#endif
 
 /////////////////////////////////////////////////////////////////////////////
 //   MULTIPLY

@@ -15,37 +15,17 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
-		      TYPE* bp, int bu, size_t bn, size_t bm,
-		      byte_t* kp, int ku,int kv,
-		      TYPE* cp, int cu, int cv
-		      PARAMS_DECL)
+static TYPE2 PROCEDURE(TYPE* ap,int av,TYPE* bp,int bu,size_t n)
 {
-    LOCALS_DECL
-    (void) am;
-    TYPE* bp0 = bp;
+    TYPE2 sum = 0;
 
-    while (an--) {
-	TYPE* cp1 = cp;
-	size_t n = bn;
-	if (*kp) {
-	    bp = bp0;
-	    while(n--) {
-		*cp1 = CAT2(mtv_dot_,TYPE)(ap, bp, bm);
-		bp  += bu;
-		cp1 += cv;
-	    }
-	}
-	else {
-	    while(n--) {
-		*cp1 = TYPE_ZERO;
-		cp1 += cv;
-	    }
-	}
-	ap += au;
-	cp += cu;
-	kp += kv;
+    while(n--) {
+	TYPE2 p = OPERATION(*ap,*bp);
+	sum = OPERATION2(sum, p);
+	ap += av;
+	bp += bu;
     }
+    return sum;
 }
 
 #undef PROCEDURE
@@ -55,7 +35,4 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 #undef LOCALS_DECL
 #undef OPERATION
 #undef OPERATION2
-#undef VOPERATION
-#undef VOPERATION2
-#undef VELEMENT
-#undef VSETELEMENT
+

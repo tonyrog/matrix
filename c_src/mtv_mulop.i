@@ -15,57 +15,19 @@
  *
  ***************************************************************************/
 
-static inline TYPE2 CAT2(PROCEDURE,_dotv_mulop)(TYPE* ap,TYPE* bp,size_t n)
-{
-    TYPE2 sum = 0;
-    VTYPE vsum = VTYPE_ZERO;
-    unsigned int i;
-    
-    while(n >= VELEMS(TYPE)) {
-	VTYPE r = VOPERATION(*(VTYPE*)ap, *(VTYPE*)bp);
-	vsum = VOPERATION2(vsum, r);
-	ap += VELEMS(TYPE);
-	bp += VELEMS(TYPE);		
-	n -= VELEMS(TYPE);
-    }
-    for (i = 0; i < VELEMS(TYPE); i++)
-	sum += VELEMENT(vsum,i);
-    while(n--) {
-	TYPE p = OPERATION(*ap,*bp);
-	sum = OPERATION2(sum, p);
-	ap++;
-	bp++;
-    }
-    return sum;
-}
-
 // Load n elements from b into vector array cp
 static inline void CAT2(PROCEDURE,_loadv_mulop)(VTYPE* cp,TYPE* bp,int bu,size_t n)
 {
-    while(n >= VELEMS(TYPE)) {
-	VTYPE ce;
-	size_t i;
-	for (i = 0; i < VELEMS(TYPE); i++) {
-	    VSETELEMENT(ce,i,*bp);
-	    bp += bu;
-	}
-	*cp++ = ce;
-	n -= VELEMS(TYPE);
-    }
-    if (n) {  // column tail
-	VTYPE  ce = VTYPE_ZERO;
-	size_t i = 0;
-	while(i < n) {
-	    VSETELEMENT(ce,i,*bp);
-	    bp += bu;
-	    i++;
-	}
-	*cp = ce;
+    TYPE* cp1 = (TYPE*) cp;
+    while(n--) {
+	*cp1++ = *bp;
+	bp += bu;
     }
 }
 
 static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 		      TYPE* bp, int bu, size_t bn, size_t bm,
+		      byte_t* kp, int ku,int kv,
 		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
@@ -75,6 +37,7 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
         VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
 	TYPE* ap1 = ap;
 	TYPE* cp1 = cp;
+	byte_t* kp1 = kp;
 	size_t n;
 
 	CAT2(PROCEDURE,_loadv_mulop)(col,bp,bu,bn);
@@ -82,10 +45,16 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 	bp++;     // advance to next column
 	n = an;   // multiply with all rows in A
 	while(n--) {
-	    TYPE* tp = (TYPE*) &col[0];
-	    *cp1 = CAT2(PROCEDURE,_dotv_mulop)(tp, ap1, am);
+	    if (*kp1) {
+		TYPE* tp = (TYPE*) &col[0];
+		*cp1 = CAT2(mtv_dot_,TYPE)(tp, ap1, am);
+	    }
+	    else {
+		*cp1 = TYPE_ZERO;
+	    }
 	    cp1 += cu;
 	    ap1 += au;
+	    kp1 += kv;
 	}
 	cp += cv;
     }

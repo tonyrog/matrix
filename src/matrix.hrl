@@ -12,17 +12,16 @@
 -define(int16,      1).
 -define(int32,      2).
 -define(int64,      3).
--define(int128,     4).
--define(float32,    5).
--define(float64,    6).
--define(float128,   7).
--define(complex64,  8).
--define(complex128, 9).
+-define(float32,    4).
+-define(float64,    5).
+-define(complex64,  6).
+-define(complex128, 7).
 
 -type unsigned() :: non_neg_integer().
--type matrix_type() :: complex128|complex64|
-		       float32|float64|float128|
-		       int64|int32|int16|int8.
+-type matrix_type() :: int8|int16|int32|int64|
+		       float32|float64|
+		       complex64|complex128.
+		       
 -type complex() :: {float(),float()}.
 -type scalar() :: integer()|float()|complex().
 
@@ -44,12 +43,14 @@
 	((X#matrix.type >= ?complex64) andalso (X#matrix.type =< ?complex128))).
 
 -define(is_float_matrix(X),
-	((X#matrix.type >= ?float32) andalso (X#matrix.type =< ?float128))).
+	((X#matrix.type >= ?float32) andalso (X#matrix.type =< ?float64))).
 
 -define(is_int_matrix(X),
-	((X#matrix.type >= ?int8) andalso (X#matrix.type =< ?int128))).
+	((X#matrix.type >= ?int8) andalso (X#matrix.type =< ?int64))).
 
 -define(is_complex(X), (is_number(element(1,(X))) andalso is_number(element(2,(X))))).
+
+-define(is_scalar(X), (is_number((X)) orelse ?is_complex(X))).
 
 -endif.
 

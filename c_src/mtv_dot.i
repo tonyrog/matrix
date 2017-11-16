@@ -15,47 +15,37 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
-		      TYPE* bp, int bu, size_t bn, size_t bm,
-		      byte_t* kp, int ku,int kv,
-		      TYPE* cp, int cu, int cv
-		      PARAMS_DECL)
+static inline TYPE2 PROCEDURE(TYPE* ap,TYPE* bp,size_t n)
 {
-    LOCALS_DECL
-    (void) am;
-    TYPE* bp0 = bp;
-
-    while (an--) {
-	TYPE* cp1 = cp;
-	size_t n = bn;
-	if (*kp) {
-	    bp = bp0;
-	    while(n--) {
-		*cp1 = CAT2(mtv_dot_,TYPE)(ap, bp, bm);
-		bp  += bu;
-		cp1 += cv;
-	    }
-	}
-	else {
-	    while(n--) {
-		*cp1 = TYPE_ZERO;
-		cp1 += cv;
-	    }
-	}
-	ap += au;
-	cp += cu;
-	kp += kv;
+    TYPE2 sum = 0;
+    VTYPE vsum = VTYPE_ZERO;
+    unsigned int i;
+    
+    while(n >= VELEMS(TYPE)) {
+	VTYPE r = VOPERATION(*(VTYPE*)ap, *(VTYPE*)bp);
+	vsum = VOPERATION2(vsum, r);
+	ap += VELEMS(TYPE);
+	bp += VELEMS(TYPE);		
+	n -= VELEMS(TYPE);
     }
+    for (i = 0; i < VELEMS(TYPE); i++)
+	sum += VELEMENT(vsum,i);
+    while(n--) {
+	TYPE p = OPERATION(*ap,*bp);
+	sum = OPERATION2(sum, p);
+	ap++;
+	bp++;
+    }
+    return sum;
 }
 
 #undef PROCEDURE
 #undef TYPE
 #undef TYPE2
-#undef PARAMS_DECL
-#undef LOCALS_DECL
 #undef OPERATION
 #undef OPERATION2
 #undef VOPERATION
 #undef VOPERATION2
 #undef VELEMENT
-#undef VSETELEMENT
+
+
