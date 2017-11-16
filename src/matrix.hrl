@@ -29,7 +29,7 @@
 	{
 	  n :: unsigned(),          %% rows
 	  m :: unsigned(),          %% columns
-	  type :: 0..5,             %% encoded element type
+	  type :: 0..7,             %% encoded element type
 	  ptr = 0 :: unsigned(),    %% 0 is binary, not 0 is resource binary
 	  offset = 0 :: unsigned(), %% offset to first element
 	  stride :: unsigned(),     %% number of elements per (padded) row

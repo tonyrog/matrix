@@ -156,11 +156,13 @@ col_B(T,N,M) ->
     X=matrix:from_list([[ I*J || J <- s_list(N)] || I <- s_list(M)],T),
     matrix:transpose(X).
 
+%% target matrix must be a "real" matrix zero is normally constant and
+%% can not be written to!
 row_C(T,N,M) ->
-    matrix:zero(N,M,T).
+    matrix:copy(matrix:zero(N,M,T)).
 
 col_C(T,N,M) ->
-    matrix:transpose(matrix:zero(M,N,T)).
+    matrix:copy(matrix:transpose(matrix:zero(M,N,T))).
 
 ref_mul_A_B(T,An,Am,Bn,Bm) ->
     matrix:to_list(matrix_ref:multiply(row_A(T,An,Am),row_B(T,Bn,Bm))).

@@ -80,13 +80,17 @@ element(I,J,#matrix{rowmajor=true,n=N,m=M,offset=O,stride=S,type=T,data=D})
   when
       is_integer(I), I > 0, I =< N, 
       is_integer(J), J > 0, J =< M ->
-    P = O + (I-1)*S+J-1,
+    P = if S =:= 0 -> O;
+	   true -> O + (I-1)*S+J-1
+	end,
     decode_element_at(P, T, D);
 element(I,J,#matrix{rowmajor=false,n=N,m=M,offset=O,stride=S,type=T,data=D})
   when
       is_integer(I), I > 0, I =< M, 
       is_integer(J), J > 0, J =< N ->
-    P = O + (J-1)*S+I-1,
+    P = if S =:= 0 -> O;
+	   true -> O + (J-1)*S+I-1
+	end,
     decode_element_at(P, T, D).
 
 %% P is element position not byte position
