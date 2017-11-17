@@ -1,8 +1,8 @@
 %% -*- erlang -*-
 
-{type, [int8,int16,int32,int64,float32,float64]}.
+{bind, type, [int8,int16,int32,int64,float32,float64]}.
 
-{{proc,operation},[{add,plus},{subtract,minus},{times,times}]}.
+{pbind, [proc,operation],[[add,add],[subtract,sub],[times,mul]]}.
 
 %% BINARY operations
 

@@ -1,0 +1,151 @@
+%% -*- erlang -*-
+
+{bind, type, [int8,int16,int32,int64,float32,float64]}.
+
+%% READ_INT64
+{text,"
+static int64_t read_int64_\${type}(byte_t* ptr)
+{
+    return (int64_t) *((\${type}_t*)ptr);
+}\n"}.
+
+{text,"
+static int64_t read_int64_complex64(byte_t* ptr)
+{
+    return (int64_t) crealf(*((complex64_t*)ptr));
+}\n"}.
+
+{text,"
+static int64_t read_int64_complex128(byte_t* ptr)
+{
+    return (int64_t) creal(*((complex128_t*)ptr));
+}\n"}.
+
+%% READ_FLOAT64
+{text,"
+static float64_t read_float64_\${type}(byte_t* ptr)
+{
+    return (float64_t) *((\${type}_t*)ptr);
+}\n"}.
+
+{text,"
+static float64_t read_float64_complex64(byte_t* ptr)
+{
+    return (float64_t) crealf(*((complex64_t*)ptr));
+}\n"}.
+
+{text,"
+static float64_t read_float64_complex128(byte_t* ptr)
+{
+    return (float64_t) creal(*((complex128_t*)ptr));
+}\n"}.
+
+%% READ_COMPLEX128
+{text,"
+static complex128_t read_complex128_\${type}(byte_t* ptr)
+{
+    return CMPLX(*((\${type}_t*)ptr),0.0);
+}\n"}.
+
+{text,"
+static complex128_t read_complex128_complex64(byte_t* ptr)
+{
+    return (complex128_t) *((complex64_t*)ptr);
+}\n"}.
+
+{text,"
+static complex128_t read_complex128_complex128(byte_t* ptr)
+{
+    return (complex128_t) *((complex128_t*)ptr);
+}\n"}.
+
+%% WRITE_INT64
+{text,"
+static void write_int64_\${type}(byte_t* ptr, int64_t v)
+{
+      *((\${type}_t*)ptr) = (\${type}_t) v;
+}\n"}.
+
+{text,"
+static void write_int64_complex64(byte_t* ptr, int64_t v)
+{
+    *((complex64_t*)ptr) = CMPLXF((float32_t) v, 0.0);
+}\n"}.
+
+{text,"
+static void write_int64_complex128(byte_t* ptr, int64_t v)
+{
+    *((complex128_t*)ptr) = CMPLX((float64_t) v, 0.0);
+}\n"}.
+
+%% WRITE_FLOAT64
+
+{text,"
+static void write_float64_\${type}(byte_t* ptr, float64_t v)
+{
+      *((\${type}_t*)ptr) = (\${type}_t) v;
+}\n"}.
+
+{text,"
+static void write_float64_complex64(byte_t* ptr, float64_t v)
+{
+    *((complex64_t*)ptr) = CMPLXF((float32_t) v, 0.0);
+}\n"}.
+
+{text,"
+static void write_float64_complex128(byte_t* ptr, float64_t v)
+{
+    *((complex128_t*)ptr) = CMPLX((float64_t) v, 0.0);
+}\n"}.
+
+%% WRITE_COMPLEX128
+
+{text,"
+static void write_complex128_\${type}(byte_t* ptr, complex128_t v)
+{
+      *((\${type}_t*)ptr) = (\${type}_t) creal(v);
+}\n"}.
+
+{text,"
+static void write_complex128_complex64(byte_t* ptr, complex128_t v)
+{
+  *((complex64_t*)ptr) = (complex64_t) v;
+}\n"}.
+
+{text,"
+static void write_complex128_complex128(byte_t* ptr, complex128_t v)
+{
+    *((complex128_t*)ptr) = (complex128_t) v;
+}\n"}.
+
+
+%% dispatch table
+{pbind, [type,enum],[
+  [int8,"INT8"],[int16,"INT16"],[int32,"INT32"],[int64,"INT64"],
+  [float32,"FLOAT32"],[float64,"FLOAT64"],
+  [complex64,"COMPLEX64"],[complex128,"COMPLEX128"]]}.
+
+{for, rtype, [int64,float64,complex128],
+[
+{text,"
+static \${rtype}_t (*read_\${rtype}_func[NUM_TYPES])(byte_t*) = {\n"},
+{text,"  [\${enum}] = read_\${rtype}_\${type},\n"},
+{text,"};\n"},
+
+{text,"
+static void (*write_\${rtype}_func[NUM_TYPES])(byte_t*,\${rtype}_t) = {\n"},
+{text,"  [\${enum}] = write_\${rtype}_\${type},\n"},
+{text,"};\n"},
+
+{text,"
+static \${rtype}_t read_\${rtype}(matrix_type_t type, byte_t* ptr)
+{
+    return (read_\${rtype}_func[type])(ptr);
+}\n"},
+
+{text,"
+static void write_\${rtype}(matrix_type_t type, byte_t* ptr, \${rtype}_t v)
+{
+    (write_\${rtype}_func[type])(ptr, v);
+}\n"}
+]}.

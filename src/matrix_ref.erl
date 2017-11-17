@@ -377,9 +377,10 @@ sum_(X, Sum) ->
 -spec exp(X::matrix()) -> matrix().
 exp(X) ->
     {N,M} = matrix:size(X),
-    T = matrix:type(X),
+    T = X#matrix.type,
+    Type = matrix:type(X),
     Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_exp(Xij)) end, X),
-    matrix:create(N,M,T,true,Es).
+    matrix:create(N,M,Type,true,Es).
 
 -spec transpose_data(Src::matrix()) -> matrix().
 

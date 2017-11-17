@@ -24,7 +24,7 @@
 -export([kmultiply/3]).
 -export([mulsum/2]).
 -export([expsum/1]).
--export([sum/1]).
+-export([sum/1, sum/2]).
 -export([times/2,times/3]).
 -export([ktimes/3]).
 -export([scale/2, scale/3]).
@@ -590,10 +590,8 @@ scale(F, X=#matrix{}, Dst=#matrix{}) when ?is_scalar(F) ->
 %% expontiation of all elements
 -spec exp(X::matrix()) -> matrix().
 exp(X) ->
-    exp_(X).
+    apply1_(exp, X).
 
-exp_(X) ->
-    matrix_ref:exp(X).
 %%
 %% Multiply elementwise and add everything
 %%
@@ -611,6 +609,13 @@ sum(X) ->
 
 sum_(X) ->
     matrix_ref:sum(X).
+
+-spec sum(A::matrix(), Axis::0|1) -> matrix().
+sum(A, Axis) ->
+    sum_(A, Axis).
+
+sum_(A, Axis) ->
+    matrix_ref:sum(A, Axis).
 
 %% expsum
 %% sum all elements after exponetiation
@@ -974,7 +979,8 @@ softplus_prime(A,_Out) ->
 
 -spec softmax(A::matrix()) -> matrix().
 softmax(A) ->
-    scale(apply1_(exp,A), 1/expsum(A)).
+    A1 = subtract(A, max(A)),
+    scale(1/expsum(A1), apply1_(exp,A1)).
 
 -spec softmax_prime(A::matrix(),Out::matrix()) -> matrix().
 softmax_prime(A,_Out) ->
