@@ -69,27 +69,28 @@
 create(N,M,Type,RowMajor,Data) when is_atom(Type) ->
     create(N,M,matrix:encode_type(Type),RowMajor,Data);
 create(N,M,T,RowMajor,Data) ->
-    Stride = M,
-    #matrix { n=N, m=M, type=T, stride=Stride, rowmajor=RowMajor,
+    #matrix { type=T, n=N, m=M, nstep=M, mstep=1, rowmajor=RowMajor,
 	      data=iolist_to_binary(Data)}.
 
 
 -spec element(I::unsigned(),J::unsigned(),X::matrix()) -> number().
 %% element I,J in row/column order (i.e rowmajor)
-element(I,J,#matrix{rowmajor=true,n=N,m=M,offset=O,stride=S,type=T,data=D}) 
+element(I,J,#matrix{rowmajor=true,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
+		    type=T,data=D})
   when
       is_integer(I), I > 0, I =< N, 
       is_integer(J), J > 0, J =< M ->
-    P = if S =:= 0 -> O;
-	   true -> O + (I-1)*S+J-1
+    P = if Sn =:= 0, Sm =:= 0 -> O;
+	   true -> O + (I-1)*Sn+(J-1)
 	end,
     decode_element_at(P, T, D);
-element(I,J,#matrix{rowmajor=false,n=N,m=M,offset=O,stride=S,type=T,data=D})
+element(I,J,#matrix{rowmajor=false,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
+		    type=T,data=D})
   when
       is_integer(I), I > 0, I =< M, 
       is_integer(J), J > 0, J =< N ->
-    P = if S =:= 0 -> O;
-	   true -> O + (J-1)*S+I-1
+    P = if Sn =:= 0, Sm =:= 0 -> O;
+	   true -> O + (J-1)*Sn+(I-1)
 	end,
     decode_element_at(P, T, D).
 

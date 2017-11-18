@@ -18,6 +18,7 @@
 -export([normal/2, uniform/2, zero/2, one/2, identity/2]).
 -export([normal/3, uniform/3, zero/3, one/3, identity/3]).
 -export([constant/3, constant/4]).
+-export([cdata/2, cdata/3]).
 -export([add/2,add/3]).
 -export([subtract/2,subtract/3]).
 -export([multiply/2,multiply/3]).
@@ -302,11 +303,30 @@ constant(N,M,Type,C) when is_integer(N), N >= 1,
 			  ?is_scalar(C) ->
     constant_(N,M,Type,C).
 
-%% special constant for testing!
 constant_(N,M,Type,C) ->
     T = encode_type(Type),
     Bin = elem_to_bin(T,C),
-    #matrix { n=N, m=M, type=T, stride=0, rowmajor=true, data=Bin }.
+    #matrix { type=T, n=N, m=M, nstep=0, mstep=0, rowmajor=true, data=Bin }.
+
+
+
+-spec cdata(N::unsigned(), Data::[scalar()]) -> matrix().
+cdata(N,X=#matrix{n=1,m=_M}) when N > 0 ->
+    X#matrix { n=N, nstep=0 };
+cdata(M,X=#matrix{m=1,n=_N}) when M > 0 ->
+    X#matrix { m=M, mstep=0 };
+cdata(N,CData) when is_integer(N), N>=0, is_list(CData) ->
+    T = type_list(CData, -1),
+    cdata_(N, T, CData).
+    
+cdata(N,Type,CData) when is_integer(N), N>=0, is_list(CData) ->
+    cdata_(N, encode_type(Type), CData).
+
+cdata_(N,T,CData) ->
+    M = length(CData),
+    Bin = list_to_binary([elem_to_bin(T,E) || E <- CData]),
+    #matrix { type=T, n=N, m=M, nstep=0, mstep=1, rowmajor=true, data=Bin }.
+
 
 -spec identity({N::unsigned(), M::unsigned()}) -> matrix().
 identity({N,M}) ->
@@ -399,7 +419,7 @@ foldr_rows(I,N,F,A,X) ->
 
 %% fold left over row
 foldl_row(I,F,A,#matrix{rowmajor=true,n=_N,m=M,offset=O,
-		       stride=S,type=T,data=D}) ->
+			nstep=S,type=T,data=D}) ->
     if S =:= 0 ->
 	    P = O,
 	    fold_elems_(F,A,D,P,T,0,M);
@@ -408,7 +428,7 @@ foldl_row(I,F,A,#matrix{rowmajor=true,n=_N,m=M,offset=O,
 	    fold_elems_(F,A,D,P,T,1,M)
     end;
 foldl_row(I,F,A,#matrix{rowmajor=false,n=N,m=_M,offset=O,
-		       stride=S,type=T,data=D}) ->
+			nstep=S,type=T,data=D}) ->
     if S =:= 0 ->
 	    P = O,
 	    fold_elems_(F,A,D,P,T,0,N);
@@ -420,7 +440,7 @@ foldl_row(I,F,A,#matrix{rowmajor=false,n=N,m=_M,offset=O,
 
 %% fold left over column
 foldl_column(J,F,A,#matrix{rowmajor=false,n=_N,m=M,offset=O,
-			   stride=S,type=T,data=D}) ->
+			   nstep=S,type=T,data=D}) ->
     if S =:= 0 ->
 	    P = O,
 	    fold_elems_(F,A,D,P,T,0,M);
@@ -429,7 +449,7 @@ foldl_column(J,F,A,#matrix{rowmajor=false,n=_N,m=M,offset=O,
 	    fold_elems_(F,A,D,P,T,1,M)
     end;
 foldl_column(J,F,A,#matrix{rowmajor=true,n=N,m=_M,offset=O,
-			   stride=S,type=T,data=D}) ->
+			   nstep=S,type=T,data=D}) ->
     if S =:= 0 ->
 	    P = O,
 	    fold_elems_(F,A,D,P,T,0,N);
@@ -440,41 +460,41 @@ foldl_column(J,F,A,#matrix{rowmajor=true,n=N,m=_M,offset=O,
 
 %% fold right over rows
 foldr_row(I,F,A,#matrix{rowmajor=true,n=_N,m=M,offset=O,
-			stride=S,type=T,data=D}) ->
-    if S =:= 0 ->
+			nstep=Sn,mstep=Sm,type=T,data=D}) ->
+    if Sn =:= 0, Sm =:= 0 ->
 	    P = O,
 	    fold_elems_(F,A,D,P,T,0,M);
        true ->
-	    P = O + (I-1)*S + M-1,
+	    P = O + (I-1)*Sn + M-1,  %% fixme handle Sm
 	    fold_elems_(F,A,D,P,T,-1,M)
     end;
 foldr_row(I,F,A,#matrix{rowmajor=false,n=N,m=_M,offset=O,
-			stride=S,type=T,data=D}) ->
-    if S =:= 0 ->
-	    P = O,
-	        fold_elems_(F,A,D,P,T,0,N);
-       true ->
-	    P = O + (N-1)*S + (I-1),
-	    fold_elems_(F,A,D,P,T,-S,N)
-    end.
-
-foldr_column(J,F,A,#matrix{rowmajor=false,n=_N,m=M,offset=O,
-			   stride=S,type=T,data=D}) ->
-    if S =:= 0 ->
-	    P = O,
-	    fold_elems_(F,A,D,P,T,0,M);
-       true ->
-	    P = O + (J-1)*S + M-1,
-	    fold_elems_(F,A,D,P,T,-1,M)
-    end;
-foldr_column(J,F,A,#matrix{rowmajor=true,n=N,m=_M,offset=O,
-			   stride=S,type=T,data=D}) ->
-    if S =:= 0 ->
+			nstep=Sn,mstep=Sm,type=T,data=D}) ->
+    if Sn =:= 0, Sm =:= 0 ->
 	    P = O,
 	    fold_elems_(F,A,D,P,T,0,N);
        true ->
-	    P = O + (N-1)*S + (J-1),
-	    fold_elems_(F,A,D,P,T,-S,N)
+	    P = O + (N-1)*Sn + (I-1),
+	    fold_elems_(F,A,D,P,T,-Sn,N)
+    end.
+
+foldr_column(J,F,A,#matrix{rowmajor=false,n=_N,m=M,offset=O,
+			   nstep=Sn, mstep=Sm, type=T,data=D}) ->
+    if Sn =:= 0, Sm =:= 0 ->
+	    P = O,
+	    fold_elems_(F,A,D,P,T,0,M);
+       true ->
+	    P = O + (J-1)*Sn + M-1,
+	    fold_elems_(F,A,D,P,T,-1,M)
+    end;
+foldr_column(J,F,A,#matrix{rowmajor=true,n=N,m=_M,offset=O,
+			   nstep=Sn,mstep=Sm,type=T,data=D}) ->
+    if Sn =:= 0, Sm =:= 0 ->
+	    P = O,
+	    fold_elems_(F,A,D,P,T,0,N);
+       true ->
+	    P = O + (N-1)*Sn + (J-1),
+	    fold_elems_(F,A,D,P,T,-Sn,N)
     end.
 
 fold_elems_(_F,A,_D,_P,_T,_S,0) -> A;
@@ -765,18 +785,18 @@ column(J, X=#matrix{rowmajor=false,n=N,m=M}) when J >= 1, J =< N ->
 		X::matrix()) -> matrix().
 
 %% fixme range check!
-submatrix(I, J, N, M, X=#matrix{rowmajor=true,offset=Offset,stride=Stride}) ->
-    Offset1 = if Stride =:= 0 ->
-		      Offset;
+submatrix(I,J,N,M, X=#matrix{rowmajor=true,offset=Offs,nstep=Sn,mstep=Sm}) ->
+    Offset1 = if Sn =:= 0, Sm =:= 0 ->
+		      Offs;
 		 true ->
-		      Offset + (I-1)*Stride + (J-1)
+		      Offs + (I-1)*Sn + (J-1)
 	      end,
     X#matrix { n=N, m=M, offset=Offset1};
-submatrix(I, J, N, M, X=#matrix{rowmajor=false,offset=Offset,stride=Stride}) ->
-    Offset1 = if Stride =:= 0 ->
-		      Offset;
+submatrix(I,J,N,M, X=#matrix{rowmajor=false,offset=Offs,nstep=Sn,mstep=Sm}) ->
+    Offset1 = if Sn =:= 0, Sm =:= 0 ->
+		      Offs;
 		 true ->
-		      Offset + (J-1)*Stride + (I-1)
+		      Offs + (J-1)*Sn + (I-1)
 	      end,
     X#matrix { n=M, m=N, offset=Offset1}.
 

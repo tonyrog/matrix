@@ -27,12 +27,13 @@
 
 -record(matrix,
 	{
+	  type :: 0..7,             %% encoded element type
 	  n :: unsigned(),          %% rows
 	  m :: unsigned(),          %% columns
-	  type :: 0..7,             %% encoded element type
+	  nstep :: integer(),       %% #elements in n direction
+	  mstep :: integer(),       %% #elements in m direction
 	  ptr = 0 :: unsigned(),    %% 0 is binary, not 0 is resource binary
 	  offset = 0 :: unsigned(), %% offset to first element
-	  stride :: unsigned(),     %% number of elements per (padded) row
 	  rowmajor :: boolean(),    %% stored row-by-row else col-by-col
 	  data :: binary()          %% native encode raw matrix data
 	}).
