@@ -9,7 +9,7 @@
 %% -compile(native).
 -on_load(init/0).
 -export([create/4, create/5]).
--export([element/3]).
+-export([element/2, element/3]).
 -export([copy/1, copy/2, copy/4]).
 -export([fill/2]).
 -export([from_list/1, from_list/2, from_list/3, from_list/4]).
@@ -78,6 +78,7 @@
 -export([encode_type/1]).
 -export([setelement_/4]).
 -export([element_/3]).
+-export([element_/2]).
 -export([type_combine/2]).
 -export([elem_to_bin/2]).
 
@@ -139,7 +140,7 @@ copy(_Src) ->
 copy(_Src, _Dst) ->
     ?nif_stub().
 
--spec copy(Src::matrix(), Dst::matrix(), 
+-spec copy(Src::matrix(), Dst::matrix(),
 	   RepeatHorizontal::unsigned(),
 	   RepeatVertical::unsigned()) ->
 		  matrix().
@@ -318,7 +319,7 @@ cdata(M,X=#matrix{m=1,n=_N}) when M > 0 ->
 cdata(N,CData) when is_integer(N), N>=0, is_list(CData) ->
     T = type_list(CData, -1),
     cdata_(N, T, CData).
-    
+
 cdata(N,Type,CData) when is_integer(N), N>=0, is_list(CData) ->
     cdata_(N, encode_type(Type), CData).
 
@@ -345,16 +346,16 @@ identity(N,M,Type) when is_integer(N), N >= 1,
 -spec identity_(N::unsigned(), M::unsigned(), T::integer()) -> matrix().
 
 identity_(_N,_M,_T) ->
-    ?nif_stub().     
+    ?nif_stub().
 
 
 -spec apply1_(A::matrix(), Op::atom()) -> matrix().
 apply1_(_A, _Op) ->
-    ?nif_stub(). 
+    ?nif_stub().
 
 -spec apply1_(A::matrix(), Dst::matrix(), Op::atom()) -> matrix().
 apply1_(_A, _Dst, _Op) ->
-    ?nif_stub(). 
+    ?nif_stub().
 
 %% return dimension in row major order
 -spec size(M::matrix()) -> {unsigned(), unsigned()}.
@@ -391,7 +392,18 @@ element(I,J,A) ->
 element_(I,J,A) ->
     matrix_ref:element(I,J,A).
 
--spec setelement_(I::unsigned(),J::unsigned(),X::matrix(),V::scalar()) -> 
+-spec element(I::unsigned(),X::matrix()) -> matrix().
+
+element({I,J},A) when is_integer(I), is_integer(J) -> element(I,J,A);
+element(I,A=#matrix{rowmajor=true}) when is_integer(I) -> row(I,A);
+element(J,A=#matrix{rowmajor=false}) when is_integer(J) -> column(J,A);
+element(I=#matrix{},A=#matrix{}) ->
+    element_(I,A).
+
+element_(I,A) ->
+    matrix_ref:element(I,A).
+
+-spec setelement_(I::unsigned(),J::unsigned(),X::matrix(),V::scalar()) ->
 			matrix().
 setelement_(_I,_J,_A,_V) ->
     ?nif_stub().
@@ -498,7 +510,7 @@ foldr_column(J,F,A,#matrix{rowmajor=true,n=N,m=_M,offset=O,
     end.
 
 fold_elems_(_F,A,_D,_P,_T,_S,0) -> A;
-fold_elems_(F,A,D,P,T,S,I) -> 
+fold_elems_(F,A,D,P,T,S,I) ->
     E = matrix_ref:decode_element_at(P,T,D),
     A1 = F(E,A),
     fold_elems_(F,A1,D,P+S,T,S,I-1).
@@ -606,7 +618,7 @@ scale(F, X=#matrix{}) when ?is_scalar(F) ->
 -spec scale(F::number(), X::matrix(), Dst::matrix()) -> matrix().
 scale(F, X=#matrix{}, Dst=#matrix{}) when ?is_scalar(F) ->
     times(F, X, Dst).
-    
+
 %% expontiation of all elements
 -spec exp(X::matrix()) -> matrix().
 exp(X) ->
@@ -643,9 +655,9 @@ sum_(A, Axis) ->
 
 expsum(X) ->
     sum(exp(X)).
-    
+
 %%
-%% Calculate X^2 
+%% Calculate X^2
 %%
 -spec square(X::matrix()) -> matrix().
 square(X) ->
@@ -741,7 +753,7 @@ ktimes_(A, B, K) ->
 -spec ktimes_(X::matrix(), Y::matrix(), K::matrix(), C::matrix()) -> matrix().
 ktimes_(_A, _B, _K, _C) ->
     ?nif_stub().
-    
+
 %%
 %% Transpose a matrix
 %% if rowmajor then n = number of rows, m = number of columns
@@ -865,7 +877,7 @@ maxpool_(_N, _M, _Sn, _Sm, _A, _Dst) ->
 l2pool(N, M, A) ->
     l2pool(N, M, 1, 1, A).
 
-%% l2pool 
+%% l2pool
 -spec l2pool(N::unsigned(),M::unsigned(),
 	     Sn::unsigned(),Sm::unsigned(),A::matrix()) -> matrix().
 
@@ -891,7 +903,7 @@ l2pool_(_N, _M, _Sn, _Sm, _A, _Dst) ->
 filter(W, X) ->
     filter(W, 1, 1, X).
 
--spec filter(W::matrix(), Sn::unsigned(), Sm::unsigned(), A::matrix()) -> 
+-spec filter(W::matrix(), Sn::unsigned(), Sm::unsigned(), A::matrix()) ->
 		    matrix().
 
 filter(W, Sn, Sm, A) ->
@@ -910,11 +922,14 @@ filter_(_W, _Sn, _Sm, _A, _Dst) ->
     ?nif_stub().
 
 %% argmax
--spec argmax(A::matrix(),Axis::0|1) -> [integer()].
+-spec argmax(A::matrix()) -> {I::integer(),J::integer()}.
 
 argmax(A) ->
-    Ai = argmax(A,0),    %% vector of indices for max columns
-    to_list(Ai).
+    I = element(1,1,argmax(matrix:max(A, 1),0)),
+    J = element(1,1,argmax(matrix:max(A, 0),1)),
+    {I, J}.
+
+-spec argmax(A::matrix(),Axis::0|1) -> [integer()].
 
 argmax(A,I) ->
     argmax_(A,I).
@@ -982,7 +997,7 @@ leaky_relu_prime(A,_Out) ->
     apply1_(leaky_relu_prime, A).
 
 -spec linear(A::matrix()) -> matrix().
-linear(A) -> 
+linear(A) ->
     A.
 
 -spec linear_prime(A::matrix(),Out::matrix()) -> matrix().
@@ -1012,7 +1027,7 @@ tanh(A) ->
     apply1_(tanh, A).
 
 -spec tanh_prime(A::matrix(),Out::matrix()) -> matrix().
-%% grad'(x) = 
+%% grad'(x) =
 tanh_prime(_A,Out) ->
     apply1_(tanh_prime1, Out).
 
@@ -1210,10 +1225,10 @@ dump() ->
 dump(MatchKey) ->
     lists:foreach(
       fun
-	  ({ {{Key,SubKey},K1,K2}, Count, Caller }) 
+	  ({ {{Key,SubKey},K1,K2}, Count, Caller })
 	    when Key =:= MatchKey; MatchKey =:= all ->
 	      print_counter(Key,SubKey,K1,K2,Count,Caller);
-	  ({ {{Key,SubKey},K1}, Count, Caller }) 
+	  ({ {{Key,SubKey},K1}, Count, Caller })
 	    when Key =:= MatchKey; MatchKey =:= all ->
 	      print_counter(Key,SubKey,K1,Count,Caller);
 	  (_) ->
@@ -1259,7 +1274,7 @@ format_dim({false,M,N}) -> ["C(",integer_to_list(N),"x",integer_to_list(M),")"].
 format_caller({M,F,A,Ln}) ->
     [atom_to_list(M),":",atom_to_list(F),"/",integer_to_list(A),":",
      integer_to_list(Ln),":"].
-			  
+
 count(Key, Value) ->
     Caller  = get_counter_caller(),
     Key1 = {'$counter',Key,Caller},

@@ -38,6 +38,10 @@ all() ->
     test_times_t(),
     test_transpose(),
     test_submatrix(),
+    test_min(),
+    test_max(),
+    test_sum(),
+    test_argmax(),
     ok.
 
     
@@ -551,6 +555,134 @@ test_submatrix2() ->
 	      B1s = matrix:to_list(B1),
 	      Bs = B1s
       end, 3, 3, 1, 1, A),
+    ok.
+
+
+test_min() ->
+    test_min0(),
+    test_min(4,3,int8),
+    test_min(24,24,int16),
+    test_min(128,128,int32),
+    ok.
+
+test_min0() ->
+    A = matrix:from_list([[1,2,3,4,5],
+			  [2,3,4,5,1],
+			  [3,4,5,1,2],
+			  [4,5,1,2,3],
+			  [5,1,2,3,4]],int32),
+    R = matrix:min(A,0),
+    C = matrix:min(A,1),
+    [[1,1,1,1,1]] = matrix:to_list(R),
+    [[1],[1],[1],[1],[1]] = matrix:to_list(C),
+    1 = matrix:min(A),
+    1 = matrix:min(R),
+    1 = matrix:min(C),
+    1 = matrix:min(A,-1),
+    ok.
+
+test_min(N,M,T) ->
+    A = make(N,M,T),
+    R = matrix:min(A,0),     %% min over each column ( row vector )
+    C = matrix:min(A,1),     %% min over each row ( column vector )
+    Min = matrix:min(A,-1),  %% total minimum
+    Min = matrix:min(C),     %% min in column
+    Min = matrix:min(R),     %% min in row
+    ok.
+
+test_max() ->
+    test_max0(),
+    test_max(4,3,int8),
+    test_max(24,24,int16),
+    test_max(128,128,int32),
+    ok.
+
+test_max0() ->
+    A = matrix:from_list([[1,2,3,4,5],
+			  [2,3,4,5,1],
+			  [3,4,5,1,2],
+			  [4,5,1,2,3],
+			  [5,1,2,3,4]],int32),
+    R = matrix:max(A,0),
+    C = matrix:max(A,1),
+    [[5,5,5,5,5]] = matrix:to_list(R),
+    [[5],[5],[5],[5],[5]] = matrix:to_list(C),
+    5 = matrix:max(A),
+    5 = matrix:max(R),
+    5 = matrix:max(C),
+    5 = matrix:max(A,-1),
+    ok.
+
+test_max(N,M,T) ->
+    A = make(N,M,T),
+    R = matrix:max(A,0),     %% max over each column
+    C = matrix:max(A,1),     %% max over each row
+    Max = matrix:max(A,-1),  %% total maximum
+    Max = matrix:max(C),     %% min in column
+    Max = matrix:max(R),     %% min in row
+    ok.
+
+test_sum() ->
+    test_sum0(),
+    test_sum(4,3,int8),
+    test_sum(24,24,int16),
+    test_sum(128,128,int32),
+    ok.
+
+test_sum0() ->
+    A = matrix:from_list([[1,2,3,4,5],
+			  [2,3,4,5,1],
+			  [3,4,5,1,2],
+			  [4,5,1,2,3],
+			  [5,1,2,3,4]],int32),
+    R = matrix:sum(A,0),
+    C = matrix:sum(A,1),
+    [[15,15,15,15,15]] = matrix:to_list(R),
+    [[15],[15],[15],[15],[15]] = matrix:to_list(C),
+    75 = matrix:sum(A),
+    75 = matrix:sum(R),
+    75 = matrix:sum(C),
+    75 = matrix:sum(A,-1),
+    ok.
+
+test_sum(N,M,T) ->
+    A = make(N,M,T),
+    R = matrix:sum(A,0),
+    C = matrix:sum(A,1),
+    Sum = matrix:sum(A,-1),  %% total sum
+    Sum = matrix:sum(C),     %% min in column
+    Sum = matrix:sum(R),     %% min in row
+    ok.
+
+
+test_argmax() ->
+    test_argmax0(),
+    test_argmax(4,3,int8),
+    test_argmax(24,24,int16),
+    test_max(128,128,int32),
+    ok.
+
+
+test_argmax0() ->
+    A = matrix:from_list([[1,2,3,4,5],
+			  [2,3,4,5,1],
+			  [3,4,5,1,2],
+			  [4,5,1,2,3],
+			  [5,1,2,3,4]],int32),
+    R = matrix:argmax(A,0),
+    C = matrix:argmax(A,1),
+    [[5,4,3,2,1]] = matrix:to_list(R),
+    [[5],[4],[3],[2],[1]] = matrix:to_list(C),
+    ok.
+
+test_argmax(N,M,T) ->
+    A = make(N,M,T),
+    R = matrix:argmax(A,0),
+    C = matrix:argmax(A,1),
+    R1 = [lists:duplicate(M,N)],
+    C1 = [[I] || I <- lists:duplicate(N,M)],
+    R1 = matrix:to_list(R),
+    C1 = matrix:to_list(C),
     ok.
 
 %% replicate marix A (as list) into N*A rows and M*A columns

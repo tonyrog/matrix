@@ -49,8 +49,7 @@
 -define(is_int_matrix(X),
 	((X#matrix.type >= ?int8) andalso (X#matrix.type =< ?int64))).
 
--define(is_complex(X), (is_number(element(1,(X))) andalso is_number(element(2,(X))))).
-
+-define(is_complex(X), (is_number(erlang:element(1,(X))) andalso is_number(erlang:element(2,(X))))).
 -define(is_scalar(X), (is_number((X)) orelse ?is_complex(X))).
 
 -endif.

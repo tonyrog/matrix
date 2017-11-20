@@ -428,6 +428,7 @@ static ERL_NIF_TERM matrix_min(ErlNifEnv* env, int argc,
 ErlNifFunc matrix_funcs[] =
 {
     NIF_FUNC("create_",       5, matrix_create),
+    NIF_FUNC("element_",      2, matrix_element),
     NIF_FUNC("element_",      3, matrix_element),
     NIF_FUNC("setelement_",   4, matrix_setelement),
     NIF_FUNC("add_",          2, matrix_add),
@@ -814,6 +815,12 @@ static inline void complex128_vsetelement(vcomplex128_t* xp, int i,
 complex128_t complex128_max(complex128_t a, complex128_t b)
 {
     return (cabs(a) > cabs(b)) ? a : b;
+}
+
+// use cabs to compare comlex
+complex128_t complex128_min(complex128_t a, complex128_t b)
+{
+    return (cabs(a) < cabs(b)) ? a : b;
 }
 
 // use cabs to compare comlex
@@ -1564,9 +1571,8 @@ static void apply1(unary_operation_t func,
 	    byte_t* cp1 = cp;
 	    for (j = 0; j < m; j++) {
 		float64_t a = read_af(ap1);
-		float64_t c;
+		float64_t c = opf(a);
 		ap1 += av;
-		c = opf(a);
 		write_cf(cp1, c);
 		cp1 += cv;
 	    }
@@ -1583,9 +1589,8 @@ static void apply1(unary_operation_t func,
 	    byte_t* cp1 = cp;
 	    for (j = 0; j < m; j++) {
 		complex128_t a = read_af(ap1);
-		complex128_t c;
+		complex128_t c = opf(a);
 		ap1 += av;
-		c = opf(a);
 		write_cf(cp1, c);
 		cp1 += cv;
 	    }
@@ -1602,9 +1607,8 @@ static void apply1(unary_operation_t func,
 	    byte_t* cp1 = cp;
 	    for (j = 0; j < m; j++) {
 		int64_t a = read_af(ap1);
-		int64_t c;
+		int64_t c = opf(a);
 		ap1 += av;
-		c = opf(a);
 		write_cf(cp1, c);
 		cp1 += cv;
 	    }
@@ -1707,10 +1711,9 @@ static void apply2(binary_operation_t func,
 	    while(m1--) {
 		float64_t a = read_af(ap1);
 		float64_t b = read_bf(bp1);
-		float64_t c;
+		float64_t c = opf(a,b);
 		ap1 += av;
 		bp1 += bv;
-		c = opf(a,b);
 		write_cf(cp1, c);
 		cp1 += cv;
 	    }
@@ -1732,10 +1735,9 @@ static void apply2(binary_operation_t func,
 	    while(m1--) {
 		complex128_t a = read_af(ap1);
 		complex128_t b = read_bf(bp1);
-		complex128_t c;
+		complex128_t c = opf(a, b);
 		ap1 += av;
 		bp1 += bv;
-		c = opf(a, b);
 		write_cf(cp1, c);
 		cp1 += cv;
 	    }
@@ -1757,10 +1759,9 @@ static void apply2(binary_operation_t func,
 	    while(m1--) {
 		int64_t a = read_af(ap1);
 		int64_t b = read_bf(bp1);
-		int64_t c;
+		int64_t c = opf(a, b);
 		ap1 += av;
 		bp1 += bv;
-		c = opf(a, b);
 		write_cf(cp1, c);
 		cp1 += cv;
 	    }
@@ -1879,10 +1880,12 @@ static void negate(bool_t use_vector,
 ///////////////////////////////////////////////////////////////////////////////
 
 static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
-		   size_t n, size_t m, int32_t* cp)
+		   int32_t* cp, int cv,
+		   size_t n, size_t m)
 {
     au = size_of_array(at,au);
     av = size_of_array(at,av);
+    // cv is step in size of int32 (index type)
 
     if (is_float(at)) {
 	float64_t (*read_af)(byte_t*) = read_float64_func[at];
@@ -1900,7 +1903,8 @@ static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
 		i++;
 		if (v > max_v) { max_v = v; max_i = i; }
 	    }
-	    *cp++ = max_i;
+	    *cp = max_i;
+	    cp += cv;
 	    ap += av;
 	}
     }
@@ -1920,7 +1924,8 @@ static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
 		i++;
 		if (cabs(v) > cabs(max_v)) { max_v = v; max_i = i; }
 	    }
-	    *cp++ = max_i;
+	    *cp = max_i;
+	    cp += cv;
 	    ap += av;
 
 	}
@@ -1941,7 +1946,8 @@ static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
 		i++;
 		if (v > max_v) { max_v = v; max_i = i; }
 	    }
-	    *cp++ = max_i;
+	    *cp = max_i;
+	    cp += cv;
 	    ap += av;
 	}
     }
@@ -1949,7 +1955,7 @@ static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// max
+// max along axis or if cv=0 then total max
 ///////////////////////////////////////////////////////////////////////////////
 
 static void t_max(matrix_type_t at,byte_t* ap, int au, int av,
@@ -1975,7 +1981,7 @@ static void t_max(matrix_type_t at,byte_t* ap, int au, int av,
 	    while(n1--) {
 		float64_t v = read_af(ap1);
 		ap1 += au;
-		if (v > max_v) { max_v = v; }
+		max_v = op_max(v, max_v);
 	    }
 	    write_cf(cp, max_v);
 	    cp += cv;
@@ -1997,7 +2003,7 @@ static void t_max(matrix_type_t at,byte_t* ap, int au, int av,
 	    while(n1--) {
 		complex128_t v = read_af(ap1);
 		ap1 += au;
-		if (cabs(v) > cabs(max_v)) { max_v = v; }
+		max_v = complex128_max(v, max_v);
 	    }
 	    write_cf(cp, max_v);
 	    cp += cv;
@@ -2019,7 +2025,7 @@ static void t_max(matrix_type_t at,byte_t* ap, int au, int av,
 	    while(n1--) {
 		int64_t v = read_af(ap1);
 		ap1 += au;
-		if (v > max_v) { max_v = v; }
+		max_v = op_max(v, max_v);
 	    }
 	    write_cf(cp, max_v);
 	    cp += cv;
@@ -2055,7 +2061,7 @@ static void t_min(matrix_type_t at,byte_t* ap, int au, int av,
 	    while(n1--) {
 		float64_t v = read_af(ap1);
 		ap1 += au;
-		if (v < min_v) { min_v = v; }
+		min_v = op_min(v, min_v);
 	    }
 	    write_cf(cp, min_v);
 	    cp += cv;
@@ -2077,7 +2083,7 @@ static void t_min(matrix_type_t at,byte_t* ap, int au, int av,
 	    while(n1--) {
 		complex128_t v = read_af(ap1);
 		ap1 += au;
-		if (cabs(v) < cabs(min_v)) { min_v = v; }
+		min_v = complex128_max(v, min_v);
 	    }
 	    write_cf(cp, min_v);
 	    cp += cv;
@@ -2099,7 +2105,7 @@ static void t_min(matrix_type_t at,byte_t* ap, int au, int av,
 	    while(n1--) {
 		int64_t v = read_af(ap1);
 		ap1 += au;
-		if (v > min_v) { min_v = v; }
+		min_v = op_min(v, min_v);
 	    }
 	    write_cf(cp, min_v);
 	    cp += cv;
@@ -2300,7 +2306,8 @@ static void multiply(
 			while(k--) {
 			    float64_t a = read_af(ap1);
 			    float64_t b = read_bf(bp1);
-			    sum += a*b;
+			    float64_t c = op_mul(a,b);
+			    sum = op_add(sum, c);
 			    ap1 += av;
 			    bp1 += bu;
 			}
@@ -2337,7 +2344,8 @@ static void multiply(
 			while(k--) {
 			    complex128_t a = read_af(ap1);
 			    complex128_t b = read_bf(bp1);
-			    sum += a*b;
+			    complex128_t c = op_mul(a,b);
+			    sum = op_add(sum, c);
 			    ap1 += av;
 			    bp1 += bu;
 			}
@@ -2374,7 +2382,8 @@ static void multiply(
 			while(k--) {
 			    int64_t a = read_af(ap1);
 			    int64_t b = read_bf(bp1);
-			    sum += a*b;
+			    int64_t c = op_mul(a,b);
+			    sum = op_add(sum, c);
 			    ap1 += av;
 			    bp1 += bu;
 			}
@@ -2442,7 +2451,8 @@ static void multiply_t(
 			while(k--) {
 			    float64_t a = read_af(ap1);
 			    float64_t b = read_bf(bp1);
-			    sum += a*b;
+			    float64_t c = op_mul(a,b);
+			    sum = op_add(sum, c);
 			    ap1 += av;
 			    bp1 += bv;
 			}
@@ -2479,7 +2489,8 @@ static void multiply_t(
 			while(k--) {
 			    complex128_t a = read_af(ap1);
 			    complex128_t b = read_bf(bp1);
-			    sum += a*b;
+			    complex128_t c = op_mul(a,b);
+			    sum = op_add(sum, c);
 			    ap1 += av;
 			    bp1 += bv;
 			}
@@ -2516,7 +2527,8 @@ static void multiply_t(
 			while(k--) {
 			    int64_t a = read_af(ap1);
 			    int64_t b = read_bf(bp1);
-			    sum += a*b;
+			    int64_t c = op_mul(a,b);
+			    sum = op_add(sum, c);
 			    ap1 += av;
 			    bp1 += bv;
 			}
@@ -3082,7 +3094,7 @@ static int get_matrix(ErlNifEnv* env, ERL_NIF_TERM arg, matrix_t* mp)
     if (type >= NUM_TYPES) return 0;
     if (!enif_get_uint(env, elems[2], &mp->n)) return 0;
     if (!enif_get_uint(env, elems[3], &mp->m)) return 0;
-    if (!enif_get_uint(env, elems[4], &mp->nstep)) return 0;
+    if (!enif_get_int(env, elems[4], &mp->nstep)) return 0;
     if (!enif_get_int(env, elems[5], &mp->mstep)) return 0;
     if (!enif_get_uint64(env, elems[6], &ptr)) return 0;
     if (!enif_get_uint(env, elems[7], &mp->offset)) return 0;
@@ -3213,48 +3225,165 @@ ERL_NIF_TERM matrix_create(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 }
 
 // element(I, J, A) -> A[I][J]   I and J are 1-based
+// addme:
+// element(I,A) -> A[I], row(I) or column(I) depening on rowmajor
+//
+// element([[r1,r2,..,rm]],A) -> [[A[r1][1], A[r2][2], ... A[rm][m]]]
+//
+// element([[c1],[c2],..,[cn]],A) -> [[A[1][c1]], [A[2][c2]], ... [A[n][cn]]]
+//
+// pickout max element with (example)
+// Index = argmax(A,0),
+// Max = element(Index, A),
+// or diagonal with:
+// Index = matrix:from_list([lists:seq(1,N)],int32),
+// Diag = element(Index, A),
+//
+
+///////////////////////////////////////////////////////////////////////////////
+//  copy element by element via index, assume at == ct
+///////////////////////////////////////////////////////////////////////////////
+
+static void index_copy(matrix_type_t at, byte_t* ap, int au, int av,
+		       int32_t* ip, int iu, int iv,
+		       matrix_type_t ct, byte_t* cp, int cu, int cv,
+		       size_t n, size_t m)
+{
+    size_t sz = element_size(at);
+    au = size_of_array(at,au);
+    av = size_of_array(at,av);
+    cu = size_of_array(ct,cu);
+    cv = size_of_array(ct,cv);
+
+    while(n--) {
+	byte_t* ap1  = ap;
+	int32_t* ip1 = ip;
+	byte_t* cp1  = cp;
+	size_t m1 = m;
+	while(m1--) {
+	    int32_t i = size_of_array(at, *ip1);
+	    memcpy(cp1, ap1+i, sz);
+	    ip1 += iv;
+	    cp1 += cv;
+	}
+	ap += au;
+	ip += iu;
+	cp += cu;
+    }
+}
+
+// check that all indices in matrix ip are with in range 0 < i < m
+int index_check(int32_t* ip, int iu, int iv, size_t in, size_t im,
+		size_t n, size_t m)
+{
+    UNUSED(n);
+    while(in--) {
+	size_t imm   = im;
+	int32_t* ip1 = ip;
+	while(imm--) {
+	    if ((*ip1 < 1) || (*ip1 > (int32_t)m))
+		return 0;
+	    ip1 += iv;
+	}
+	if (iu == 0) return 1; // repeating data
+	ip += iu;
+    }
+    return 1;
+}
 
 ERL_NIF_TERM matrix_element(ErlNifEnv* env, int argc,
 			    const ERL_NIF_TERM argv[])
 {
-    unsigned int i, j;
-    matrix_t a;
-    byte_t* ptr;
-    ERL_NIF_TERM r;
-    UNUSED(argc);
+    if (argc == 2) {
+	matrix_t index;
+	matrix_t a;
+	matrix_t c;
+	ERL_NIF_TERM bin;
 
-    if (!enif_get_uint(env, argv[0], &i))
-	return enif_make_badarg(env);
-    if (!enif_get_uint(env, argv[1], &j))
-	return enif_make_badarg(env);
-    if (!get_matrix(env, argv[2], &a))
-	return enif_make_badarg(env);
-    if (a.rowmajor) {
-	if ((i < 1) || (i > a.n))
+	if (!get_matrix(env, argv[1], &a))
 	    return enif_make_badarg(env);
-	if ((j < 1) || (j > a.m))
+	if (!get_matrix(env, argv[0], &index)) {
+	    if (!get_scalar_matrix(env,argv[0],&index,a.rowmajor,INT32,a.n,1))
+		return enif_make_badarg(env);
+	}
+	if (index.type != INT32)
 	    return enif_make_badarg(env);
-	if (a.nstep == 0)  // special case
-	    ptr = a.first;
-	else
-	    ptr = a.first + (i-1)*size_of_array(a.type, a.nstep) +
-		size_of_array(a.type, j-1);
+	if (a.rowmajor == index.rowmajor) {
+	    if ((index.n > a.n) || (index.m > a.m))
+		return enif_make_badarg(env);
+	    if (!index_check((int32_t*)index.first, index.nstep, index.mstep,
+			     index.n, index.m, a.n, a.m))
+		return enif_make_badarg(env);
+
+	    if (!create_matrix(env,index.n,index.m,a.rowmajor,a.type,&c,&bin))
+		return enif_make_badarg(env);
+
+	    matrix_rr_lock(&a,&index);
+	    index_copy(a.type, a.first, a.nstep, a.mstep,
+		       (int32_t*)index.first, index.nstep, index.mstep,
+		       c.type, c.first, c.nstep, c.mstep,
+		       c.n, c.m);
+	    matrix_rr_unlock(&a,&index);
+	    return make_matrix(env, c.n, c.m, c.rowmajor, c.type, &c, bin);
+	}
+	else {
+	    if ((index.m > a.n) || (index.n > a.m))
+		return enif_make_badarg(env);
+	    if (!index_check((int32_t*)index.first, index.mstep, index.nstep,
+			     index.m, index.n, a.n, a.m))
+		return enif_make_badarg(env);
+
+	    if (!create_matrix(env,index.n,index.m,a.rowmajor,a.type,&c,&bin))
+		return enif_make_badarg(env);
+
+	    matrix_rr_lock(&a,&index);
+	    index_copy(a.type, a.first, a.nstep, a.mstep,
+		       (int32_t*)index.first, index.mstep, index.nstep,
+		       c.type, c.first, c.nstep, c.mstep,
+		       c.n, c.m);
+	    matrix_rr_unlock(&a,&index);
+	    return make_matrix(env, c.n, c.m, c.rowmajor, c.type, &c, bin);
+	}
     }
     else {
-	if ((j < 1) || (j > a.n)) // row when column major
+	unsigned int i, j;
+	matrix_t a;
+	byte_t* ptr;
+	ERL_NIF_TERM r;
+
+	if (!enif_get_uint(env, argv[0], &i))
 	    return enif_make_badarg(env);
-	if ((i < 1) || (i > a.m))
+	if (!enif_get_uint(env, argv[1], &j))
 	    return enif_make_badarg(env);
-	if (a.nstep == 0)
-	    ptr = a.first;
-	else
-	    ptr = a.first + (j-1)*size_of_array(a.type, a.nstep) +
-		size_of_array(a.type, i-1);
+	if (!get_matrix(env, argv[2], &a))
+	    return enif_make_badarg(env);
+	if (a.rowmajor) {
+	    if ((i < 1) || (i > a.n))
+		return enif_make_badarg(env);
+	    if ((j < 1) || (j > a.m))
+		return enif_make_badarg(env);
+	    if ((a.nstep == 0) && (a.mstep == 0))  // special case
+		ptr = a.first;
+	    else // fixme use mstep?
+		ptr = a.first + (i-1)*size_of_array(a.type, a.nstep) +
+		    size_of_array(a.type, j-1);
+	}
+	else {
+	    if ((j < 1) || (j > a.n)) // row when column major
+		return enif_make_badarg(env);
+	    if ((i < 1) || (i > a.m))
+		return enif_make_badarg(env);
+	    if ((a.nstep == 0) && (a.mstep == 0))
+		ptr = a.first;
+	    else // fixme use mstep?
+		ptr = a.first + (j-1)*size_of_array(a.type, a.nstep) +
+		    size_of_array(a.type, i-1);
+	}
+	matrix_r_lock(&a);
+	r = read_term(env, a.type, ptr);
+	matrix_r_unlock(&a);
+	return r;
     }
-    matrix_r_lock(&a);
-    r = read_term(env, a.type, ptr);
-    matrix_r_unlock(&a);
-    return r;
 }
 
 // DESTRUCTIVE
@@ -3284,9 +3413,9 @@ ERL_NIF_TERM matrix_setelement(ErlNifEnv* env, int argc,
 	    return enif_make_badarg(env);
 	if (a.ptr == 0) // only resource matrix may be update!
 	    return enif_make_badarg(env);
-	if (a.nstep == 0)
+	if ((a.nstep == 0) && (a.mstep == 0))
 	    ptr = a.first;
-	else
+	else // fixme use mstep?
 	    ptr = a.first + (i-1)*size_of_array(a.type, a.nstep) +
 		size_of_array(a.type, j-1);
     }
@@ -3297,9 +3426,9 @@ ERL_NIF_TERM matrix_setelement(ErlNifEnv* env, int argc,
 	    return enif_make_badarg(env);
 	if (a.ptr == 0) // only resource matrix may be update!
 	    return enif_make_badarg(env);
-	if (a.nstep == 0)
+	if ((a.nstep == 0) && (a.mstep == 0))
 	    ptr = a.first;
-	else
+	else // fixme use mstep?
 	    ptr = a.first + (j-1)*size_of_array(a.type, a.nstep) +
 		size_of_array(a.type, i-1);
     }
@@ -4967,8 +5096,9 @@ ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 	    if (!create_matrix(env,1,a.m,TRUE,INT32,&c,&bin))
 		return enif_make_badarg(env);
 	    matrix_r_lock(&a);
-	    argmax(a.type, a.first,a.nstep,a.mstep,a.n,a.m,
-		   (int32_t*)c.first);
+	    argmax(a.type, a.first,a.nstep,a.mstep,
+		   (int32_t*)c.first, 1,
+		   a.n,a.m);
 	    matrix_r_unlock(&a);
 	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 	}
@@ -4977,8 +5107,9 @@ ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 	    if (!create_matrix(env,1,a.n,FALSE,INT32,&c,&bin))
 		return enif_make_badarg(env);
 	    matrix_r_lock(&a);
-	    argmax(a.type, a.first,1,a.nstep,a.m,a.n,
-		   (int32_t*)c.first);
+	    argmax(a.type, a.first,1,a.nstep,
+		   (int32_t*)c.first, 1,
+		   a.m,a.n);
 	    matrix_r_unlock(&a);
 	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 	}
@@ -4989,8 +5120,9 @@ ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 	    if (!create_matrix(env,1,a.n,TRUE,INT32,&c,&bin))
 		return enif_make_badarg(env);
 	    matrix_r_lock(&a);
-	    argmax(a.type, a.first,1,a.nstep,a.m,a.n,
-		   (int32_t*)c.first);
+	    argmax(a.type, a.first,1,a.nstep,
+		   (int32_t*)c.first,1,
+		   a.m,a.n);
 	    matrix_r_unlock(&a);
 	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 	}
@@ -4999,8 +5131,9 @@ ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 	    if (!create_matrix(env,1,a.m,FALSE,INT32,&c,&bin))
 		return enif_make_badarg(env);
 	    matrix_r_lock(&a);
-	    argmax(a.type, a.first,a.nstep,a.mstep,a.n,a.m,
-		   (int32_t*)c.first);
+	    argmax(a.type, a.first,a.nstep,a.mstep,
+		   (int32_t*)c.first,1,
+		   a.n,a.m);
 	    matrix_r_unlock(&a);
 	    return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 	}
@@ -5067,7 +5200,7 @@ ERL_NIF_TERM matrix_max(ErlNifEnv* env, int argc,
 	    matrix_r_lock(&a);
 	    t_max(a.type, a.first, a.mstep, a.nstep,
 		  a.type, max_v.data, 0,
-		  a.n,a.m);
+		  a.m,a.n);
 	    matrix_r_unlock(&a);
 	    return read_term(env, a.type, max_v.data);
 	}
@@ -5156,7 +5289,7 @@ ERL_NIF_TERM matrix_min(ErlNifEnv* env, int argc,
 	    matrix_r_lock(&a);
 	    t_min(a.type, a.first, a.mstep, a.nstep,
 		  a.type, min_v.data, 0,
-		  a.n,a.m);
+		  a.m,a.n);
 	    matrix_r_unlock(&a);
 	    return read_term(env, a.type, min_v.data);
 	}
@@ -5246,7 +5379,7 @@ ERL_NIF_TERM matrix_sum(ErlNifEnv* env, int argc,
 	    matrix_r_lock(&a);
 	    t_sum(a.type, a.first, a.mstep, a.nstep,
 		  a.type, sum_v.data, 0,
-		  a.n,a.m);
+		  a.m,a.n);
 	    matrix_r_unlock(&a);
 	    return read_term(env, a.type, sum_v.data);
 	}

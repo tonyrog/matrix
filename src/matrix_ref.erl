@@ -9,7 +9,7 @@
 
 %% reference for testing
 -export([create/5]).
--export([element/3]).
+-export([element/2, element/3]).
 -export([add/2]).
 -export([subtract/2]).
 -export([times/2]).
@@ -93,6 +93,26 @@ element(I,J,#matrix{rowmajor=false,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
 	   true -> O + (J-1)*Sn+(I-1)
 	end,
     decode_element_at(P, T, D).
+
+
+element(I,A=#matrix{rowmajor=true}) when is_integer(I) -> matrix:row(I,A);
+element(I,A=#matrix{rowmajor=false}) when is_integer(I)  -> matrix:column(I,A);
+element(K=#matrix{type=?int32},A=#matrix{}) ->
+    {N,M} = matrix:size(K),
+    if N =:= 1 ->  %% single row select in each column from A
+	    [Is] = matrix:to_list(K),
+	    Es=[[element(I,J,A) ||{I,J}<-lists:zip(Is,lists:seq(1,M))]],
+	    matrix:from_list(Es,matrix:type(A));
+       M =:= 1 ->  %% single column select in each row from A
+	    Js = lists:append(matrix:to_list(K)),
+	    Es=[[element(I,J,A)] ||{I,J}<-lists:zip(lists:seq(1,N),Js)],
+	    matrix:from_list(Es,matrix:type(A));
+       true ->
+	    IJs = matrix:to_list(K),
+	    Es=[ [ element(I,J,A) || J <- R] || 
+		   {I,R} <- lists:zip(lists:seq(1,N),IJs) ],
+	    matrix:from_list(Es,matrix:type(A))
+    end.
 
 %% P is element position not byte position
 decode_element_at(P, T, Bin) ->
