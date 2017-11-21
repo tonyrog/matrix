@@ -31,8 +31,8 @@ static void PROCEDURE(TYPE* ap, int au, int av,
 	    ap1 += av;
 	    cp1 += cv;
 	}
-        ap += au;
-        cp += cu;
+	ap += au;
+	cp += cu;
     }
 }
 

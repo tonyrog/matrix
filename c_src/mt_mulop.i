@@ -24,9 +24,10 @@ static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
     LOCALS_DECL
     (void) am;
     TYPE* bp0 = bp;
-    
+    UNUSED(ku);
+
     while(an--) {
-        TYPE* cp1 = cp;
+	TYPE* cp1 = cp;
 	size_t m = bm;
 	if (*kp) {
 	    bp = bp0;
@@ -45,7 +46,7 @@ static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
 	ap += au;
 	cp += cu;
 	kp += kv;
-    }    
+    }
 }
 
 #undef PROCEDURE

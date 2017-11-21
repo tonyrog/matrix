@@ -12,13 +12,15 @@
 #include "erl_nif.h"
 
 #define USE_GCC_VECTOR
-// #define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #include <stdio.h>
 #define DBG(...) printf(__VA_ARGS__)
+#define BADARG(env) printf("matrix_nif.c: badarg line=%d\r\n", __LINE__), enif_make_badarg((env))
 #else
 #define DBG(...)
+#define BADARG(env) enif_make_badarg((env))
 #endif
 
 typedef enum {
@@ -230,6 +232,7 @@ typedef struct {
 static ErlNifResourceType* matrix_r;
 static ErlNifTSDKey matrix_k;
 
+#if 0
 static inline size_t matrix_num_rows(matrix_t* ap)
 {
     return (ap->rowmajor) ? ap->n : ap->m;
@@ -239,6 +242,7 @@ static inline size_t matrix_num_columns(matrix_t* ap)
 {
     return (ap->rowmajor) ? ap->m : ap->n;
 }
+#endif
 
 // read lock matrix if lock is defined
 static inline void matrix_r_lock(matrix_t* ap)
@@ -577,6 +581,44 @@ static matrix_type_t combine_type(matrix_type_t at, matrix_type_t bt)
 
 #include "rw_op.i"
 
+#if 0
+static int64_t read_int64(matrix_type_t type, byte_t* ptr)
+{
+    return (read_int64_func[type])(ptr);
+}
+
+static float64_t read_float64(matrix_type_t type, byte_t* ptr)
+{
+    return (read_float64_func[type])(ptr);
+}
+
+
+static complex128_t read_complex128(matrix_type_t type, byte_t* ptr)
+{
+    return (read_complex128_func[type])(ptr);
+}
+
+#endif
+
+static void write_int64(matrix_type_t type, byte_t* ptr, int64_t v)
+{
+    (write_int64_func[type])(ptr, v);
+}
+
+
+static void write_float64(matrix_type_t type, byte_t* ptr, float64_t v)
+{
+    (write_float64_func[type])(ptr, v);
+}
+
+
+static void write_complex128(matrix_type_t type, byte_t* ptr, complex128_t v)
+{
+    (write_complex128_func[type])(ptr, v);
+}
+
+
+
 // convert scalar to erlang term
 static ERL_NIF_TERM read_term(ErlNifEnv* env, matrix_type_t type, byte_t* ptr)
 {
@@ -760,6 +802,7 @@ static inline complex64_t complex64_velement(vcomplex64_t x, int i)
 #endif
 }
 
+#if 0
 static inline void complex64_vsetelement(vcomplex64_t* xp, int i, complex64_t v)
 {
 #if VSIZE == 1
@@ -769,6 +812,7 @@ static inline void complex64_vsetelement(vcomplex64_t* xp, int i, complex64_t v)
     (*xp)[2*i+1] = cimagf(v);
 #endif
 }
+#endif
 
 static inline vcomplex64_t complex64_negate(vcomplex64_t x)
 {
@@ -800,6 +844,7 @@ static inline complex128_t complex128_velement(vcomplex128_t x, int i)
 #endif
 }
 
+#if 0
 static inline void complex128_vsetelement(vcomplex128_t* xp, int i,
 					  complex128_t v)
 {
@@ -810,6 +855,7 @@ static inline void complex128_vsetelement(vcomplex128_t* xp, int i,
     (*xp)[2*i+1] = cimag(v);
 #endif
 }
+#endif
 
 // use cabs to compare comlex
 complex128_t complex128_max(complex128_t a, complex128_t b)
@@ -1171,6 +1217,10 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "matrix_op.i"
+
+
+
+
 
 // float unary functions
 static float64_t sigmoid_float64(float64_t a)
@@ -2216,6 +2266,7 @@ static void sigmoid(matrix_type_t at, byte_t* ap, int au, int av,
 // sigmoid_prime
 ///////////////////////////////////////////////////////////////////////////////
 
+#if 0
 static void sigmoid_prime(matrix_type_t at, byte_t* ap, int au, int av,
 			  matrix_type_t ct, byte_t* cp, int cu, int cv,
 			  size_t n, size_t m)
@@ -2227,6 +2278,7 @@ static void sigmoid_prime(matrix_type_t at, byte_t* ap, int au, int av,
 	apply1(SIGMOID_PRIME, at, ap, au, av, ct, cp, cu, av, n, m);
     }
 }
+#endif
 
 static void sigmoid_prime1(matrix_type_t at, byte_t* ap, int au, int av,
 			   matrix_type_t ct, byte_t* cp, int cu, int cv,
@@ -3261,28 +3313,27 @@ static void index_copy(matrix_type_t at, byte_t* ap, int au, int av,
 	byte_t* cp1  = cp;
 	size_t m1 = m;
 	while(m1--) {
-	    int32_t i = size_of_array(at, *ip1);
+	    int32_t i = (*ip1-1)*au;  // get offset
 	    memcpy(cp1, ap1+i, sz);
 	    ip1 += iv;
 	    cp1 += cv;
+	    ap1 += av;  // next column
 	}
-	ap += au;
 	ip += iu;
 	cp += cu;
     }
 }
 
 // check that all indices in matrix ip are with in range 0 < i < m
-int index_check(int32_t* ip, int iu, int iv, size_t in, size_t im,
-		size_t n, size_t m)
+int index_check(int32_t* ip, int iu, int iv, size_t in, size_t im, size_t k)
 {
-    UNUSED(n);
     while(in--) {
-	size_t imm   = im;
+	size_t imm = im;
 	int32_t* ip1 = ip;
 	while(imm--) {
-	    if ((*ip1 < 1) || (*ip1 > (int32_t)m))
-		return 0;
+	    int32_t ix = *ip1;
+	    if (ix < 1) return 0;
+	    if (ix > (int32_t)k) return 0;
 	    ip1 += iv;
 	}
 	if (iu == 0) return 1; // repeating data
@@ -3301,22 +3352,23 @@ ERL_NIF_TERM matrix_element(ErlNifEnv* env, int argc,
 	ERL_NIF_TERM bin;
 
 	if (!get_matrix(env, argv[1], &a))
-	    return enif_make_badarg(env);
+	    return BADARG(env);
 	if (!get_matrix(env, argv[0], &index)) {
 	    if (!get_scalar_matrix(env,argv[0],&index,a.rowmajor,INT32,a.n,1))
-		return enif_make_badarg(env);
+		return BADARG(env);
 	}
 	if (index.type != INT32)
-	    return enif_make_badarg(env);
+	    return BADARG(env);
 	if (a.rowmajor == index.rowmajor) {
 	    if ((index.n > a.n) || (index.m > a.m))
-		return enif_make_badarg(env);
+		return BADARG(env);
 	    if (!index_check((int32_t*)index.first, index.nstep, index.mstep,
-			     index.n, index.m, a.n, a.m))
-		return enif_make_badarg(env);
+			     index.n, index.m, a.n))
+		return BADARG(env);
 
-	    if (!create_matrix(env,index.n,index.m,a.rowmajor,a.type,&c,&bin))
-		return enif_make_badarg(env);
+	    if (!create_matrix(env,index.n,index.m,index.rowmajor,
+			       a.type,&c,&bin))
+		return BADARG(env);
 
 	    matrix_rr_lock(&a,&index);
 	    index_copy(a.type, a.first, a.nstep, a.mstep,
@@ -3326,19 +3378,20 @@ ERL_NIF_TERM matrix_element(ErlNifEnv* env, int argc,
 	    matrix_rr_unlock(&a,&index);
 	    return make_matrix(env, c.n, c.m, c.rowmajor, c.type, &c, bin);
 	}
-	else {
+	else { // a.rowmajor / index.rowmajor
 	    if ((index.m > a.n) || (index.n > a.m))
-		return enif_make_badarg(env);
-	    if (!index_check((int32_t*)index.first, index.mstep, index.nstep,
-			     index.m, index.n, a.n, a.m))
-		return enif_make_badarg(env);
+		return BADARG(env);
+	    if (!index_check((int32_t*)index.first, index.nstep, index.mstep,
+			     index.n, index.m, a.m))
+		return BADARG(env);
 
-	    if (!create_matrix(env,index.n,index.m,a.rowmajor,a.type,&c,&bin))
-		return enif_make_badarg(env);
+	    if (!create_matrix(env,index.n,index.m,index.rowmajor,
+			       a.type,&c,&bin))
+		return BADARG(env);
 
 	    matrix_rr_lock(&a,&index);
-	    index_copy(a.type, a.first, a.nstep, a.mstep,
-		       (int32_t*)index.first, index.mstep, index.nstep,
+	    index_copy(a.type, a.first, a.mstep, a.nstep,
+		       (int32_t*)index.first, index.nstep, index.mstep,
 		       c.type, c.first, c.nstep, c.mstep,
 		       c.n, c.m);
 	    matrix_rr_unlock(&a,&index);

@@ -261,16 +261,6 @@ static void (*write_int64_func[NUM_TYPES])(byte_t*,int64_t) = {
   [COMPLEX128] = write_int64_complex128,
 };
 
-static int64_t read_int64(matrix_type_t type, byte_t* ptr)
-{
-    return (read_int64_func[type])(ptr);
-}
-
-static void write_int64(matrix_type_t type, byte_t* ptr, int64_t v)
-{
-    (write_int64_func[type])(ptr, v);
-}
-
 static float64_t (*read_float64_func[NUM_TYPES])(byte_t*) = {
   [INT8] = read_float64_int8,
   [INT16] = read_float64_int16,
@@ -293,15 +283,6 @@ static void (*write_float64_func[NUM_TYPES])(byte_t*,float64_t) = {
   [COMPLEX128] = write_float64_complex128,
 };
 
-static float64_t read_float64(matrix_type_t type, byte_t* ptr)
-{
-    return (read_float64_func[type])(ptr);
-}
-
-static void write_float64(matrix_type_t type, byte_t* ptr, float64_t v)
-{
-    (write_float64_func[type])(ptr, v);
-}
 
 static complex128_t (*read_complex128_func[NUM_TYPES])(byte_t*) = {
   [INT8] = read_complex128_int8,
@@ -324,13 +305,3 @@ static void (*write_complex128_func[NUM_TYPES])(byte_t*,complex128_t) = {
   [COMPLEX64] = write_complex128_complex64,
   [COMPLEX128] = write_complex128_complex128,
 };
-
-static complex128_t read_complex128(matrix_type_t type, byte_t* ptr)
-{
-    return (read_complex128_func[type])(ptr);
-}
-
-static void write_complex128(matrix_type_t type, byte_t* ptr, complex128_t v)
-{
-    (write_complex128_func[type])(ptr, v);
-}

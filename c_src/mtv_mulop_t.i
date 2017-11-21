@@ -22,7 +22,8 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 		      PARAMS_DECL)
 {
     LOCALS_DECL
-    (void) am;
+    UNUSED(am);
+    UNUSED(ku);    
     TYPE* bp0 = bp;
 
     while (an--) {

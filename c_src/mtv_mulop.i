@@ -32,16 +32,16 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 		      PARAMS_DECL)
 {
     LOCALS_DECL
-
+    UNUSED(ku);
     while (bm--) {
-        VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
+	VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
 	TYPE* ap1 = ap;
 	TYPE* cp1 = cp;
 	byte_t* kp1 = kp;
 	size_t n;
 
 	CAT2(PROCEDURE,_loadv_mulop)(col,bp,bu,bn);
-	
+
 	bp++;     // advance to next column
 	n = an;   // multiply with all rows in A
 	while(n--) {
