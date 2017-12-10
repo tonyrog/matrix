@@ -22,8 +22,6 @@
 	 bench_transform/3,
 	 bench_transform/4]).
 
--export([bench_multiply_large/1]).
-
 all() ->
     test_add(),
     test_sub(),
@@ -731,8 +729,39 @@ bench_multiply(N,T,L,At,Bt) ->
     bench(N,fun(A,B) -> matrix:multiply(A,B) end, T, L, At, Bt).
 
 bench_multiply_table() ->
+    bench_multiply_table(float32).
+bench_multiply_table(T) ->
     bench_table("matrix:multiply/2",
-		fun(A,B) -> matrix:multiply(A,B) end).
+		fun(A,B) -> matrix:multiply(A,B) end,
+		fun(N) ->
+			case T of
+			    complex64 -> N*N*N*2;
+			    complex128 -> N*N*N*2;
+			    _ -> N*N*N 
+			end
+		end,
+		T
+	       ).
+
+bench_inline_multiply(N) -> bench_inline_multiply(N,float32,1000).
+bench_inline_multiply(N,T) -> bench_inline_multiply(N,T,1000).
+bench_inline_multiply(N,T,L) -> bench_inline_multiply(N,T,L,false, true).
+bench_inline_multiply(N,T,L,At,Bt) -> 
+    bench_inline(N,fun(A,B,C) -> matrix:multiply(A,B,C) end, T, L, At, Bt).
+
+bench_inline_multiply_table() ->
+    bench_inline_multiply_table(float32).
+bench_inline_multiply_table(T) ->
+    bench_inline_table("matrix:multiply/2",
+		       fun(A,B,C) -> matrix:multiply(A,B,C) end,
+		       fun(N) ->
+			       case T of
+				   complex64 -> N*N*N*2;
+				   complex128 -> N*N*N*2;
+				   _ -> N*N*N 
+			       end
+		       end,
+		       T).
 
 %% multiply transform with vector4 of size N
 bench_transform(N) -> bench_transform(N,float32,1000).
@@ -740,16 +769,6 @@ bench_transform(N,T) -> bench_transform(N,T,1000).
 bench_transform(N,T,L) -> bench_transform(N,T,L,false).
 bench_transform(N,T,L,Vt) ->
     bench_transform(N,fun(A,B) -> matrix:multiply(A,B) end,T,L,Vt).
-
-
-bench_multiply_large(N) -> bench_multiply_large(N,float32,1000).
-bench_multiply_large(N,T) -> bench_multiply_large(N,T,1000).
-bench_multiply_large(N,T,L) -> bench(N,fun(A,B) -> 
-					       matrix:multiply_large(A,B) 
-				       end, T, L).
-bench_multiply_large_table() ->
-    bench_table("matrix:multiply_large/2",
-		fun(A,B) -> matrix:multiply_large(A,B) end).
 
 %% parallell version using parlists
 %
@@ -808,26 +827,48 @@ bench_negate_table() -> bench_table("matrix:negate/1",
 %% Bench loop / table
 %%
 bench_table(Name,F) ->
-    bench_table(Name,F,float32).
+    bench_table(Name,F,fun(_N) -> 0 end,float32).
 
-bench_table(Name,F,T) ->
+bench_table(Name,F,Flop,T) ->
     io:format("~s / ~w\n\n", [Name,T]),
     io:format("| NxN        | op/s   |\n"),
     io:format("|------------|--------|\n"),
-    bench(32,F,T,  131072),
-    bench(64,F,T,  65536),
-    bench(128,F,T, 8192),
-    bench(256,F,T, 256),
-    bench(512,F,T, 64),
-    bench(1024,F,T,8),
-    bench(2048,F,T,4),
-    bench(4096,F,T,2).
+    bench(32,F,Flop,T,131072),
+    bench(64,F,Flop,T,  65536),
+    bench(128,F,Flop,T, 8192),
+    bench(256,F,Flop,T, 256),
+    bench(512,F,Flop,T, 64),
+    bench(1024,F,Flop,T,8),
+    bench(2048,F,Flop,T,4),
+    bench(4096,F,Flop,T,2).
+
+bench_inline_table(Name,F) ->
+    bench_inline_table(Name,F,fun(_N) -> 0 end,float32).
+
+bench_inline_table(Name,F,Flop,T) ->
+    io:format("~s / ~w\n\n", [Name,T]),
+    io:format("| NxN        | op/s   |\n"),
+    io:format("|------------|--------|\n"),
+    bench_inline(32,F,Flop,T,  131072),
+    bench_inline(64,F,Flop,T,  65536),
+    bench_inline(128,F,Flop,T, 8192),
+    bench_inline(256,F,Flop,T, 256),
+    bench_inline(512,F,Flop,T, 64),
+    bench_inline(1024,F,Flop,T,8),
+    bench_inline(2048,F,Flop,T,4),
+    bench_inline(4096,F,Flop,T,2).
 
 
 bench(N,F,T,L) ->
-    bench(N,F,T,L,false,false).
+    bench(N,F,fun(_N) -> 0 end,T,L).
+
+bench(N,F,Flop,T,L) ->
+    bench(N,F,Flop,T,L,false,false).
 
 bench(N,F,T,L,At,Bt) ->
+    bench(N,F,fun(_N) -> 0 end,T,L,At,Bt).
+
+bench(N,F,Flop,T,L,At,Bt) ->
     matrix:clear_counters(),
     A0 = matrix:uniform(N,N,T),
     A = if At -> matrix:transpose(A0);
@@ -842,8 +883,49 @@ bench(N,F,T,L,At,Bt) ->
     T1 = erlang:monotonic_time(),
     Time = erlang:convert_time_unit(T1 - T0, native, microsecond),
     Ts = Time/1000000,
-    io:format("|   ~wx~w   | ~.2f  |\n", [N, N, (L/Ts)]).
+    Fs = format_flops(Flop, N, L, Ts),
+    io:format("|   ~wx~w   | ~.2f | ~s |\n", [N, N, (L/Ts),Fs]).
 
+bench_inline(N,F,T,L) ->
+    bench_inline(N,F,fun(_N) -> 0 end,T,L).
+
+bench_inline(N,F,Flop,T,L) ->
+    bench_inline(N,F,Flop,T,L,false,false).
+
+bench_inline(N,F,T,L,At,Bt) ->
+    bench_inline(N,F,fun(_N) -> 0 end,T,L,At,Bt).
+
+bench_inline(N,F,Flop,T,L,At,Bt) ->
+    matrix:clear_counters(),
+    A0 = matrix:uniform(N,N,T),
+    A = if At -> matrix:transpose(A0);
+	   true -> A0
+	end,
+    B0 = matrix:uniform(N,N,T),
+    B = if Bt -> matrix:transpose(B0);
+	   true -> B0
+	end,
+    C = matrix:copy(matrix:zero(N,N,T)), %% matrix:zero is read only!
+    T0 = erlang:monotonic_time(),
+    _R = bench_inline_loop(L,F,A,B,C),
+    T1 = erlang:monotonic_time(),
+    Time = erlang:convert_time_unit(T1 - T0, native, microsecond),
+    Ts = Time/1000000,
+    Fs = format_flops(Flop, N, L, Ts),
+    io:format("|   ~wx~w   | ~.2f | ~s |\n", [N, N, (L/Ts),Fs]).
+
+format_flops(Flop, N, L, Ts) ->
+    Flops = (Flop(N)*L) / Ts,
+    if Flops == 0 -> "";
+       Flops > 1000000000.0 ->
+	    io_lib:format("~.2f GFlops", [Flops/1000000000.0]);
+       Flops > 1000000.0 ->
+	    io_lib:format("~.2f MFlops", [Flops/1000000.0]);
+       Flops > 1000.0 ->
+	    io_lib:format("~.2f KFlops", [Flops/1000.0]);
+       true ->
+	    io_lib:format("~.2f Flops", [Flops])
+    end.
 
 bench_transform(N,F,T,L,Vt) ->
     matrix:clear_counters(),
@@ -895,3 +977,10 @@ bench_loop(0, _F, _, _, _) ->
 bench_loop(I, F, A, B, _) ->
     C = F(A,B),
     bench_loop(I-1,F,A,B,C).
+
+%% loop that keeps the latest result
+bench_inline_loop(0, _F, _, _, _) ->
+    0;
+bench_inline_loop(I, F, A, B, C) ->
+    C1 = F(A,B,C),
+    bench_inline_loop(I-1,F,A,B,C1).
