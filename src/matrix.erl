@@ -93,8 +93,8 @@
 %% performance counter
 -export([dump/0, dump/1]).
 -export([clear_counters/0]).
--define(count_op(OP,A,B), count_op((OP),(A),(B))).
-%% -define(count_op(OP,A,B), ok).
+%% -define(count_op(OP,A,B), count_op((OP),(A),(B))).
+-define(count_op(OP,A,B), ok).
 
 %% maximum numbr of elements for add/sub/times/negate...
 %% -define(MAX_NM, (256*4096)).

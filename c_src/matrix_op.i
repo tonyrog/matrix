@@ -76,7 +76,7 @@
 #include "mt_binary_op_select.i"
 
 
-#ifdef USE_GCC_VECTOR
+#ifdef USE_VECTOR
 
 #define PROCEDURE      mtv_add_int8
 #define TYPE           int8_t
@@ -220,7 +220,7 @@
 #define PARAMS
 #include "mt_binary_op_select.i"
 
-#ifdef USE_GCC_VECTOR
+#ifdef USE_VECTOR
 
 #define PROCEDURE           mtv_subtract_int8
 #define TYPE           int8_t
@@ -363,7 +363,7 @@
 #define PARAMS
 #include "mt_binary_op_select.i"
 
-#ifdef USE_GCC_VECTOR
+#ifdef USE_VECTOR
 
 #define PROCEDURE      mtv_times_int8
 #define TYPE           int8_t
@@ -505,7 +505,7 @@
 #define PARAMS
 #include "mt_unary_op_select.i"
 
-#ifdef USE_GCC_VECTOR
+#ifdef USE_VECTOR
 #define PROCEDURE      mtv_negate_int8
 #define TYPE           int8_t
 #define PARAMS_DECL
@@ -933,7 +933,7 @@
 /////////////////////////////////////////////////////////////////////////////
 //   SIMD/DOT used by MULTIPLY
 /////////////////////////////////////////////////////////////////////////////
-#ifdef USE_GCC_VECTOR
+#ifdef USE_VECTOR
 
 #define PROCEDURE      mtv_dot_int8_t
 #define TYPE           int8_t
@@ -1098,7 +1098,7 @@
 #define NAME multiply
 #include "mt_mulop_select.i"
 
-#ifdef USE_GCC_VECTOR
+#ifdef USE_VECTOR
 
 #define PROCEDURE      mtv_multiply_int8
 #define TYPE           int8_t
@@ -1290,7 +1290,7 @@
 #define NAME multiply_transposed
 #include "mt_mulop_select.i"
 
-#ifdef USE_GCC_VECTOR
+#ifdef USE_VECTOR
 
 #define PROCEDURE      mtv_multiply_transposed_int8
 #define TYPE           int8_t
