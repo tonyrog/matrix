@@ -2608,18 +2608,15 @@ static void kmultiply(
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
-	    printf("use mtv_kmultiply\r\n");
 	    mtv_kmultiply(at,ap,au,an,am,bp,bu,bn,bm,kp,kv,km,cp,cu,cv);
 	}
 	else
 #endif
 	{
-	    printf("use mt_kmultiply\r\n");
 	    mt_kmultiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,kp,kv,km,cp,cu,cv);
 	}
     }
     else {
-	printf("use generic kmultiply\r\n");
 	au = size_of_array(at,au);
 	av = size_of_array(at,av);
 	bu = size_of_array(bt,bu);
