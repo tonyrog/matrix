@@ -17,34 +17,27 @@
 
 static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 		      TYPE* bp, int bu, size_t bn, size_t bm,
-		      byte_t* kp, int ku,int kv,
+		      int32_t* kp, int kv, size_t km,
 		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
     LOCALS_DECL
     UNUSED(am);
-    UNUSED(ku);    
-    TYPE* bp0 = bp;
-
-    while (an--) {
-	TYPE* cp1 = cp;
-	size_t n = bn;
-	if (*kp) {
-	    bp = bp0;
+    UNUSED(an);    
+    
+    while (km--) {
+	int32_t i = *kp - 1;
+	if ((i >= 0) && (i < (int)an)) {
+	    TYPE* cp1 = cp + i*cu;
+	    TYPE* ap1 = ap + i*au;  // select row
+	    size_t n = bn;
+	    TYPE* bp1 = bp;
 	    while(n--) {
-		*cp1 = CAT2(mtv_dot_,TYPE)(ap, bp, bm);
-		bp  += bu;
-		cp1 += cv;
+		*cp1 += CAT2(mtv_dot_,TYPE)(ap1, bp1, bm);
+		cp1  += cv;
+		bp1  += bu;
 	    }
 	}
-	else {
-	    while(n--) {
-		*cp1 = TYPE_ZERO;
-		cp1 += cv;
-	    }
-	}
-	ap += au;
-	cp += cu;
 	kp += kv;
     }
 }

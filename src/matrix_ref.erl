@@ -37,7 +37,6 @@
 %%
 -export([transpose_list/1]).
 -export([topk/2]).
--export([stopk/2]).
 -export([decode_element_at/3]).
 
 %% complex
@@ -606,31 +605,7 @@ s_max_([A|Es], Max) ->
     s_max_(Es, scalar_max(A,Max));
 s_max_([], Max) -> Max.
     
-
-%% calculate stopk but with the stopk elements marked with 1
-%% in a matrix
-%% example: 
-%%     | -2 |       
-%% top(| 5  |, 2) = | 0 1 1 0|
-%%     | 13 |       
-%%     | 1  ]       
-%%
-topk(_A, 0) -> 
-    undefined;
-topk(A, K) ->
-    {N,1} = matrix:size(A),  %% only one column for now!
-    TOP = matrix:zero(1,N,int8),
-    [V] = matrix:to_list(matrix:transpose(matrix:column(1, A))),
-    Vi = lists:sort(fun({X,_},{Y,_}) -> 
-			    scalar_abs(X)>scalar_abs(Y) end,
-		    lists:zip(V, lists:seq(1,N))),
-    lists:foreach(
-      fun({_,J}) ->
-	      matrix:setelement_(1,J,TOP,1)
-      end, lists:sublist(Vi,K)),
-    TOP.
-
-%% stopk calculate the top K values positions for each column in A
+%% topk calculate the top K values positions for each column in A
 %% the result is stored in MxK matrix as rows
 %% example: 
 %%     | -2 |
@@ -638,9 +613,9 @@ topk(A, K) ->
 %%     | 13 |       | 3 |
 %%     | 1  ]
 
--spec stopk(A::matrix(), K::unsigned()) -> matrix().
+-spec topk(A::matrix(), K::unsigned()) -> matrix().
 
-stopk(A, K) ->
+topk(A, K) ->
     {N,1} = matrix:size(A),
     matrix:from_list(
       [begin

@@ -2602,22 +2602,24 @@ static void kmultiply(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
-    byte_t* kp,int ku,int kv,
+    int32_t* kp,int kv,size_t km,
     matrix_type_t ct,byte_t* cp,int cu,int cv)
 {
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
-	    mtv_kmultiply(at,ap,au,an,am,bp,bu,bn,bm,kp,ku,kv,cp,cu,cv);
+	    printf("use mtv_kmultiply\r\n");
+	    mtv_kmultiply(at,ap,au,an,am,bp,bu,bn,bm,kp,kv,km,cp,cu,cv);
 	}
 	else
 #endif
 	{
-	    mt_kmultiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,kp,ku,kv,cp,cu,cv);
+	    printf("use mt_kmultiply\r\n");
+	    mt_kmultiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,kp,kv,km,cp,cu,cv);
 	}
     }
     else {
-	byte_t* bp0 = bp;
+	printf("use generic kmultiply\r\n");
 	au = size_of_array(at,au);
 	av = size_of_array(at,av);
 	bu = size_of_array(bt,bu);
@@ -2628,96 +2630,89 @@ static void kmultiply(
 	if (is_float(ct)) {
 	    float64_t (*read_af)(byte_t*) = read_float64_func[at];
 	    float64_t (*read_bf)(byte_t*) = read_float64_func[bt];
+	    float64_t (*read_cf)(byte_t*) = read_float64_func[ct];
 	    void (*write_cf)(byte_t*, float64_t) = write_float64_func[ct];
-	    while(an--) {
-		byte_t* cp1 = cp;
-		size_t m = bm;
-		if (*kp) {
-		    bp = bp0;
+	    while(km--) {
+		int32_t i = *kp - 1;
+		if ((i >= 0) && (i < (int)an)) {
+		    size_t m = bm;
+		    byte_t* cp1 = cp + cu*i;
+		    byte_t* ap1 = ap + au*i;
+		    byte_t* bp1 = bp;
 		    while(m--) {
-			float64_t sum = 0.0;
-			byte_t* bp1 = bp;
-			byte_t* ap1 = ap;
+			float64_t sum = read_cf(cp1);
+			byte_t* bp2 = bp1;
+			byte_t* ap2 = ap1;
 			size_t  k = am;
 			while(k--) {
-			    float64_t a = read_af(ap1);
-			    float64_t b = read_bf(bp1);
+			    float64_t a = read_af(ap2);
+			    float64_t b = read_bf(bp2);
 			    float64_t c = op_mul(a,b);
 			    sum = op_add(sum, c);
-			    ap1 += av;
-			    bp1 += bu;
+			    ap2 += av;
+			    bp2 += bu;
 			}
 			write_cf(cp1, sum);
 			cp1 += cv;
-			bp += bv;
+			bp1 += bv;
 		    }
 		}
-		else {
-		    while(m--) {
-			write_cf(cp1, 0.0);
-			cp1 += cv;
-		    }
-		}
-		ap += au;
-		cp += cu;
 		kp += kv;
 	    }
 	}
 	else if (is_complex(ct)) {
 	    complex128_t (*read_af)(byte_t*) = read_complex128_func[at];
 	    complex128_t (*read_bf)(byte_t*) = read_complex128_func[bt];
+	    complex128_t (*read_cf)(byte_t*) = read_complex128_func[ct];
 	    void (*write_cf)(byte_t*, complex128_t) = write_complex128_func[ct];
-	    while(an--) {
-		byte_t* cp1 = cp;
-		size_t m = bm;
-		if (*kp) {
-		    bp = bp0;
+	    while(km--) {
+		int32_t i = *kp - 1;
+		if ((i >= 0) && (i < (int)an)) {
+		    size_t m = bm;
+		    byte_t* cp1 = cp + cu*i;
+		    byte_t* ap1 = ap + au*i;
+		    byte_t* bp1 = bp;		    
 		    while(m--) {
-			complex128_t sum =  CMPLX(0.0,0.0);
-			byte_t* bp1 = bp;
-			byte_t* ap1 = ap;
+			complex128_t sum = read_cf(cp1);
+			byte_t* bp2 = bp1;
+			byte_t* ap2 = ap1;
 			size_t  k = am;
 			while(k--) {
-			    complex128_t a = read_af(ap1);
-			    complex128_t b = read_bf(bp1);
+			    complex128_t a = read_af(ap2);
+			    complex128_t b = read_bf(bp2);
 			    complex128_t c = op_mul(a,b);
 			    sum = op_add(sum, c);
-			    ap1 += av;
-			    bp1 += bu;
+			    ap2 += av;
+			    bp2 += bu;
 			}
 			write_cf(cp1, sum);
 			cp1 += cv;
 			bp += bv;
 		    }
 		}
-		else {
-		    while(m--) {
-			write_cf(cp1, CMPLX(0.0,0.0));
-			cp1 += cv;
-		    }
-		}
-		ap += au;
-		cp += cu;
 		kp += kv;
 	    }
 	}
 	else {
 	    int64_t (*read_af)(byte_t*) = read_int64_func[at];
 	    int64_t (*read_bf)(byte_t*) = read_int64_func[bt];
+	    int64_t (*read_cf)(byte_t*) = read_int64_func[ct];
 	    void    (*write_cf)(byte_t*, int64_t) = write_int64_func[ct];
-	    while(an--) {
-		byte_t* cp1 = cp;
-		size_t m = bm;
-		if (*kp) {
-		    bp = bp0;
+	    while(km--) {
+		int32_t i = *kp - 1;
+		if ((i >= 0) && (i < (int)an)) {
+		    size_t m = bm;
+		    byte_t* cp1 = cp + cu*i;
+		    byte_t* ap1 = ap + au*i;
+		    byte_t* bp1 = bp;
 		    while(m--) {
-			int64_t sum = 0;
-			byte_t* bp1 = bp;
-			byte_t* ap1 = ap;
+			int64_t sum = read_cf(cp1);
+			byte_t* bp2 = bp1;
+			byte_t* ap2 = ap1;
 			size_t  k = am;
 			while(k--) {
-			    int64_t a = read_af(ap1);
-			    int64_t b = read_bf(bp1);
+			    int64_t a = read_af(ap2);
+			    int64_t b = read_bf(bp2);
 			    int64_t c = op_mul(a,b);
 			    sum = op_add(sum, c);
 			    ap1 += av;
@@ -2728,14 +2723,6 @@ static void kmultiply(
 			bp += bv;
 		    }
 		}
-		else {
-		    while(m--) {
-			write_cf(cp1, 0);
-			cp1 += cv;
-		    }
-		}
-		ap += au;
-		cp += cu;
 		kp += kv;
 	    }
 	}
@@ -2750,21 +2737,20 @@ static void kmultiply_t(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
-    byte_t* kp,int ku,int kv,
+    int32_t* kp,int kv,size_t km,
     matrix_type_t ct,byte_t* cp,int cu,int cv)
 {
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
 	    mtv_kmultiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,
-				     kp,ku,kv,cp,cu,cv);
+				     kp,kv,km,cp,cu,cv);
 	else
 #endif
 	    mt_kmultiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,
-				    kp,ku,kv,cp,cu,cv);
+				    kp,kv,km,cp,cu,cv);
     }
     else {
-	byte_t* bp0 = bp;
 	au = size_of_array(at,au);
 	av = size_of_array(at,av);
 	bu = size_of_array(bt,bu);
@@ -2775,114 +2761,99 @@ static void kmultiply_t(
 	if (is_float(ct)) {
 	    float64_t (*read_af)(byte_t*) = read_float64_func[at];
 	    float64_t (*read_bf)(byte_t*) = read_float64_func[bt];
+	    float64_t (*read_cf)(byte_t*) = read_float64_func[ct];
 	    void (*write_cf)(byte_t*, float64_t) = write_float64_func[ct];
-	    while(an--) {
-		byte_t* cp1 = cp;
-		size_t n = bn;
-		if (*kp) {
-		    bp = bp0;
+	    while(km--) {
+		int32_t i = *kp - 1;
+		if ((i >= 0) && (i < (int)an)) {
+		    byte_t* cp1 = cp + cu*i;
+		    byte_t* ap1 = ap + au*i;
+		    byte_t* bp1 = bp;
+		    size_t n = bn;
 		    while(n--) {
-			float64_t sum = 0.0;
-			byte_t* ap1 = ap;
-			byte_t* bp1 = bp;
+			float64_t sum = read_cf(cp1);
+			byte_t* ap2 = ap1;
+			byte_t* bp2 = bp1;
 			size_t k = bm;
 			while(k--) {
-			    float64_t a = read_af(ap1);
-			    float64_t b = read_bf(bp1);
+			    float64_t a = read_af(ap2);
+			    float64_t b = read_bf(bp2);
 			    float64_t c = op_mul(a,b);
 			    sum = op_add(sum, c);
-			    ap1 += av;
-			    bp1 += bv;
+			    ap2 += av;
+			    bp2 += bv;
 			}
 			write_cf(cp1, sum);
 			cp1 += cv;
 			bp  += bu;
 		    }
 		}
-		else {
-		    while(n--) {
-			write_cf(cp1, 0.0);
-			cp1 += cv;
-		    }
-		}
-		ap += au;
-		cp += cu;
 		kp += kv;
 	    }
 	}
 	else if (is_complex(ct)) {
 	    complex128_t (*read_af)(byte_t*) = read_complex128_func[at];
 	    complex128_t (*read_bf)(byte_t*) = read_complex128_func[bt];
+	    complex128_t (*read_cf)(byte_t*) = read_complex128_func[ct];
 	    void (*write_cf)(byte_t*, complex128_t) = write_complex128_func[ct];
-	    while(an--) {
-		byte_t* cp1 = cp;
-		size_t n = bn;
-		if (*kp) {
-		    bp = bp0;
+	    while(km--) {
+		int32_t i = *kp - 1;
+		if ((i >= 0) && (i < (int)an)) {
+		    byte_t* cp1 = cp + cu*i;
+		    byte_t* ap1 = ap + au*i;
+		    byte_t* bp1 = bp;
+		    size_t n = bn;
 		    while(n--) {
-			complex128_t sum = CMPLX(0.0,0.0);
-			byte_t* ap1 = ap;
-			byte_t* bp1 = bp;
+			complex128_t sum = read_cf(cp1);
+			byte_t* ap2 = ap1;
+			byte_t* bp2 = bp1;
 			size_t k = bm;
 			while(k--) {
-			    complex128_t a = read_af(ap1);
-			    complex128_t b = read_bf(bp1);
+			    complex128_t a = read_af(ap2);
+			    complex128_t b = read_bf(bp2);
 			    complex128_t c = op_mul(a,b);
 			    sum = op_add(sum, c);
-			    ap1 += av;
-			    bp1 += bv;
+			    ap2 += av;
+			    bp2 += bv;
 			}
 			write_cf(cp1, sum);
 			cp1 += cv;
 			bp += bu;
 		    }
 		}
-		else {
-		    while(n--) {
-			write_cf(cp1, CMPLX(0.0,0.0));
-			cp1 += cv;
-		    }
-		}
-		ap += au;
-		cp += cu;
 		kp += kv;
 	    }
 	}
 	else {
 	    int64_t (*read_af)(byte_t*) = read_int64_func[at];
 	    int64_t (*read_bf)(byte_t*) = read_int64_func[bt];
+	    int64_t (*read_cf)(byte_t*) = read_int64_func[ct];
 	    void    (*write_cf)(byte_t*, int64_t) = write_int64_func[ct];
-	    while(an--) {
-		byte_t* cp1 = cp;
-		size_t n = bn;
-		if (*kp) {
-		    bp = bp0;
+	    while(km--) {
+		int32_t i = *kp - 1;
+		if ((i >= 0) && (i < (int)an)) {
+		    byte_t* cp1 = cp + cu*i;
+		    byte_t* ap1 = ap + au*i;
+		    byte_t* bp1 = bp;
+		    size_t n = bn;		    		    
 		    while(n--) {
-			int64_t sum = 0;
-			byte_t* ap1 = ap;
-			byte_t* bp1 = bp;
+			int64_t sum = read_cf(cp1);
+			byte_t* ap2 = ap1;
+			byte_t* bp2 = bp1;
 			size_t k = bm;
 			while(k--) {
-			    int64_t a = read_af(ap1);
-			    int64_t b = read_bf(bp1);
+			    int64_t a = read_af(ap2);
+			    int64_t b = read_bf(bp2);
 			    int64_t c = op_mul(a,b);
 			    sum = op_add(sum, c);
-			    ap1 += av;
-			    bp1 += bv;
+			    ap2 += av;
+			    bp2 += bv;
 			}
 			write_cf(cp1, sum);
 			cp1 += cv;
 			bp += bu;
 		    }
 		}
-		else {
-		    while(n--) {
-			write_cf(cp1, 0);
-			cp1 += cv;
-		    }
-		}
-		ap += au;
-		cp += cu;
 		kp += kv;
 	    }
 	}
@@ -4069,7 +4040,7 @@ ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 }
 
 // multiply A and B element wise but only the positions
-// as controled by matrix K
+// as controlled by matrix K
 //
 ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
@@ -4087,7 +4058,7 @@ ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     else if ((a.rowmajor != b.rowmajor) && ((a.n != b.m) || (a.m != b.n)))
 	return enif_make_badarg(env);
 
-    if (k.type != INT8)
+    if (k.type != INT32)
 	return enif_make_badarg(env);
     if (!k.rowmajor || (k.n != 1) ||
 	(a.rowmajor && (k.m != a.n)) ||
@@ -4257,19 +4228,19 @@ static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
 	    kmultiply(TRUE,
 		      ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
 		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		      kp->first,kp->nstep,1,
+		      (int32_t*)kp->first,kp->mstep,kp->m,
 		      cp->type,cp->first,cp->nstep,cp->mstep);
 	} else if (ap->rowmajor && !bp->rowmajor) {
 	    kmultiply_t(TRUE,
 			ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
 			bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-			kp->first,kp->nstep,1,
+			(int32_t*)kp->first,kp->mstep,kp->m,
 			cp->type,cp->first,cp->nstep,cp->mstep);
 	} else if (!ap->rowmajor && bp->rowmajor) {
 	    kmultiply(FALSE,
 		      ap->type,ap->first,ap->mstep,ap->nstep,ap->m,ap->n,
 		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		      kp->first,kp->nstep,1,
+		      (int32_t*)kp->first,kp->mstep,kp->m,
 		      cp->type,cp->first,cp->nstep,cp->mstep);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor (NOTE A/B swap!)
@@ -4277,7 +4248,7 @@ static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
 	    kmultiply(TRUE,
 		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
 		      ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		      kp->first,kp->nstep,1,
+		      (int32_t*)kp->first,kp->mstep,kp->m,
 		      cp->type,cp->first,1,cp->nstep);
 	}
     }
@@ -4286,19 +4257,19 @@ static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
 	    kmultiply(TRUE,
 		      ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
 		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		      kp->first,kp->nstep,1,
+		      (int32_t*)kp->first,kp->mstep,kp->m,
 		      cp->type,cp->first,1,cp->nstep);
 	} else if (ap->rowmajor && !bp->rowmajor) {
 	    kmultiply_t(TRUE,
 			ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
 			bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-			kp->first,kp->nstep,1,
+			(int32_t*)kp->first,kp->mstep,kp->m,
 			cp->type,cp->first,1,cp->nstep);
 	} else if (!ap->rowmajor && bp->rowmajor) {
 	    kmultiply(FALSE,
 		      ap->type,ap->first,ap->mstep,ap->nstep,ap->m,ap->n,
 		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		      kp->first,kp->nstep,1,
+		      (int32_t*)kp->first,kp->mstep,kp->m,
 		      cp->type,cp->first,1,cp->nstep);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor
@@ -4306,23 +4277,19 @@ static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
 	    kmultiply(TRUE,
 		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
 		      ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		      kp->first,kp->nstep,1,
+		      (int32_t*)kp->first,kp->mstep,kp->m,
 		      cp->type,cp->first,cp->nstep,cp->mstep);
 	}
     }
 }
 
-// multiply (A*B) o K = C matrices
-// K is a bit/byte matrix of same size as B
-// each element signal if that element is present or not.
-// This element could be implemented as a pos scale factor if
-// needed. Now we use it to optimise, to remove the dot multiplication
-// for the corresponding row/column.
+// muladd C += (A*B) o K
+// K is used to select rows in A/C to operate on
 //
-// kmultiply(A,B,K) -> C  (row major)
+// kmultiply(A,B,K)       -> C  (row major)
 // kmultiply(A,B,K,true)  -> C (row major)
 // kmultiply(A,B,K,false) -> C (coumn major)
-// kmultiply(A,B,K,C) -> C
+// kmultiply(A,B,K,C)     -> C
 //
 
 ERL_NIF_TERM matrix_kmultiply(ErlNifEnv* env, int argc,
@@ -4360,9 +4327,9 @@ ERL_NIF_TERM matrix_kmultiply(ErlNifEnv* env, int argc,
     }
 
     // K is a row of boolean data
-    if (k.type != INT8)
+    if (k.type != INT32)
 	return enif_make_badarg(env);
-    if (!k.rowmajor || (k.n != 1) || (k.m != n))
+    if (!k.rowmajor || (k.n != 1))
 	return enif_make_badarg(env);
 
     if ((argc == 3) ||
@@ -4460,14 +4427,13 @@ static int topk_partition_i(int64_t* ap, int* ip, int l, int h)
 // simple topk select algorithm
 // get data as integer, float, complex and label data with index
 static void topk(int k, matrix_type_t at,byte_t* ap,int au,
-		 byte_t* cp,int cv,size_t m)
+		 int32_t* cp,size_t m)
 {
-    int index[m];
+    int32_t index[m];
     int i, p, l, h;
     int ki = k;
 
     au = size_of_array(at,au);
-    cv = size_of_array(INT8,cv);
 
     if (is_float(at)) {
 	float64_t value[m];
@@ -4536,7 +4502,7 @@ static void topk(int k, matrix_type_t at,byte_t* ap,int au,
 	}
     }
     for (i = 0; (i < k) && (i < (int)m); i++)
-	cp[index[i]] = 1;
+	cp[i] = index[i]+1;
 }
 
 
@@ -4563,15 +4529,14 @@ ERL_NIF_TERM matrix_topk(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	return enif_make_badarg(env);
     if (k == 0)
 	return ATOM(undefined);
-    // c matrix is a 1xM matrix of INT8
-    if (!create_matrix(env,1,m,TRUE,INT8,&c,&bin))
+    // c matrix is a 1xM matrix of INT32
+    if (!create_matrix(env,1,k,TRUE,INT32,&c,&bin))
 	return enif_make_badarg(env);
-    // the elements in A are split and top K elements are marked
-    // by index in the "boolean" C vector
+    // the elements in A are split and top K elements indices are stored in C
     if (a.rowmajor)
-	topk(k, a.type, a.first, a.nstep, c.first, 1, m);
+	topk(k, a.type, a.first, a.nstep, (int32_t*)c.first, m);
     else
-	topk(k, a.type, a.first, 1, c.first, 1, m);
+	topk(k, a.type, a.first, 1, (int32_t*)c.first, m);
 
     return make_matrix(env,c.n,c.m,c.rowmajor,c.type,&c,bin);
 }

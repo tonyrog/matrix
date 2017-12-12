@@ -27,33 +27,29 @@ static inline void CAT2(PROCEDURE,_loadv_mulop)(VTYPE* cp,TYPE* bp,int bu,size_t
 
 static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 		      TYPE* bp, int bu, size_t bn, size_t bm,
-		      byte_t* kp, int ku,int kv,
+		      int32_t* kp, int kv, size_t km,
 		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
     LOCALS_DECL
-    UNUSED(ku);
+    UNUSED(an);
+    
     while (bm--) {
 	VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
-	TYPE* ap1 = ap;
-	TYPE* cp1 = cp;
-	byte_t* kp1 = kp;
-	size_t n;
+	int32_t* kp1 = kp;
+	size_t n = km;
 
 	CAT2(PROCEDURE,_loadv_mulop)(col,bp,bu,bn);
-
 	bp++;     // advance to next column
-	n = an;   // multiply with all rows in A
+	
 	while(n--) {
-	    if (*kp1) {
+	    int32_t i = *kp1 - 1;
+	    if ((i >= 0) && (i < (int)an)) {
+		TYPE* ap1 = ap + i*au;
+		TYPE* cp1 = cp + i*cu;
 		TYPE* tp = (TYPE*) &col[0];
-		*cp1 = CAT2(mtv_dot_,TYPE)(tp, ap1, am);
+		*cp1 += CAT2(mtv_dot_,TYPE)(tp, ap1, am);
 	    }
-	    else {
-		*cp1 = TYPE_ZERO;
-	    }
-	    cp1 += cu;
-	    ap1 += au;
 	    kp1 += kv;
 	}
 	cp += cv;
