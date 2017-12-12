@@ -15,26 +15,48 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
-		      TYPE* bp, int bu, int bv, size_t bn, size_t bm,
+// Load n elements from b into vector array cp
+static inline void CAT2(PROCEDURE,_loadv_mulop)(VTYPE* cp,TYPE* bp,int bu,size_t n)
+{
+    TYPE* cp1 = (TYPE*) cp;
+    while(n--) {
+	*cp1++ = *bp;
+	bp += bu;
+    }
+}
+
+static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
+		      TYPE* bp, int bu, size_t bn, size_t bm,
+		      byte_t* kp, int ku,int kv,
 		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
     LOCALS_DECL
-    (void) am;
-    TYPE* bp0 = bp;
-
-    while(an--) {
+    UNUSED(ku);
+    while (bm--) {
+	VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
+	TYPE* ap1 = ap;
 	TYPE* cp1 = cp;
-	size_t n = bn;
-	bp = bp0;
+	byte_t* kp1 = kp;
+	size_t n;
+
+	CAT2(PROCEDURE,_loadv_mulop)(col,bp,bu,bn);
+
+	bp++;     // advance to next column
+	n = an;   // multiply with all rows in A
 	while(n--) {
-	    *cp1 = CAT2(mt_dot_,TYPE)(ap,av,bp,bv,bm);
-	    cp1 += cv;
-	    bp += bu;
+	    if (*kp1) {
+		TYPE* tp = (TYPE*) &col[0];
+		*cp1 = CAT2(mtv_dot_,TYPE)(tp, ap1, am);
+	    }
+	    else {
+		*cp1 = TYPE_ZERO;
+	    }
+	    cp1 += cu;
+	    ap1 += au;
+	    kp1 += kv;
 	}
-	ap += au;
-	cp += cu;
+	cp += cv;
     }
 }
 
@@ -45,3 +67,7 @@ static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
 #undef LOCALS_DECL
 #undef OPERATION
 #undef OPERATION2
+#undef VOPERATION
+#undef VOPERATION2
+#undef VELEMENT
+#undef VSETELEMENT

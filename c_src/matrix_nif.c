@@ -2362,18 +2362,258 @@ static void multiply(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
+    matrix_type_t ct,byte_t* cp,int cu,int cv)
+{
+    if ((at == bt) && (bt == ct)) {
+#ifdef USE_VECTOR
+	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
+	    mtv_multiply(at,ap,au,an,am,bp,bu,bn,bm,cp,cu,cv);
+	}
+	else
+#endif
+	{
+	    mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,cp,cu,cv);
+	}
+    }
+    else {
+	byte_t* bp0 = bp;
+	au = size_of_array(at,au);
+	av = size_of_array(at,av);
+	bu = size_of_array(bt,bu);
+	bv = size_of_array(bt,bv);
+	cu = size_of_array(ct,cu);
+	cv = size_of_array(ct,cv);
+
+	if (is_float(ct)) {
+	    float64_t (*read_af)(byte_t*) = read_float64_func[at];
+	    float64_t (*read_bf)(byte_t*) = read_float64_func[bt];
+	    void (*write_cf)(byte_t*, float64_t) = write_float64_func[ct];
+	    while(an--) {
+		byte_t* cp1 = cp;
+		size_t m = bm;
+		bp = bp0;
+		while(m--) {
+		    float64_t sum = 0.0;
+		    byte_t* bp1 = bp;
+		    byte_t* ap1 = ap;
+		    size_t  k = am;
+		    while(k--) {
+			float64_t a = read_af(ap1);
+			float64_t b = read_bf(bp1);
+			float64_t c = op_mul(a,b);
+			sum = op_add(sum, c);
+			ap1 += av;
+			bp1 += bu;
+		    }
+		    write_cf(cp1, sum);
+		    cp1 += cv;
+		    bp += bv;
+		}
+		
+		ap += au;
+		cp += cu;
+	    }
+	}
+	else if (is_complex(ct)) {
+	    complex128_t (*read_af)(byte_t*) = read_complex128_func[at];
+	    complex128_t (*read_bf)(byte_t*) = read_complex128_func[bt];
+	    void (*write_cf)(byte_t*, complex128_t) = write_complex128_func[ct];
+	    while(an--) {
+		byte_t* cp1 = cp;
+		size_t m = bm;
+		bp = bp0;
+		while(m--) {
+		    complex128_t sum =  CMPLX(0.0,0.0);
+		    byte_t* bp1 = bp;
+		    byte_t* ap1 = ap;
+		    size_t  k = am;
+		    while(k--) {
+			complex128_t a = read_af(ap1);
+			complex128_t b = read_bf(bp1);
+			complex128_t c = op_mul(a,b);
+			sum = op_add(sum, c);
+			ap1 += av;
+			bp1 += bu;
+		    }
+		    write_cf(cp1, sum);
+		    cp1 += cv;
+		    bp += bv;
+		}
+		ap += au;
+		cp += cu;
+	    }
+	}
+	else {
+	    int64_t (*read_af)(byte_t*) = read_int64_func[at];
+	    int64_t (*read_bf)(byte_t*) = read_int64_func[bt];
+	    void    (*write_cf)(byte_t*, int64_t) = write_int64_func[ct];
+	    while(an--) {
+		byte_t* cp1 = cp;
+		size_t m = bm;
+		bp = bp0;
+		while(m--) {
+		    int64_t sum = 0;
+		    byte_t* bp1 = bp;
+		    byte_t* ap1 = ap;
+		    size_t  k = am;
+		    while(k--) {
+			int64_t a = read_af(ap1);
+			int64_t b = read_bf(bp1);
+			int64_t c = op_mul(a,b);
+			sum = op_add(sum, c);
+			ap1 += av;
+			bp1 += bu;
+		    }
+		    write_cf(cp1, sum);
+		    cp1 += cv;
+		    bp += bv;
+		}
+		ap += au;
+		cp += cu;
+	    }
+	}
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// multiply_transposed A*Bt = C
+///////////////////////////////////////////////////////////////////////////////
+
+static void multiply_t(
+    bool_t use_vector,
+    matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
+    matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
+    matrix_type_t ct,byte_t* cp,int cu,int cv)
+{
+    if ((at == bt) && (bt == ct)) {
+#ifdef USE_VECTOR
+	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
+	    mtv_multiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,
+				    cp,cu,cv);
+	else
+#endif
+	    mt_multiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,
+				   cp,cu,cv);
+    }
+    else {
+	byte_t* bp0 = bp;
+	au = size_of_array(at,au);
+	av = size_of_array(at,av);
+	bu = size_of_array(bt,bu);
+	bv = size_of_array(bt,bv);
+	cu = size_of_array(ct,cu);
+	cv = size_of_array(ct,cv);
+
+	if (is_float(ct)) {
+	    float64_t (*read_af)(byte_t*) = read_float64_func[at];
+	    float64_t (*read_bf)(byte_t*) = read_float64_func[bt];
+	    void (*write_cf)(byte_t*, float64_t) = write_float64_func[ct];
+	    while(an--) {
+		byte_t* cp1 = cp;
+		size_t n = bn;
+		bp = bp0;
+		while(n--) {
+		    float64_t sum = 0.0;
+		    byte_t* ap1 = ap;
+		    byte_t* bp1 = bp;
+		    size_t k = bm;
+		    while(k--) {
+			float64_t a = read_af(ap1);
+			float64_t b = read_bf(bp1);
+			float64_t c = op_mul(a,b);
+			sum = op_add(sum, c);
+			ap1 += av;
+			bp1 += bv;
+		    }
+		    write_cf(cp1, sum);
+		    cp1 += cv;
+		    bp  += bu;
+		}
+		ap += au;
+		cp += cu;
+	    }
+	}
+	else if (is_complex(ct)) {
+	    complex128_t (*read_af)(byte_t*) = read_complex128_func[at];
+	    complex128_t (*read_bf)(byte_t*) = read_complex128_func[bt];
+	    void (*write_cf)(byte_t*, complex128_t) = write_complex128_func[ct];
+	    while(an--) {
+		byte_t* cp1 = cp;
+		size_t n = bn;
+		bp = bp0;
+		while(n--) {
+		    complex128_t sum = CMPLX(0.0,0.0);
+		    byte_t* ap1 = ap;
+		    byte_t* bp1 = bp;
+		    size_t k = bm;
+		    while(k--) {
+			complex128_t a = read_af(ap1);
+			complex128_t b = read_bf(bp1);
+			complex128_t c = op_mul(a,b);
+			sum = op_add(sum, c);
+			ap1 += av;
+			bp1 += bv;
+		    }
+		    write_cf(cp1, sum);
+		    cp1 += cv;
+		    bp += bu;
+		}
+		ap += au;
+		cp += cu;
+	    }
+	}
+	else {
+	    int64_t (*read_af)(byte_t*) = read_int64_func[at];
+	    int64_t (*read_bf)(byte_t*) = read_int64_func[bt];
+	    void    (*write_cf)(byte_t*, int64_t) = write_int64_func[ct];
+	    while(an--) {
+		byte_t* cp1 = cp;
+		size_t n = bn;
+		bp = bp0;
+		while(n--) {
+		    int64_t sum = 0;
+		    byte_t* ap1 = ap;
+		    byte_t* bp1 = bp;
+		    size_t k = bm;
+		    while(k--) {
+			int64_t a = read_af(ap1);
+			int64_t b = read_bf(bp1);
+			int64_t c = op_mul(a,b);
+			sum = op_add(sum, c);
+			ap1 += av;
+			bp1 += bv;
+		    }
+		    write_cf(cp1, sum);
+		    cp1 += cv;
+		    bp += bu;
+		}
+		ap += au;
+		cp += cu;
+	    }
+	}
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// kmultiply
+///////////////////////////////////////////////////////////////////////////////
+
+static void kmultiply(
+    bool_t use_vector,
+    matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
+    matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
     byte_t* kp,int ku,int kv,
     matrix_type_t ct,byte_t* cp,int cu,int cv)
 {
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
-	    mtv_multiply(at,ap,au,an,am,bp,bu,bn,bm,kp,ku,kv,cp,cu,cv);
+	    mtv_kmultiply(at,ap,au,an,am,bp,bu,bn,bm,kp,ku,kv,cp,cu,cv);
 	}
 	else
 #endif
 	{
-	    mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,kp,ku,kv,cp,cu,cv);
+	    mt_kmultiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,kp,ku,kv,cp,cu,cv);
 	}
     }
     else {
@@ -2489,8 +2729,10 @@ static void multiply(
 		    }
 		}
 		else {
-		    write_cf(cp1, 0);
-		    cp1 += cv;
+		    while(m--) {
+			write_cf(cp1, 0);
+			cp1 += cv;
+		    }
 		}
 		ap += au;
 		cp += cu;
@@ -2501,10 +2743,10 @@ static void multiply(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// multiply_transposed A*Bt = C
+// kmultiply_transposed A*Bt = C
 ///////////////////////////////////////////////////////////////////////////////
 
-static void multiply_t(
+static void kmultiply_t(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
@@ -2514,12 +2756,12 @@ static void multiply_t(
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
-	    mtv_multiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,
-				    kp,ku,kv,cp,cu,cv);
+	    mtv_kmultiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,
+				     kp,ku,kv,cp,cu,cv);
 	else
 #endif
-	    mt_multiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,
-				   kp,ku,kv,cp,cu,cv);
+	    mt_kmultiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,
+				    kp,ku,kv,cp,cu,cv);
     }
     else {
 	byte_t* bp0 = bp;
@@ -3884,32 +4126,27 @@ ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
 static void m_multiply(matrix_t* ap, matrix_t* bp, matrix_t* cp)
 {
-    byte_t d0 = 1;
     if (cp->rowmajor) {
 	if (ap->rowmajor && bp->rowmajor) {
 	    multiply(TRUE,
 		     ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
 		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     &d0, 0, 0,
 		     cp->type,cp->first,cp->nstep,cp->mstep);
 	} else if (ap->rowmajor && !bp->rowmajor) {
 	    multiply_t(TRUE,
 		       ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
 		       bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		       &d0, 0, 0,
 		       cp->type,cp->first,cp->nstep,cp->mstep);
 	} else if (!ap->rowmajor && bp->rowmajor) {
 	    multiply(FALSE,
 		     ap->type,ap->first,ap->mstep,ap->nstep,ap->m,ap->n,
 		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     &d0, 0, 0,
 		     cp->type,cp->first,cp->nstep,cp->mstep);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor (NOTE A/B swap!)
 	    multiply(TRUE,
 		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
 		     ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		     &d0, 0, 0,
 		     cp->type,cp->first,1,cp->nstep);
 	}
     }
@@ -3918,26 +4155,22 @@ static void m_multiply(matrix_t* ap, matrix_t* bp, matrix_t* cp)
 	    multiply(TRUE,
 		     ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
 		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     &d0, 0, 0,
 		     cp->type,cp->first,1,cp->nstep);
 	} else if (ap->rowmajor && !bp->rowmajor) {
 	    multiply_t(TRUE,
 		       ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
 		       bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		       &d0, 0, 0,
 		       cp->type,cp->first,1,cp->nstep);
 	} else if (!ap->rowmajor && bp->rowmajor) {
 	    multiply(FALSE,
 		     ap->type,ap->first,ap->mstep,ap->nstep,ap->m,ap->n,
 		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     &d0, 0, 0,
 		     cp->type,cp->first,1,cp->nstep);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor
 	    multiply(TRUE,
 		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
 		     ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		     &d0, 0, 0,
 		     cp->type,cp->first,cp->nstep,cp->mstep);
 	}
     }
@@ -4021,60 +4254,60 @@ static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
 {
     if (cp->rowmajor) {
 	if (ap->rowmajor && bp->rowmajor) {
-	    multiply(TRUE,
-		     ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     kp->first,kp->nstep,1,
-		     cp->type,cp->first,cp->nstep,cp->mstep);
+	    kmultiply(TRUE,
+		      ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
+		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
+		      kp->first,kp->nstep,1,
+		      cp->type,cp->first,cp->nstep,cp->mstep);
 	} else if (ap->rowmajor && !bp->rowmajor) {
-	    multiply_t(TRUE,
-		       ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		       bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		       kp->first,kp->nstep,1,
-		       cp->type,cp->first,cp->nstep,cp->mstep);
+	    kmultiply_t(TRUE,
+			ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
+			bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
+			kp->first,kp->nstep,1,
+			cp->type,cp->first,cp->nstep,cp->mstep);
 	} else if (!ap->rowmajor && bp->rowmajor) {
-	    multiply(FALSE,
-		     ap->type,ap->first,ap->mstep,ap->nstep,ap->m,ap->n,
-		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     kp->first,kp->nstep,1,
-		     cp->type,cp->first,cp->nstep,cp->mstep);
+	    kmultiply(FALSE,
+		      ap->type,ap->first,ap->mstep,ap->nstep,ap->m,ap->n,
+		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
+		      kp->first,kp->nstep,1,
+		      cp->type,cp->first,cp->nstep,cp->mstep);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor (NOTE A/B swap!)
 	    // FIXME: check how to check k in this case
-	    multiply(TRUE,
-		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		     kp->first,kp->nstep,1,
-		     cp->type,cp->first,1,cp->nstep);
+	    kmultiply(TRUE,
+		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
+		      ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
+		      kp->first,kp->nstep,1,
+		      cp->type,cp->first,1,cp->nstep);
 	}
     }
     else { // !cp->rowmajor
 	if (ap->rowmajor && bp->rowmajor) {
-	    multiply(TRUE,
-		     ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     kp->first,kp->nstep,1,
-		     cp->type,cp->first,1,cp->nstep);
+	    kmultiply(TRUE,
+		      ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
+		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
+		      kp->first,kp->nstep,1,
+		      cp->type,cp->first,1,cp->nstep);
 	} else if (ap->rowmajor && !bp->rowmajor) {
-	    multiply_t(TRUE,
-		       ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		       bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		       kp->first,kp->nstep,1,
-		       cp->type,cp->first,1,cp->nstep);
+	    kmultiply_t(TRUE,
+			ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
+			bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
+			kp->first,kp->nstep,1,
+			cp->type,cp->first,1,cp->nstep);
 	} else if (!ap->rowmajor && bp->rowmajor) {
-	    multiply(FALSE,
-		     ap->type,ap->first,ap->mstep,ap->nstep,ap->m,ap->n,
-		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     kp->first,kp->nstep,1,
-		     cp->type,cp->first,1,cp->nstep);
+	    kmultiply(FALSE,
+		      ap->type,ap->first,ap->mstep,ap->nstep,ap->m,ap->n,
+		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
+		      kp->first,kp->nstep,1,
+		      cp->type,cp->first,1,cp->nstep);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor
 	    // FIXME: check how to check k in this case
-	    multiply(TRUE,
-		     bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
-		     ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
-		     kp->first,kp->nstep,1,
-		     cp->type,cp->first,cp->nstep,cp->mstep);
+	    kmultiply(TRUE,
+		      bp->type,bp->first,bp->nstep,bp->mstep,bp->n,bp->m,
+		      ap->type,ap->first,ap->nstep,ap->mstep,ap->n,ap->m,
+		      kp->first,kp->nstep,1,
+		      cp->type,cp->first,cp->nstep,cp->mstep);
 	}
     }
 }

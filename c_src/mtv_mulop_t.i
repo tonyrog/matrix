@@ -17,35 +17,24 @@
 
 static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 		      TYPE* bp, int bu, size_t bn, size_t bm,
-		      byte_t* kp, int ku,int kv,
 		      TYPE* cp, int cu, int cv
 		      PARAMS_DECL)
 {
     LOCALS_DECL
     UNUSED(am);
-    UNUSED(ku);    
     TYPE* bp0 = bp;
 
     while (an--) {
 	TYPE* cp1 = cp;
 	size_t n = bn;
-	if (*kp) {
-	    bp = bp0;
-	    while(n--) {
-		*cp1 = CAT2(mtv_dot_,TYPE)(ap, bp, bm);
-		bp  += bu;
-		cp1 += cv;
-	    }
-	}
-	else {
-	    while(n--) {
-		*cp1 = TYPE_ZERO;
-		cp1 += cv;
-	    }
+	bp = bp0;
+	while(n--) {
+	    *cp1 = CAT2(mtv_dot_,TYPE)(ap, bp, bm);
+	    bp  += bu;
+	    cp1 += cv;
 	}
 	ap += au;
 	cp += cu;
-	kp += kv;
     }
 }
 
