@@ -4036,8 +4036,8 @@ ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     }
 }
 
-// multiply A and B element wise but only the positions
-// as controlled by matrix K
+// multiply A and B element wise but only the rows as
+// controlled by matrix K
 //
 ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
@@ -4057,9 +4057,7 @@ ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
     if (k.type != INT32)
 	return enif_make_badarg(env);
-    if (!k.rowmajor || (k.n != 1) ||
-	(a.rowmajor && (k.m != a.n)) ||
-	(!a.rowmajor && (k.m != a.m)))
+    if (!k.rowmajor || (k.n != 1))
 	return enif_make_badarg(env);
 
     if (argc == 3) {
