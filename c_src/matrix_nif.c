@@ -1256,15 +1256,22 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//  matrix_op.i
-//  (soon generated) contain all operations
+//  operations
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "matrix_op.i"
-
-
-
-
+#include "matrix_add.i"
+#include "matrix_sub.i"
+#include "matrix_times.i"
+#include "matrix_neg.i"
+#include "matrix_dot.i"
+#include "matrix_multiply.i"
+#include "matrix_multiply_t.i"
+#include "matrix_kmultiply.i"
+#include "matrix_kmultiply_t.i"
+#include "matrix_sigmoid.i"
+#include "matrix_sigmoid_prime.i"
+#include "matrix_sigmoid_prime1.i"
+#include "matrix_rectifier.i"
 
 // float unary functions
 static float64_t sigmoid_float64(float64_t a)
