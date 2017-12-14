@@ -11,7 +11,7 @@
 
 #include "erl_nif.h"
 
-#define DEBUG
+// #define DEBUG
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -960,7 +960,6 @@ complex128_t complex128_gt(complex128_t a, complex128_t b)
 {
     return (cabs(a) > cabs(b));
 }
-
 
 #define cop_sigmoid(z)    (1.0/(1.0 + cexp(-(z))))
 
