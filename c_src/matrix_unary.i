@@ -44,14 +44,14 @@
 #define TYPE           complex64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a)   CAT2(op_,OP)((a))
+#define OPERATION(a)   CAT2(cop_,OP)((a))
 #include "mt_unary_op.i"
 
 #define PROCEDURE      CAT3(mt_,NAME,_complex128)
 #define TYPE           complex128_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a)   CAT2(op_,OP)((a))
+#define OPERATION(a)   CAT2(cop_,OP)((a))
 #include "mt_unary_op.i"
 
 static mt_unary_func_t CAT3(mt_,NAME,_funcs)[NUM_TYPES] = {

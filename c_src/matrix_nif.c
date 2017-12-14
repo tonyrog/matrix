@@ -970,6 +970,18 @@ static inline complex128_t cop_sigmoid_prime(complex128_t z)
     return z1*(1-z1);
 }
 
+static inline complex128_t cop_sigmoid_prime1(complex128_t x)
+{
+    return x*(1-x);
+}
+
+static inline complex128_t cop_rectifier(complex128_t a)
+{
+    float64_t ar = creal(a);
+    float64_t ai = cimag(a);
+    return CMPLX(ar>0.0?ar:0.0,ai>0.0?ai:0.0);    
+}
+
 void copy_circular(uint8_t* dst, size_t n, uint8_t* src, size_t m)
 {
     if (src == 0)
@@ -1258,6 +1270,8 @@ complex128_t normal_c128(rand_alg_t a, float64_t m, float64_t s)
 #define op_neg(x)     (-(x))
 #define op_bnot(x)    (~(x))
 
+#define cop_neg(x)     (-(x))  // non vector complex negate
+
 // binary
 #define op_add(x,y)   ((x)+(y))
 #define op_sub(x,y)   ((x)-(y))
@@ -1281,10 +1295,11 @@ complex128_t normal_c128(rand_alg_t a, float64_t m, float64_t s)
 //  m = (x > y)
 //  r = (x & m) | (y & ~m)
 //
-#define op_rectify(x) (((x)>0) & (x))
-#define op_min(x,y)   (((x)<(y))?(x):(y))
-#define op_max(x,y)   (((x)>(y))?(x):(y))
-#define op_sigmoid(x)    (1.0/(1.0 + exp(-(x))))
+#define op_min(x,y)           (((x)<(y))?(x):(y))
+#define op_max(x,y)           (((x)>(y))?(x):(y))
+#define op_sigmoid(x)         (1.0/(1.0 + exp(-(x))))
+#define op_rectifier(x)       op_max(0,(x))
+#define op_sigmoid_prime1(x)  ((x)*(1-(x)))
 
 static inline float64_t op_sigmoid_prime(float64_t x)
 {
@@ -1306,7 +1321,6 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "matrix_kmultiply.i"
 #include "matrix_kmultiply_t.i"
 #include "matrix_sigmoid.i"
-#include "matrix_sigmoid_prime.i"
 #include "matrix_sigmoid_prime1.i"
 #include "matrix_rectifier.i"
 
@@ -2364,37 +2378,21 @@ static void sigmoid(matrix_type_t at, byte_t* ap, int au, int av,
 		    size_t n, size_t m)
 {
     if (at == ct) {
-	mt_sigmoid(at, ap, au, av, cp, cu, cv, n, m);
+	// mt_sigmoid(at, ap, au, av, cp, cu, cv, n, m);
+	(*mt_sigmoid_funcs[at])(ap, au, av, cp, cu, cv, n, m);
     }
     else {
 	apply1(SIGMOID, at, ap, au, av, ct, cp, cu, cv, n, m);
     }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// sigmoid_prime
-///////////////////////////////////////////////////////////////////////////////
-
-#if 0
-static void sigmoid_prime(matrix_type_t at, byte_t* ap, int au, int av,
-			  matrix_type_t ct, byte_t* cp, int cu, int cv,
-			  size_t n, size_t m)
-{
-    if (at == ct) {
-	mt_sigmoid_prime(at, ap, au, av, cp, cu, cv, n, m);
-    }
-    else {
-	apply1(SIGMOID_PRIME, at, ap, au, av, ct, cp, cu, av, n, m);
-    }
-}
-#endif
-
 static void sigmoid_prime1(matrix_type_t at, byte_t* ap, int au, int av,
 			   matrix_type_t ct, byte_t* cp, int cu, int cv,
 			   size_t n, size_t m)
 {
     if (at == ct) {
-	mt_sigmoid_prime1(at, ap, au, av, cp, cu, cv, n, m);
+	//mt_sigmoid_prime1(at, ap, au, av, cp, cu, cv, n, m);
+	(*mt_sigmoid_prime1_funcs[at])(ap, au, av, cp, cu, cv, n, m);
     }
     else {
 	apply1(SIGMOID_PRIME1, at, ap, au, av, ct, cp, cu, av, n, m);
@@ -2410,8 +2408,8 @@ static void rectifier(matrix_type_t at, byte_t* ap, int au, int av,
 		      size_t n, size_t m)
 {
     if (at == ct) {
-	// fixme: vectorized version!
-	mt_rectifier(at, ap, au, av, cp, cu, cv, n, m);
+	//mt_rectifier(at, ap, au, av, cp, cu, cv, n, m);
+	(*mt_rectifier_funcs[at])(ap, au, av, cp, cu, cv, n, m);
     }
     else {
 	apply1(RELU, at, ap, au, av, ct, cp, cu, cv, n, m);
