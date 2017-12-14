@@ -44,8 +44,5 @@ static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
 
 #undef PROCEDURE
 #undef TYPE
-#undef TYPE2
 #undef PARAMS_DECL
 #undef LOCALS_DECL
-#undef OPERATION
-#undef OPERATION2

@@ -56,9 +56,3 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 #undef TYPE2
 #undef PARAMS_DECL
 #undef LOCALS_DECL
-#undef OPERATION
-#undef OPERATION2
-#undef VOPERATION
-#undef VOPERATION2
-#undef VELEMENT
-#undef VSETELEMENT

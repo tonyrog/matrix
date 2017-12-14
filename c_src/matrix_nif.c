@@ -250,6 +250,43 @@ typedef struct {
     scalar_t sdata;         // raw scalar data
 } matrix_t;
 
+// used for add/sub/times ...
+typedef void (*mt_binary_func_t)(byte_t* ap, int au, int av,
+				 byte_t* bp, int bu, int bv,
+				 byte_t* cp, int cu, int cv,
+				 size_t n, size_t m);
+
+typedef void (*mt_unary_func_t)(byte_t* ap, int au, int av,
+				byte_t* cp, int cu, int cv,
+				size_t n, size_t m);
+
+typedef void (*mtv_binary_func_t)(byte_t* ap, int au,
+				  byte_t* bp, int bu,
+				  byte_t* cp, int cu,
+				  size_t n, size_t m);
+
+typedef void (*mtv_unary_func_t)(byte_t* ap, int au,
+				 byte_t* cp, int cu,
+				 size_t n, size_t m);
+
+typedef void (*mt_mulop_func_t)(byte_t* ap, int au, int av,size_t an, size_t am,
+				byte_t* bp, int bu, int bv,size_t bn, size_t bm,
+				byte_t* cp, int cu, int cv);
+
+typedef void (*mtv_mulop_func_t)(byte_t* ap,int au,size_t an, size_t am,
+				 byte_t* bp,int bu,size_t bn, size_t bm,
+				 byte_t* cp,int cu,int cv);
+
+typedef void (*mt_kmulop_func_t)(byte_t* ap,int au,int av,size_t an,size_t am,
+				 byte_t* bp,int bu,int bv,size_t bn,size_t bm,
+				 int32_t* kp,int kv,size_t km,
+				 byte_t* cp,int cu,int cv);
+
+typedef void (*mtv_kmulop_func_t)(byte_t* ap,int au,size_t an, size_t am,
+				  byte_t* bp,int bu,size_t bn, size_t bm,
+				  int32_t* kp, int kv, size_t km,
+				  byte_t* cp,int cu,int cv);
+
 // Global data (store in env?)
 static ErlNifResourceType* matrix_r;
 static ErlNifTSDKey matrix_k;
@@ -726,7 +763,7 @@ static inline vfloat64_t addsub_64(vfloat64_t x, vfloat64_t y)
 //
 
 #ifdef __clang__
-static inline vcomplex64_t complex64_multiply(vcomplex64_t x, vcomplex64_t y)
+static inline vcomplex64_t complex64_mul(vcomplex64_t x, vcomplex64_t y)
 {
     vcomplex64_t a, b, c, d;
     vcomplex64_t r1,r2;
@@ -746,7 +783,7 @@ static inline vcomplex64_t complex64_multiply(vcomplex64_t x, vcomplex64_t y)
     return addsub_32(r1,r2);
 }
 #else // gcc 
-static inline vcomplex64_t complex64_multiply(vcomplex64_t x, vcomplex64_t y)
+static inline vcomplex64_t complex64_mul(vcomplex64_t x, vcomplex64_t y)
 {
     vcomplex64_t a, b, c, d;
     vcomplex64_t r1,r2;
@@ -783,7 +820,7 @@ static inline vcomplex64_t complex64_multiply(vcomplex64_t x, vcomplex64_t y)
 //
 
 #ifdef __clang__
-static inline vcomplex128_t complex128_multiply(vcomplex128_t x,vcomplex128_t y)
+static inline vcomplex128_t complex128_mul(vcomplex128_t x,vcomplex128_t y)
 {
     vcomplex128_t a, b, c, d;
     vcomplex128_t r1,r2;
@@ -803,7 +840,7 @@ static inline vcomplex128_t complex128_multiply(vcomplex128_t x,vcomplex128_t y)
     return addsub_64(r1,r2);
 }
 #else
-static inline vcomplex128_t complex128_multiply(vcomplex128_t x,vcomplex128_t y)
+static inline vcomplex128_t complex128_mul(vcomplex128_t x,vcomplex128_t y)
 {
     vcomplex128_t a, b, c, d;
     vcomplex128_t r1,r2;
@@ -832,7 +869,7 @@ static inline vcomplex64_t complex64_add(vcomplex64_t x, vcomplex64_t y)
     return x+y;
 }
 
-static inline vcomplex64_t complex64_subtract(vcomplex64_t x, vcomplex64_t y)
+static inline vcomplex64_t complex64_sub(vcomplex64_t x, vcomplex64_t y)
 {
     return x-y;
 }
@@ -858,7 +895,7 @@ static inline void complex64_vsetelement(vcomplex64_t* xp, int i, complex64_t v)
 }
 #endif
 
-static inline vcomplex64_t complex64_negate(vcomplex64_t x)
+static inline vcomplex64_t complex64_neg(vcomplex64_t x)
 {
     return -x;
 }
@@ -868,13 +905,13 @@ static inline vcomplex128_t complex128_add(vcomplex128_t x, vcomplex128_t y)
     return x+y;
 }
 
-static inline vcomplex128_t complex128_subtract(vcomplex128_t x,
-						vcomplex128_t y)
+static inline vcomplex128_t complex128_sub(vcomplex128_t x,
+					   vcomplex128_t y)
 {
     return x-y;
 }
 
-static inline vcomplex128_t complex128_negate(vcomplex128_t x)
+static inline vcomplex128_t complex128_neg(vcomplex128_t x)
 {
     return -x;
 }
@@ -1272,6 +1309,19 @@ static inline float64_t op_sigmoid_prime(float64_t x)
 #include "matrix_sigmoid_prime.i"
 #include "matrix_sigmoid_prime1.i"
 #include "matrix_rectifier.i"
+
+// SIMD versions
+#ifdef USE_VECTOR
+#include "matrix_vadd.i"
+#include "matrix_vsub.i"
+#include "matrix_vtimes.i"
+#include "matrix_vneg.i"
+#include "matrix_vdot.i"
+#include "matrix_vmultiply.i"
+#include "matrix_vmultiply_t.i"
+#include "matrix_vkmultiply.i"
+#include "matrix_vkmultiply_t.i"
+#endif
 
 // float unary functions
 static float64_t sigmoid_float64(float64_t a)
@@ -1886,12 +1936,14 @@ static void add(bool_t use_vector,
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
-	    mtv_add(at, ap, au, bp, bu, cp, cu, n, m);
+	    // mtv_add(at, ap, au, bp, bu, cp, cu, n, m);
+	    (*mtv_add_funcs[at])(ap, au, bp, bu, cp, cu, n, m);
 	}
 	else
 #endif
 	{
-	    mt_add(at, ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
+	    // mt_add(at, ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
+	    (*mt_add_funcs[at])(ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
 	}
     }
     else {
@@ -1912,12 +1964,14 @@ static void subtract(bool_t use_vector,
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
-	    mtv_subtract(at, ap, au, bp, bu, cp, cu, n, m);
+	    // mtv_sub(at, ap, au, bp, bu, cp, cu, n, m);
+	    (*mtv_sub_funcs[at])(ap, au, bp, bu, cp, cu, n, m);
 	}
 	else
 #endif
 	{
-	    mt_subtract(at, ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
+	    // mt_sub(at, ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
+	    (*mt_sub_funcs[at])(ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
 	}
     }
     else {
@@ -1938,12 +1992,14 @@ static void times(bool_t use_vector,
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
-	    mtv_times(at, ap, au, bp, bu, cp, cu, n, m);
+	    // mtv_times(at, ap, au, bp, bu, cp, cu, n, m);
+	    (*mtv_times_funcs[at])(ap, au, bp, bu, cp, cu, n, m);
 	}
 	else
 #endif
 	{
-	    mt_times(at, ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
+	    // mt_times(at, ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
+	    (*mt_times_funcs[at])(ap, au, av, bp, bu, bv, cp, cu, cv, n, m);
 	}
     }
     else {
@@ -1963,12 +2019,14 @@ static void negate(bool_t use_vector,
     if (at == ct) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(cp)) {
-	    mtv_negate(at, ap, au, cp, cu, n, m);
+	    // mtv_negate(at, ap, au, cp, cu, n, m);
+	    (*mtv_neg_funcs[at])(ap, au, cp, cu, n, m);
 	}
 	else
 #endif
 	{
-	    mt_negate(at, ap, au, av, cp, cu, cv, n, m);
+	    // mt_negate(at, ap, au, av, cp, cu, cv, n, m);
+	    (*mt_neg_funcs[at])(ap, au, av, cp, cu, cv, n, m);
 	}
     }
     else {
@@ -2374,12 +2432,14 @@ static void multiply(
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
-	    mtv_multiply(at,ap,au,an,am,bp,bu,bn,bm,cp,cu,cv);
+	    // mtv_multiply(at,ap,au,an,am,bp,bu,bn,bm,cp,cu,cv);
+	    (*mtv_multiply_funcs[at])(ap,au,an,am,bp,bu,bn,bm,cp,cu,cv);
 	}
 	else
 #endif
 	{
-	    mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,cp,cu,cv);
+	    //mt_multiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,cp,cu,cv);
+	    (*mt_multiply_funcs[at])(ap,au,av,an,am,bp,bu,bv,bn,bm,cp,cu,cv);
 	}
     }
     else {
@@ -2495,12 +2555,14 @@ static void multiply_t(
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
-	    mtv_multiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,
-				    cp,cu,cv);
+	    // mtv_multiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,cp,cu,cv);
+	    (*mtv_multiply_transposed_funcs[at])(ap,au,an,am,bp,bu,bn,bm,
+						 cp,cu,cv);
 	else
 #endif
-	    mt_multiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,
-				   cp,cu,cv);
+	    //mt_multiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,cp,cu,cv);
+	    (*mt_multiply_transposed_funcs[at])(ap,au,av,an,am,bp,bu,bv,bn,bm,
+						cp,cu,cv);
     }
     else {
 	byte_t* bp0 = bp;
@@ -2615,12 +2677,16 @@ static void kmultiply(
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp)) {
-	    mtv_kmultiply(at,ap,au,an,am,bp,bu,bn,bm,kp,kv,km,cp,cu,cv);
+	    //mtv_kmultiply(at,ap,au,an,am,bp,bu,bn,bm,kp,kv,km,cp,cu,cv);
+	    (*mtv_kmultiply_funcs[at])(ap,au,an,am,bp,bu,bn,bm,kp,kv,km,
+				       cp,cu,cv);
 	}
 	else
 #endif
 	{
-	    mt_kmultiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,kp,kv,km,cp,cu,cv);
+	    //mt_kmultiply(at,ap,au,av,an,am,bp,bu,bv,bn,bm,kp,kv,km,cp,cu,cv);
+	    (*mt_kmultiply_funcs[at])(ap,au,av,an,am,bp,bu,bv,bn,bm,kp,kv,km,
+				      cp,cu,cv);	    
 	}
     }
     else {
@@ -2747,12 +2813,13 @@ static void kmultiply_t(
     if ((at == bt) && (bt == ct)) {
 #ifdef USE_VECTOR
 	if (use_vector && is_aligned(ap) && is_aligned(bp) && is_aligned(cp))
-	    mtv_kmultiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,
-				     kp,kv,km,cp,cu,cv);
+	    // mtv_kmultiply_transposed(at,ap,au,an,am,bp,bu,bn,bm,kp,kv,km,cp,cu,cv);
+	    (*mtv_kmultiply_transposed_funcs[at])(ap,au,an,am,bp,bu,bn,bm,
+						  kp,kv,km,cp,cu,cv);
 	else
 #endif
-	    mt_kmultiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,
-				    kp,kv,km,cp,cu,cv);
+	    // mt_kmultiply_transposed(at,ap,au,av,an,am,bp,bu,bv,bn,bm,kp,kv,km,cp,cu,cv);
+	    (*mt_kmultiply_transposed_funcs[at])(ap,au,av,an,am,bp,bu,bv,bn,bm,kp,kv,km,cp,cu,cv);
     }
     else {
 	au = size_of_array(at,au);
