@@ -10,6 +10,7 @@
 -on_load(init/0).
 -export([create/4, create/5]).
 -export([element/2, element/3]).
+-export([setelement/4]).
 -export([copy/1, copy/2, copy/4]).
 -export([fill/2]).
 -export([from_list/1, from_list/2, from_list/3, from_list/4]).
@@ -392,7 +393,8 @@ element(I,J,A) ->
 element_(I,J,A) ->
     matrix_ref:element(I,J,A).
 
--spec element(I::unsigned(),X::matrix()) -> matrix().
+-spec element(I::unsigned(),X::matrix()) -> matrix();
+	     ({I::unsigned(),J::unsigned()},X::matrix()) -> scalar().
 
 element({I,J},A) when is_integer(I), is_integer(J) -> element(I,J,A);
 element(I,A=#matrix{rowmajor=true}) when is_integer(I) -> row(I,A);
@@ -403,11 +405,15 @@ element(I=#matrix{},A=#matrix{}) ->
 element_(I,A) ->
     matrix_ref:element(I,A).
 
+-spec setelement(I::unsigned(),J::unsigned(),X::matrix(),V::scalar()) ->
+			matrix().
+setelement(I,J,X,V) ->
+    setelement_(I,J,X,V).
+
 -spec setelement_(I::unsigned(),J::unsigned(),X::matrix(),V::scalar()) ->
 			matrix().
-setelement_(_I,_J,_A,_V) ->
-    ?nif_stub().
-
+setelement_(I,J,X,V) ->
+    matrix_ref:setelement(I,J,X,V).
 
 foldl_matrix(F,A,X=#matrix{rowmajor=true,n=N}) ->
     foldl_rows(1,N,F,A,X);

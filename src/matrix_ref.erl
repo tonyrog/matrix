@@ -10,6 +10,7 @@
 %% reference for testing
 -export([create/5]).
 -export([element/2, element/3]).
+-export([setelement/4]).
 -export([add/2]).
 -export([subtract/2]).
 -export([times/2]).
@@ -134,6 +135,61 @@ decode_element_at(P, T, Bin) ->
 	    <<_:P/binary-unit:16,X:16/native-signed-integer,_/binary>> = Bin, X;
 	?int8 ->
 	    <<_:P/binary-unit:8,X:8/native-signed-integer,_/binary>> = Bin, X
+    end.
+
+-spec setelement(I::unsigned(),J::unsigned(),X::matrix(),V::scalar()) ->
+			matrix().
+%% element I,J in row/column order (i.e rowmajor)
+setelement(I,J,X=#matrix{rowmajor=true,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
+		       type=T,data=D}, V)
+  when
+      is_integer(I), I > 0, I =< N, 
+      is_integer(J), J > 0, J =< M ->
+    P = if Sn =:= 0, Sm =:= 0 -> O;
+	   true -> O + (I-1)*Sn+(J-1)
+	end,
+    X#matrix{data=set_element_at(P, T, D, V)};
+setelement(I,J,X=#matrix{rowmajor=false,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
+			 type=T,data=D}, V)
+  when
+      is_integer(I), I > 0, I =< M, 
+      is_integer(J), J > 0, J =< N ->
+    P = if Sn =:= 0, Sm =:= 0 -> O;
+	   true -> O + (J-1)*Sn+(I-1)
+	end,
+    X#matrix{data=set_element_at(P, T, D, V)}.
+
+%% P is element position not byte position
+set_element_at(P, T, Bin, V) ->
+    case T of
+	?complex128 ->
+	    {R,I} = V,
+	    <<B1:P/binary-unit:128,_:64/native-float,_:64/native-float,
+	      B2/binary>> = Bin,
+	    <<B1/binary, R:64/native-float, I:64/native-float, B2/binary>>;
+	?complex64 ->
+	    {R,I} = V,
+	    <<B1:P/binary-unit:64,_:32/native-float,_:32/native-float,
+	      B2/binary>> = Bin,
+	    <<B1/binary, R:32/native-float, I:32/native-float, B2/binary>>;
+	?float64 ->
+	    <<B1:P/binary-unit:64,_:64/native-float,B2/binary>> = Bin,
+	    <<B1/binary,V:64/native-float,B2/binary>>;
+	?float32 ->
+	    <<B1:P/binary-unit:32,_:32/native-float,B2/binary>> = Bin,
+	    <<B1/binary,V:32/native-float,B2/binary>>;
+	?int64 ->
+	    <<B1:P/binary-unit:64,_:64/native-signed-integer,B2/binary>> = Bin,
+	    <<B1/binary,V:64/native-signed-integer,B2/binary>>;
+	?int32 ->
+	    <<B1:P/binary-unit:32,_:32/native-signed-integer,B2/binary>> = Bin,
+	    <<B1/binary,V:32/native-signed-integer,B2/binary>>;	    
+	?int16 ->
+	    <<B1:P/binary-unit:16,_:16/native-signed-integer,B2/binary>> = Bin,
+	    <<B1/binary,V:16/native-signed-integer,B2/binary>>;	    
+	?int8 ->
+	    <<B1:P/binary-unit:8,_:8/native-signed-integer,B2/binary>> = Bin,
+	    <<B1/binary,V:8/native-signed-integer,B2/binary>>
     end.
 
 -ifdef(not_used).
