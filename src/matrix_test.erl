@@ -23,33 +23,62 @@
 	 bench_transform/4]).
 
 all() ->
-    test_add(),
-    test_sub(),
-    test_times(),
-    test_negate(),
-    test_zero(),
-    test_identity(),
-    test_multiply(),
-    test_mul_t(),    
-    test_add_t(),
-    test_sub_t(),    
-    test_times_t(),
-    test_transpose(),
-    test_submatrix(),
-    test_min(),
-    test_max(),
-    test_sum(),
-    test_argmax(),
+    test_em([test_add,
+	     test_sub,
+	     test_times,
+	     test_negate,
+	     test_zero,
+	     test_identity,
+	     test_multiply,
+	     test_mul_t,
+	     test_add_t,
+	     test_sub_t,
+	     test_times_t,
+	     test_transpose,
+	     test_submatrix,
+	     test_min,
+	     test_max,
+	     test_sum,
+	     test_argmax]).
+
+test_em([F|Fs]) ->
+    test_it(F),
+    test_em(Fs);
+test_em([]) ->
     ok.
 
-    
+test_it(F) when is_atom(F) ->
+    io:format("~s\n", [F]),
+    try apply(?MODULE, F, []) of
+	ok -> ok
+    catch
+	error:_ -> error
+    end;
+test_it({F,As}) ->
+    io:format("  ~s~s ... ", [F,fmt_args(As)]),
+    R = try apply(?MODULE, F, As) of
+	    ok -> "OK"
+	catch
+	    error:_ -> "ERROR"
+	end,
+    io:format("~s\n", [R]).
+
+fmt_args([]) -> "";
+fmt_args(As) ->
+    ["(",fmt_args_(As),")"].
+
+fmt_args_([A]) -> 
+    [io_lib:format("~p",[A])];
+fmt_args_([A|As]) -> 
+    [io_lib:format("~p",[A]),","|fmt_args_(As)].
+     
+
 %% test basic operation
 
 test_add() ->
-    test_add(4,3,int8),
-    test_add(24,24,int16),
-    test_add(128,128,int32),
-    ok.
+    test_em([{test_add,[4,3,int8]},
+	     {test_add,[24,24,int16]},
+	     {test_add,[128,128,int32]}]).
 
 test_add(N,M,T) ->
     A = make(N,M,T),
@@ -60,9 +89,9 @@ test_add(N,M,T) ->
     ok.
 
 test_sub() ->
-    test_sub(4,4,int8),
-    test_sub(24,24,int16),
-    test_sub(128,128,int32).
+    test_em([{test_sub,[4,4,int8]},
+	     {test_sub,[24,24,int16]},
+	     {test_sub,[128,128,int32]}]).
 
 test_sub(N,M,T) ->
     A = make(N,M,T),
@@ -73,9 +102,10 @@ test_sub(N,M,T) ->
     ok.
 
 test_times() ->
-    test_times(4,4,int16),
-    test_times(24,24,int32),
-    test_times(128,128,int32).
+    test_em([
+	     {test_times,[4,4,int16]},
+	     {test_times,[24,24,int32]},
+	     {test_times,[128,128,int32]}]).
 
 test_times(N,M,T) ->
     A = make(N,M,T),
@@ -86,9 +116,10 @@ test_times(N,M,T) ->
     ok.
 
 test_negate() ->
-    test_negate(4,4,int8),
-    test_negate(24,24,int16),
-    test_negate(128,128,int32).
+    test_em([{test_negate,[4,4,int8]},
+	     {test_negate,[24,24,int16]},
+	     {test_negate,[128,128,int32]}]).
+
 
 test_negate(N,M,T) ->
     A = make(N,M,T),

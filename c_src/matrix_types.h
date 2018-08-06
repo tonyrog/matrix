@@ -152,6 +152,10 @@ typedef union {
     float64_t     f64;
     complex64_t   c64;
     complex128_t  c128;
+    byte_t        data[VSIZE];
+} scalar_t;
+
+typedef union {
     vint8_t       vi8;
     vint16_t      vi16;
     vint32_t      vi32;
@@ -161,7 +165,7 @@ typedef union {
     vcomplex64_t  vc64;
     vcomplex128_t vc128;
     byte_t        data[VSIZE];
-} scalar_t;
+} vscalar_t;
 
 
 #if defined(__x86_64__) && (VSIZE == 16)

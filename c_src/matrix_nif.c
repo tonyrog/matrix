@@ -93,8 +93,8 @@ typedef struct {
     byte_t* data;           // aligned data
     byte_t* first;          // pointer to first element within data
     uintptr_t ptr;          // resource pointer (may be self)
-    scalar_t sdata;         // raw scalar data
-} matrix_t;
+    scalar_t sdata __attribute__ ((aligned (VSIZE)));  // raw scalar data
+} __attribute__ ((packed)) matrix_t;
 
 // used for add/sub/times ...
 typedef void (*mt_binary_func_t)(byte_t* ap, int au, int av,
@@ -134,7 +134,7 @@ typedef void (*mtv_kmulop_func_t)(byte_t* ap,int au,size_t an, size_t am,
 				  byte_t* cp,int cu,int cv);
 
 // Global data (store in env?)
-static ErlNifResourceType* matrix_r;
+static ErlNifResourceType* matrix_res;
 static ErlNifTSDKey matrix_k;
 
 #if 0
@@ -326,8 +326,8 @@ static ERL_NIF_TERM matrix_min(ErlNifEnv* env, int argc,
 			       const ERL_NIF_TERM argv[]);
 
 #if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 12))
-#define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
-//#define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(0)}
+//#define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
+#define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(0)}
 #elif (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 7))
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(0)}
 #else
@@ -2937,7 +2937,7 @@ static matrix_t* init_matrix(matrix_t* mp,
 matrix_t* alloc_matrix_resource(size_t n, size_t m,
 				bool_t rowmajor,matrix_type_t type,size_t align)
 {
-    matrix_t* mp = enif_alloc_resource(matrix_r, sizeof(matrix_t));
+    matrix_t* mp = enif_alloc_resource(matrix_res, sizeof(matrix_t));
 
     if (mp != NULL) {
 	size_t byte_stride = (size_of_array(type,m)+align-1) & ~(align-1);
@@ -2961,7 +2961,6 @@ matrix_t* alloc_matrix_resource(size_t n, size_t m,
 	    mp->rw_lock = enif_rwlock_create("matrix");
 	    mp->data = align_ptr(mp->base,align);
 	    mp->first = mp->data;
-	    memset(mp->base, 0, size+align-1);
 	}
 	else {
 	    enif_release_resource(mp);
@@ -2981,6 +2980,7 @@ int create_matrix(ErlNifEnv* env, unsigned int n, unsigned int m,
 	*resp = enif_make_resource_binary(env,np,np->data,np->size);
 	// NOTE! compiler generate code that crash on *mp = *np!
 	// probalbly bad opcodes generated because of vector elements!
+	// *mp = *np
 	memcpy(mp, np, sizeof(matrix_t));
 	enif_release_resource(np);
 	return 1;
@@ -3095,14 +3095,16 @@ static int get_matrix(ErlNifEnv* env, ERL_NIF_TERM arg, matrix_t* mp)
     else
 	vsize = (mp->n-1)*n_stride + mp->m*m_stride;
 
-    if (ptr && enif_get_resource(env, elems[9], matrix_r, (void**)&rmp) &&
+    if (ptr && enif_get_resource(env, elems[9], matrix_res, (void**)&rmp) &&
 	(rmp->ptr == ptr)) {
 	if ((byte_offset + vsize) > rmp->size)
 	    return 0;
 	mp->size = rmp->size;
 	mp->base = rmp->base;
+	// Compiler error?
 	mp->data = rmp->data;
-	mp->first = mp->data + byte_offset;
+	// memcpy(&mp->data, &rmp->data, sizeof(rmp->data));
+	mp->first = rmp->data + byte_offset;
 	mp->rw_lock = rmp->rw_lock;
 	mp->ptr   = rmp->ptr;
     }
@@ -3116,6 +3118,7 @@ static int get_matrix(ErlNifEnv* env, ERL_NIF_TERM arg, matrix_t* mp)
 	mp->size = bin.size;
 	mp->base = NULL;
 	mp->data = bin.data;
+	// memcpy(&mp->data, &bin.data, sizeof(bin.data));	
 	mp->first = mp->data + byte_offset;
 	mp->rw_lock = NULL;
 	mp->ptr  = 0;
@@ -3313,6 +3316,7 @@ ERL_NIF_TERM matrix_element(ErlNifEnv* env, int argc,
 	    return make_matrix(env, c.n, c.m, c.rowmajor, c.type, &c, bin);
 	}
 	else { // a.rowmajor / index.rowmajor
+	
 	    if ((index.m > a.n) || (index.n > a.m))
 		return BADARG(env);
 	    if (!index_check((int32_t*)index.first, index.nstep, index.mstep,
@@ -3344,6 +3348,7 @@ ERL_NIF_TERM matrix_element(ErlNifEnv* env, int argc,
 	    return enif_make_badarg(env);
 	if (!get_matrix(env, argv[2], &a))
 	    return enif_make_badarg(env);
+	
 	if (a.rowmajor) {
 	    if ((i < 1) || (i > a.n))
 		return enif_make_badarg(env);
@@ -4950,7 +4955,7 @@ ERL_NIF_TERM matrix_identity(ErlNifEnv* env, int argc,
     if (!create_matrix(env,n,m,TRUE,type,&c,&bin))
 	return enif_make_badarg(env);
 
-    memset(c.base, 0, c.size);  // set to zero
+    memset(c.data, 0, c.size);  // set to zero
 
     elem_size     = element_size(type);
     col_step = elem_size;
@@ -5457,9 +5462,9 @@ static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     LOAD_ATOM(undefined);
     LOAD_ATOM(exp);
 
-    matrix_r = enif_open_resource_type(env, 0, "matrix",
-				       (ErlNifResourceDtor*) matrix_dtor,
-				       ERL_NIF_RT_CREATE, &tried);
+    matrix_res = enif_open_resource_type(env, 0, "matrix",
+					 (ErlNifResourceDtor*) matrix_dtor,
+					 ERL_NIF_RT_CREATE, &tried);
 
     enif_tsd_key_create("rand", &matrix_k);
 
