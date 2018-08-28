@@ -647,9 +647,9 @@ map_elems(F,X,Y) ->
 sigmoid__(X) when is_float(X) ->
     1.0/(1.0 + math:exp(-X)).
 
-sigmoid_prime__(X) ->
-    Z = sigmoid__(X),
-    Z*(1-Z).
+%% sigmoid_prime__(X) ->
+%%     Z = sigmoid__(X),
+%%    Z*(1-Z).
 
 softplus__(X) ->
     math:log(1 + math:exp(X)).
@@ -764,7 +764,7 @@ complex_divide({A1,B1},{A2,B2}) ->
     {(A1*A2 + B1*B2) / D, -((A1*B2 + A2*B1) / D)}.
 
 complex_abs({A,B}) -> math:sqrt(A*A+B*B).
-complex_arg({A,B}) -> math:atan2(B,A).
+%% complex_arg({A,B}) -> math:atan2(B,A).
 
 complex_exp({X,Y}) -> Ex = math:exp(X), {Ex*math:cos(Y),Ex*math:sin(Y)}.
 

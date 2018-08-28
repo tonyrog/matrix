@@ -21,13 +21,14 @@
 -type matrix_type() :: int8|int16|int32|int64|
 		       float32|float64|
 		       complex64|complex128.
+-type encoded_type() :: 0..7.
 		       
 -type complex() :: {float(),float()}.
 -type scalar() :: integer()|float()|complex().
 
 -record(matrix,
 	{
-	  type :: 0..7,             %% encoded element type
+	  type :: encoded_type(),
 	  n :: unsigned(),          %% rows
 	  m :: unsigned(),          %% columns
 	  nstep :: integer(),       %% #elements in n direction
@@ -36,6 +37,14 @@
 	  offset = 0 :: unsigned(), %% offset to first element
 	  rowmajor :: boolean(),    %% stored row-by-row else col-by-col
 	  data :: binary()          %% native encode raw matrix data
+	}).
+
+-type resource() :: binary() | reference().
+-record(matrix_t,
+	{
+	 type :: encoded_type(),
+	 ptr  :: unsigned(),
+	 resource :: resource()
 	}).
 
 -type matrix() :: #matrix{}.
