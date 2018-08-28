@@ -900,7 +900,6 @@ bench(N,F,T,L,At,Bt) ->
     bench(N,F,fun(_N) -> 0 end,T,L,At,Bt).
 
 bench(N,F,Flop,T,L,At,Bt) ->
-    matrix:clear_counters(),
     A0 = matrix:uniform(N,N,T),
     A = if At -> matrix:transpose(A0);
 	   true -> A0
@@ -927,7 +926,6 @@ bench_inline(N,F,T,L,At,Bt) ->
     bench_inline(N,F,fun(_N) -> 0 end,T,L,At,Bt).
 
 bench_inline(N,F,Flop,T,L,At,Bt) ->
-    matrix:clear_counters(),
     A0 = matrix:uniform(N,N,T),
     A = if At -> matrix:transpose(A0);
 	   true -> A0
@@ -959,7 +957,6 @@ format_flops(Flop, N, L, Ts) ->
     end.
 
 bench_transform(N,F,T,L,Vt) ->
-    matrix:clear_counters(),
     Transform = matrix:uniform(4,4,T),
     V = if Vt -> matrix:transpose(matrix:uniform(N,4,T));
 	   true -> matrix:uniform(4,N,T)

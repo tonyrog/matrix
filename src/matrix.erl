@@ -62,19 +62,8 @@
 -export([filter/2, filter/4, filter/5]).
 
 %% internal nifs
--export([size_/1]).
--export([add_/2,add_/3]).
--export([multiply_/2, multiply_/3]).
--export([kmultiply_/3, kmultiply_/4]).
--export([ktimes_/3, ktimes_/4]).
--export([negate_/1, negate_/2]).
--export([sigmoid_/1]).
--export([sigmoid_prime_/2]).
--export([l2pool_/5, l2pool_/6]).
--export([maxpool_/5, maxpool_/6]).
--export([max_/2, min_/2]).
--export([filter_/4, filter_/5]).
--export([apply1_/2, apply1_/3]).
+-export([create_/5, identity_/3]).
+-export([kmultiply_/4, ktimes_/4]).
 
 %% internal use
 -export([encode_type/1]).
@@ -223,12 +212,10 @@ type_list([], T) ->
 %%
 -spec to_list(X::matrix()) -> [[number()]].
 
-to_list(A=#matrix{n=N,rowmajor=true}) ->
+to_list(A) ->
+    {N,_} = size(A),
     [foldr_row(I, fun(Xij,Acc) -> [Xij|Acc] end, [], A) ||
-	I <- lists:seq(1,N)];
-to_list(A=#matrix{m=M,rowmajor=false}) ->
-    [foldr_row(I, fun(Xij,Acc) -> [Xij|Acc] end, [], A) ||
-	I <- lists:seq(1,M)].
+	I <- lists:seq(1,N)].
 
 -spec normal({N::unsigned(), M::unsigned()}) -> matrix().
 normal({N,M}) ->
@@ -243,7 +230,7 @@ normal(N,M,T) when is_integer(N), N >= 1,
 		   is_integer(M), M >= 1 ->
     Type = encode_type(T),
     A = create(N,M,Type,true,[]),
-    apply1_(normal, A, A).
+    apply1(normal, A, A).
 
 -spec uniform({N::unsigned(), M::unsigned()}) -> matrix().
 uniform({N,M}) ->
@@ -258,7 +245,7 @@ uniform(N,M,T) when is_integer(N), N >= 1,
 		    is_integer(M), M >= 1 ->
     Type = encode_type(T),
     A = create(N,M,Type,true,[]),
-    apply1_(uniform, A, A).
+    apply1(uniform, A, A).
 
 -spec zero({N::unsigned(), M::unsigned()}) -> matrix().
 zero({N,M}) -> zero(N,M,float64).
@@ -304,8 +291,6 @@ constant_(N,M,Type,C) ->
     Bin = elem_to_bin(T,C),
     #matrix { type=T, n=N, m=M, nstep=0, mstep=0, rowmajor=true, data=Bin }.
 
-
-
 -spec cdata(N::unsigned(), Data::[scalar()]) -> matrix().
 cdata(N,X=#matrix{n=1,m=_M}) when N > 0 ->
     X#matrix { n=N, nstep=0 };
@@ -342,24 +327,17 @@ identity(N,M,Type) when is_integer(N), N >= 1,
 identity_(_N,_M,_T) ->
     ?nif_stub().
 
--spec apply1_(A::matrix(), Op::atom()) -> matrix().
-apply1_(_A, _Op) ->
+-spec apply1(A::matrix(), Op::atom()) -> matrix().
+apply1(_A, _Op) ->
     ?nif_stub().
 
--spec apply1_(A::matrix(), Dst::matrix(), Op::atom()) -> matrix().
-apply1_(_A, _Dst, _Op) ->
+-spec apply1(A::matrix(), Dst::matrix(), Op::atom()) -> matrix().
+apply1(_A, _Dst, _Op) ->
     ?nif_stub().
 
 %% return dimension in row major order
 -spec size(M::matrix()) -> {unsigned(), unsigned()}.
-size(#matrix_t{resource=R}) ->
-    size_(R);
-size(#matrix{rowmajor=true,n=N,m=M}) ->
-    {N,M};
-size(#matrix{rowmajor=false,n=N,m=M}) ->
-    {M,N}.
-
-size_(_A) ->
+size(_A) ->
     ?nif_stub().    
 
 type(#matrix{type=T}) ->
@@ -396,8 +374,7 @@ element_(_I,_J,_A) ->
 element({I,J},A) when is_integer(I), is_integer(J) -> element(I,J,A);
 element(I,A=#matrix{rowmajor=true}) when is_integer(I) -> row(I,A);
 element(J,A=#matrix{rowmajor=false}) when is_integer(J) -> column(J,A);
-element(I=#matrix{},A=#matrix{}) ->
-    element_(I,A).
+element(I,A) -> element_(I,A).
 
 element_(_I,_A) ->
     ?nif_stub().
@@ -478,10 +455,7 @@ foldr_column_(I,J,F,A,X) ->
 	 (A::matrix(), B::scalar()) -> matrix();
 	 (A::scalar(), B::matrix()) -> matrix().
 
-add(A,B) ->
-    add_(A,B).
-
-add_(_A,_B) ->
+add(_A,_B) ->
     ?nif_stub().
 
 %% destructive add
@@ -489,10 +463,7 @@ add_(_A,_B) ->
 	 (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
 	 (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
 
-add(A, B, Dst) ->
-    add_(A, B, Dst).
-
-add_(_A, _B, _Dst) ->
+add(_A, _B, _Dst) ->
     ?nif_stub().
 
 %%
@@ -503,21 +474,15 @@ add_(_A, _B, _Dst) ->
 	      (A::matrix(), B::scalar()) -> matrix();
 	      (A::scalar(), B::matrix()) -> matrix().
 
-subtract(A, B) ->
-    subtract_(A, B).
+subtract(_A, _B) ->
+    ?nif_stub().
 
 %% destructive subtract
 -spec subtract(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
 	      (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
 	      (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
 
-subtract(A, B, Dst) ->
-    subtract_(A,B,Dst).
-
-subtract_(_A,_B,_Dst) ->
-    ?nif_stub().
-
-subtract_(_A, _B) ->
+subtract(_A,_B,_Dst) ->
     ?nif_stub().
 
 %%
@@ -527,37 +492,25 @@ subtract_(_A, _B) ->
 	   (A::matrix(), B::scalar()) -> matrix();
 	   (A::scalar(), B::matrix()) -> matrix().
 
-times(A,B) ->
-    times_(A,B).
-
-times_(_A,_B) ->
+times(_A,_B) ->
     ?nif_stub().
 
 -spec times(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
 	   (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
 	   (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
 
-times(A,B,Dst) ->
-    times_(A,B,Dst).
-
-times_(_X,_Y,_Dst) ->
+times(_X,_Y,_Dst) ->
     ?nif_stub().
 
 %%
 %% Negate a matrix
 %%
 -spec negate(A::matrix()) -> matrix().
-negate(A) ->
-    negate_(A).
-
-negate_(_A) ->
+negate(_A) ->
     ?nif_stub().
 
 -spec negate(A::matrix(),Dst::matrix()) -> matrix().
-negate(A, Dst) ->
-    negate_(A, Dst).
-
-negate_(_A, _Dst) ->
+negate(_A, _Dst) ->
     ?nif_stub().
 
 %%
@@ -575,31 +528,22 @@ scale(F, X, Dst) when ?is_scalar(F) ->
 %% expontiation of all elements
 -spec exp(X::matrix()) -> matrix().
 exp(X) ->
-    apply1_(exp, X).
+    apply1(exp, X).
 
 %%
 %% Multiply elementwise and add everything
 %%
 -spec mulsum(X::matrix(), Y::matrix()) -> number().
-mulsum(X,Y) ->
-    mulsum_(X,Y).
-
-mulsum_(_X,_Y) ->
+mulsum(_X,_Y) ->
     ?nif_stub().
 
 %% sum all elements in matrix
 -spec sum(X::matrix()) -> number().
-sum(X) ->
-    sum_(X).
-
-sum_(_X) ->
+sum(_X) ->
     ?nif_stub().
 
 -spec sum(A::matrix(), Axis::0|1) -> matrix().
-sum(A, Axis) ->
-    sum_(A, Axis).
-
-sum_(_A, _Axis) ->
+sum(_A, _Axis) ->
     ?nif_stub().
 
 %% expsum
@@ -641,28 +585,18 @@ pow_(A,B,P) ->
 %% Multiply two matrices
 %%
 -spec multiply(X::matrix(), Y::matrix()) -> matrix().
-
-multiply(A, B) ->
-    multiply_(A,B).
-
-multiply_(_A, _B) ->
+multiply(_A, _B) ->
     ?nif_stub().
 
 -spec multiply(X::matrix(), Y::matrix(), RowMajor::boolean) ->  matrix() ;
 	      (X::matrix(), Y::matrix(), Dst::matrix()) -> matrix().
 
-multiply(A, B, Arg) ->
-    multiply_(A, B, Arg).
-
-multiply_(_A, _B, _Arg) ->
+multiply(_A, _B, _Arg) ->
     ?nif_stub().
 
 %% get the top K elements from A as a integer matrix Kwith indices
 -spec topk(A::matrix(), K::unsigned()) -> matrix().
-topk(A, K) ->
-    topk_(A,K).
-
-topk_(_A,_K) ->
+topk(_A,_K) ->
     ?nif_stub().    
 
 %%
@@ -804,20 +738,14 @@ maxpool(N, M, A) ->
 -spec maxpool(N::unsigned(),M::unsigned(),
 	      Sn::unsigned(),Sm::unsigned(),A::matrix()) -> matrix().
 
-maxpool(N, M, Sn, Sm, A) ->
-    maxpool_(N, M, Sn, Sm, A).
-
-maxpool_(_N, _M, _Sn, _Sm, _A) ->
+maxpool(_N, _M, _Sn, _Sm, _A) ->
     ?nif_stub().
 
 -spec maxpool(N::unsigned(),M::unsigned(),Sn::unsigned(),Sm::unsigned(),
 	      A::matrix(),Dst::matrix()) ->
 		     matrix().
 
-maxpool(N, M, Sn, Sm, A, Dst) ->
-    maxpool_(N, M, Sn, Sm, A, Dst).
-
-maxpool_(_N, _M, _Sn, _Sm, _A, _Dst) ->
+maxpool(_N, _M, _Sn, _Sm, _A, _Dst) ->
     ?nif_stub().
 
 %% l2pool
@@ -829,19 +757,13 @@ l2pool(N, M, A) ->
 -spec l2pool(N::unsigned(),M::unsigned(),
 	     Sn::unsigned(),Sm::unsigned(),A::matrix()) -> matrix().
 
-l2pool(N, M, Sn, Sm, A) ->
-    l2pool_(N, M, Sn, Sm, A).
-
-l2pool_(_N, _M, _Sn, _Sm, _A) ->
+l2pool(_N, _M, _Sn, _Sm, _A) ->
     ?nif_stub().
 
 -spec l2pool(A::matrix(),N::unsigned(),M::unsigned(),
 	     Sn::unsigned(),Sm::unsigned(),Dst::matrix()) -> matrix().
 
-l2pool(N, M, Sn, Sm, A, Dst) ->
-    l2pool_(N, M, Sn, Sm, A, Dst).
-
-l2pool_(_N, _M, _Sn, _Sm, _A, _Dst) ->
+l2pool(_N, _M, _Sn, _Sm, _A, _Dst) ->
     ?nif_stub().
 
 %%
@@ -854,19 +776,13 @@ filter(W, X) ->
 -spec filter(W::matrix(), Sn::unsigned(), Sm::unsigned(), A::matrix()) ->
 		    matrix().
 
-filter(W, Sn, Sm, A) ->
-    filter_(W, Sn, Sm, A).
-
-filter_(_W, _Sn, _Sm, _A) ->
+filter(_W, _Sn, _Sm, _A) ->
     ?nif_stub().
 
 -spec filter(W::matrix(), Sn::unsigned(), Sm::unsigned(), A::matrix(),
 	     Dst::matrix()) -> matrix().
 
-filter(W, Sn, Sm, A, Dst) ->
-    filter_(W, Sn, Sm, A, Dst).
-
-filter_(_W, _Sn, _Sm, _A, _Dst) ->
+filter(_W, _Sn, _Sm, _A, _Dst) ->
     ?nif_stub().
 
 %% argmax
@@ -879,70 +795,49 @@ argmax(A) ->
 
 -spec argmax(A::matrix(),Axis::0|1) -> [integer()].
 
-argmax(A,I) ->
-    argmax_(A,I).
-
-argmax_(_A,_I) ->
+argmax(_A,_I) ->
     ?nif_stub().
 
 -spec max(A::matrix()) -> scalar().
-max(A) ->
-    max_(A).
-
-max_(_A) ->
+max(_A) ->
     ?nif_stub().
 
 -spec max(A::matrix(), Axis::0|1) -> matrix().
-max(A, Axis) ->
-    max_(A, Axis).
-
-max_(_A, _Axis) ->
+max(_A, _Axis) ->
     ?nif_stub().
 
 -spec min(A::matrix()) -> scalar().
-min(A) ->
-    min_(A).
-
-min_(_A) ->
+min(_A) ->
     ?nif_stub().
 
 -spec min(A::matrix(), Axis::0|1) -> matrix().
-min(A, Axis) ->
-    min_(A, Axis).
-
-min_(_A, _Axis) ->
+min(_A, _Axis) ->
     ?nif_stub().
 
 -spec sigmoid(A::matrix()) -> matrix().
-sigmoid(X) ->
-    sigmoid_(X).
-
-sigmoid_(_X) ->
+sigmoid(_X) ->
     ?nif_stub().
 
 -spec sigmoid_prime(A::matrix(),Out::matrix()) -> matrix().
 %% Out = sigmoid(A)!!!  sigmoid_prime = Out*(1-Out)
-sigmoid_prime(X,Out) ->
-    sigmoid_prime_(X,Out).
-
-sigmoid_prime_(_A,_Out) ->
+sigmoid_prime(_A,_Out) ->
     ?nif_stub().
 
 -spec relu(A::matrix()) -> matrix().
 relu(A) ->
-    apply1_(relu, A).
+    apply1(relu, A).
 
 -spec relu_prime(A::matrix(),Out::matrix()) -> matrix().
 relu_prime(A,_Out) ->
-    apply1_(relu_prime, A).
+    apply1(relu_prime, A).
 
 -spec leaky_relu(A::matrix()) -> matrix().
 leaky_relu(A) ->
-    apply1_(leaky_relu, A).
+    apply1(leaky_relu, A).
 
 -spec leaky_relu_prime(A::matrix(),Out::matrix()) -> matrix().
 leaky_relu_prime(A,_Out) ->
-    apply1_(leaky_relu_prime, A).
+    apply1(leaky_relu_prime, A).
 
 -spec linear(A::matrix()) -> matrix().
 linear(A) ->
@@ -954,30 +849,30 @@ linear_prime(A,_Out) ->
 
 -spec softplus(A::matrix()) -> matrix().
 softplus(A) ->
-    apply1_(softplus, A).
+    apply1(softplus, A).
 
 -spec softplus_prime(A::matrix(),Out::matrix()) -> matrix().
 softplus_prime(A,_Out) ->
-    apply1_(softplus_prime, A).
+    apply1(softplus_prime, A).
 
 -spec softmax(A::matrix()) -> matrix().
 softmax(A) ->
     A1 = subtract(A, max(A)),
-    scale(1/expsum(A1), apply1_(exp,A1)).
+    scale(1/expsum(A1), apply1(exp,A1)).
 
 -spec softmax_prime(A::matrix(),Out::matrix()) -> matrix().
 softmax_prime(A,_Out) ->
-    apply1_(softmax_prime, A).
+    apply1(softmax_prime, A).
 
 
 -spec tanh(A::matrix()) -> matrix().
 tanh(A) ->
-    apply1_(tanh, A).
+    apply1(tanh, A).
 
 -spec tanh_prime(A::matrix(),Out::matrix()) -> matrix().
 %% grad'(x) =
 tanh_prime(_A,Out) ->
-    apply1_(tanh_prime1, Out).
+    apply1(tanh_prime1, Out).
 
 print(A) ->
     io:put_chars(format(A)).
