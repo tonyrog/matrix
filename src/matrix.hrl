@@ -47,7 +47,7 @@
 	 resource :: resource()
 	}).
 
--type matrix() :: #matrix{}.
+-type matrix() :: #matrix_t{} | #matrix{}.
 
 -define(is_complex_matrix(X),
 	((X#matrix.type >= ?complex64) andalso (X#matrix.type =< ?complex128))).

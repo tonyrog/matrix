@@ -421,17 +421,6 @@ foldl_rows(I,N,M,F,A,X) ->
     A1 = foldl_row(I,F,A,X),
     foldl_rows(I+1,N,M,F,A1,X).
 
-foldr_matrix(F,A,X) ->
-    {N,_M} = size(X),
-    foldr_rows(1,N,F,A,X).
-
-foldr_rows(I,N,_F,A,_X) when I > N -> A;
-foldr_rows(I,N,F,A,X) ->
-    A1 = foldr_row(I,F,A,X),
-    foldr_rows(I+1,N,F,A1,X).
-
-
-
 foldl_row(I,F,A,X) ->
     {_N,M} = size(X),
     foldl_row_(I,1,M,F,A,X).
@@ -442,6 +431,15 @@ foldl_row_(I,J,M,F,A,X) ->
     A1 = F(E,A),
     foldl_row_(I,J+1,M,F,A1,X).
 
+
+foldr_matrix(F,A,X) ->
+    {N,_M} = size(X),
+    foldr_rows(1,N,F,A,X).
+
+foldr_rows(I,N,_F,A,_X) when I > N -> A;
+foldr_rows(I,N,F,A,X) ->
+    A1 = foldr_row(I,F,A,X),
+    foldr_rows(I+1,N,F,A1,X).
 
 foldr_row(I,F,A,X) ->
     {_N,M} = size(X),
