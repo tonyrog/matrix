@@ -70,13 +70,13 @@ create(N,M,Type,RowMajor,Data) when is_atom(Type) ->
     create(N,M,matrix:encode_type(Type),RowMajor,Data);
 create(N,M,T,RowMajor,Data) ->
     #matrix { type=T, n=N, m=M, nstep=M, mstep=1, rowmajor=RowMajor,
-	      data=iolist_to_binary(Data)}.
+	      resource=iolist_to_binary(Data)}.
 
 
 -spec element(I::unsigned(),J::unsigned(),X::matrix()) -> number().
 %% element I,J in row/column order (i.e rowmajor)
 element(I,J,#matrix{rowmajor=true,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
-		    type=T,data=D})
+		    type=T,resource=D})
   when
       is_integer(I), I > 0, I =< N, 
       is_integer(J), J > 0, J =< M ->
@@ -85,7 +85,7 @@ element(I,J,#matrix{rowmajor=true,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
 	end,
     decode_element_at(P, T, D);
 element(I,J,#matrix{rowmajor=false,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
-		    type=T,data=D})
+		    type=T,resource=D})
   when
       is_integer(I), I > 0, I =< M, 
       is_integer(J), J > 0, J =< N ->
@@ -141,23 +141,23 @@ decode_element_at(P, T, Bin) ->
 			matrix().
 %% element I,J in row/column order (i.e rowmajor)
 setelement(I,J,X=#matrix{rowmajor=true,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
-		       type=T,data=D}, V)
+		       type=T,resource=D}, V)
   when
       is_integer(I), I > 0, I =< N, 
       is_integer(J), J > 0, J =< M ->
     P = if Sn =:= 0, Sm =:= 0 -> O;
 	   true -> O + (I-1)*Sn+(J-1)
 	end,
-    X#matrix{data=set_element_at(P, T, D, V)};
+    X#matrix{resource=set_element_at(P, T, D, V)};
 setelement(I,J,X=#matrix{rowmajor=false,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
-			 type=T,data=D}, V)
+			 type=T,resource=D}, V)
   when
       is_integer(I), I > 0, I =< M, 
       is_integer(J), J > 0, J =< N ->
     P = if Sn =:= 0, Sm =:= 0 -> O;
 	   true -> O + (J-1)*Sn+(I-1)
 	end,
-    X#matrix{data=set_element_at(P, T, D, V)}.
+    X#matrix{resource=set_element_at(P, T, D, V)}.
 
 %% P is element position not byte position
 set_element_at(P, T, Bin, V) ->

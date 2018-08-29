@@ -25,29 +25,29 @@
 		       
 -type complex() :: {float(),float()}.
 -type scalar() :: integer()|float()|complex().
+-type resource() :: reference() | {unsigned(),binary()} | binary().
 
 -record(matrix,
 	{
-	  type :: encoded_type(),
-	  n :: unsigned(),          %% rows
-	  m :: unsigned(),          %% columns
-	  nstep :: integer(),       %% #elements in n direction
-	  mstep :: integer(),       %% #elements in m direction
-	  ptr = 0 :: unsigned(),    %% 0 is binary, not 0 is resource binary
-	  offset = 0 :: unsigned(), %% offset to first element
-	  rowmajor :: boolean(),    %% stored row-by-row else col-by-col
-	  data :: binary()          %% native encode raw matrix data
+	 type :: encoded_type(),
+	 resource :: resource(),   %% native encode raw matrix data
+	 n :: unsigned(),          %% rows
+	 m :: unsigned(),          %% columns
+	 nstep :: integer(),       %% #elements in n direction
+	 mstep :: integer(),       %% #elements in m direction
+	 offset = 0 :: unsigned(), %% offset to first element
+	 rowmajor :: boolean()     %% stored row-by-row else col-by-col
 	}).
 
--type resource() :: binary() | reference().
 -record(matrix_t,
 	{
-	 type :: encoded_type(),
-	 ptr  :: unsigned(),
+	 type     :: encoded_type(),
 	 resource :: resource()
 	}).
 
 -type matrix() :: #matrix_t{} | #matrix{}.
+
+-define(is_matrix(X), (is_record((X),matrix) orelse is_record((X),matrix_t))).
 
 -define(is_complex_matrix(X),
 	((X#matrix.type >= ?complex64) andalso (X#matrix.type =< ?complex128))).

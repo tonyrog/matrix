@@ -18,7 +18,9 @@
 -export([normal/1, uniform/1, zero/1, one/1, identity/1]).
 -export([normal/2, uniform/2, zero/2, one/2, identity/2]).
 -export([normal/3, uniform/3, zero/3, one/3, identity/3]).
+-export([rep/3, rep/4]).
 -export([constant/3, constant/4]).
+
 -export([cdata/2, cdata/3]).
 -export([add/2,add/3]).
 -export([subtract/2,subtract/3]).
@@ -290,7 +292,32 @@ constant(N,M,Type,C) when is_integer(N), N >= 1,
 constant_(N,M,Type,C) ->
     T = encode_type(Type),
     Bin = elem_to_bin(T,C),
-    #matrix { type=T, n=N, m=M, nstep=0, mstep=0, rowmajor=true, data=Bin }.
+    #matrix { type=T, n=N, m=M, nstep=0, mstep=0, rowmajor=true, resource=Bin }.
+
+-spec rep(N::unsigned(), M::unsigned(), scalar()) -> matrix().
+rep(N, M, C) when is_integer(C) ->
+    rep(N,M,int32,C);
+rep(N, M, C) when is_float(C) ->
+    rep(N,M,int32,C);
+rep(N, M, C) when ?is_complex(C) ->
+    rep(N,M,complex64,C);
+rep(N, 1, A=#matrix{n=1,rowmajor=true}) ->
+    A#matrix { n=N, nstep=0 };
+rep(1, M, A=#matrix{m=1,rowmajor=false}) ->
+    A#matrix { m=M, mstep=0 };
+rep(N, M, A) when ?is_matrix(A) ->
+    rep_(N, M, A).
+
+rep_(N, M, A) ->
+    {Na,Ma,Ta} = signature(A),
+    Dst = create(N*Na,M*Ma,Ta,[]),
+    copy(A, Dst, N, M).
+
+rep(N, M, Type, C) when is_atom(Type), ?is_scalar(C) ->
+    T = encode_type(Type),
+    Bin = elem_to_bin(T,C),
+    #matrix { type=T, n=N, m=M, nstep=0, mstep=0, rowmajor=true, resource=Bin }.
+
 
 -spec cdata(N::unsigned(), Data::[scalar()]) -> matrix().
 cdata(N,X=#matrix{n=1,m=_M}) when N > 0 ->
@@ -307,7 +334,7 @@ cdata(N,Type,CData) when is_integer(N), N>=0, is_list(CData) ->
 cdata_(N,T,CData) ->
     M = length(CData),
     Bin = list_to_binary([elem_to_bin(T,E) || E <- CData]),
-    #matrix { type=T, n=N, m=M, nstep=0, mstep=1, rowmajor=true, data=Bin }.
+    #matrix { type=T, n=N, m=M, nstep=0, mstep=1, rowmajor=true, resource=Bin }.
 
 -spec identity({N::unsigned(), M::unsigned()}) -> matrix().
 identity({N,M}) ->
