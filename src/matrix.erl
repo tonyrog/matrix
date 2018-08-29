@@ -1,7 +1,7 @@
 %%% @author Tony Rogvall <tony@rogvall.se>
 %%% @copyright (C) 2017, Tony Rogvall
 %%% @doc
-%%%    binary matrix version
+%%%    nif matrix api
 %%% @end
 
 -module(matrix).
@@ -36,6 +36,7 @@
 -export([negate/1, negate/2]).
 -export([size/1]).
 -export([type/1]).
+-export([signature/1]).
 -export([is_integer_matrix/1]).
 -export([is_float_matrix/1]).
 -export([is_complex_matrix/1]).
@@ -336,21 +337,23 @@ apply1(_A, _Dst, _Op) ->
     ?nif_stub().
 
 %% return dimension in row major order
--spec size(M::matrix()) -> {unsigned(), unsigned()}.
+-spec size(A::matrix()) -> {unsigned(), unsigned()}.
 size(_A) ->
-    ?nif_stub().    
+    ?nif_stub().
 
-type(#matrix{type=T}) ->
-    case T of
-	?int8 -> int8;
-	?int16 -> int16;
-	?int32 -> int32;
-	?int64 -> int64;
-	?float32 -> float32;
-	?float64 -> float64;
-	?complex64 -> complex64;
-	?complex128 -> complex128
-    end.
+-spec type(A::matrix()) -> matrix_type().
+type(#matrix_t{type=T}) -> decode_type(T);
+type(#matrix{type=T}) -> decode_type(T).
+
+-spec signature(A::matrix()) -> {unsigned(),unsigned(),matrix_type()}.
+signature(#matrix{n=N,m=M,type=T,rowmajor=true}) ->
+    {N,M,decode_type(T)};
+signature(#matrix{n=N,m=M,type=T,rowmajor=false}) ->
+    {M,N,decode_type(T)};
+signature(A=#matrix_t{type=T}) ->
+    {N,M} = size(A),
+    {N,M,decode_type(T)}.
+
 -spec is_integer_matrix(X::matrix()) -> boolean().
 is_integer_matrix(X) -> ?is_int_matrix(X).
 
@@ -368,12 +371,10 @@ element(I,J,A) ->
 element_(_I,_J,_A) ->
     ?nif_stub().
 
--spec element(I::unsigned(),X::matrix()) -> matrix();
-	     ({I::unsigned(),J::unsigned()},X::matrix()) -> scalar().
+-spec element(I::matrix(),A::matrix()) -> matrix();
+	     ({I::unsigned(),J::unsigned()},A::matrix()) -> scalar().
 
 element({I,J},A) when is_integer(I), is_integer(J) -> element(I,J,A);
-element(I,A=#matrix{rowmajor=true}) when is_integer(I) -> row(I,A);
-element(J,A=#matrix{rowmajor=false}) when is_integer(J) -> column(J,A);
 element(I,A) -> element_(I,A).
 
 element_(_I,_A) ->
@@ -636,14 +637,10 @@ ktimes_(_A, _B, _K) ->
 ktimes_(_A, _B, _K, _C) ->
     ?nif_stub().
 
-%%
 %% Transpose a matrix
-%% if rowmajor then n = number of rows, m = number of columns
-%% if !rowmajor then n = number of columns, m = number of rows!
-%%
 -spec transpose(A::matrix()) -> matrix().
-transpose(X = #matrix{rowmajor=RowMajor}) ->
-    X#matrix { rowmajor=not RowMajor }.
+transpose(_A) ->
+    ?nif_stub().
 
 -spec transpose_data(Src::matrix()) -> matrix().
 transpose_data(_Src) ->
@@ -657,19 +654,17 @@ transpose_data(_Src, _Dst) ->
 %% select a row, return as a matrix with one row
 %%
 -spec row(I::unsigned(), A::matrix()) -> matrix().
-row(I, X=#matrix{rowmajor=true,n=N,m=M}) when I >= 1, I =< N ->
-    submatrix(I, 1, 1, M, X);
-row(I, X=#matrix{rowmajor=false,n=N,m=M}) when I >= 1, I =< M ->
-    submatrix(I, 1, 1, N, X).
+row(I, A) ->
+    {_N,M} = size(A),
+    submatrix(I, 1, 1, M, A).
 
 %%
 %% select a column, return as a matrix with one column
 %%
 -spec column(J::unsigned(), A::matrix()) -> matrix().
-column(J, X=#matrix{rowmajor=true,n=N,m=M}) when J >= 1, J =< M ->
-    submatrix(1, J, N, 1, X);
-column(J, X=#matrix{rowmajor=false,n=N,m=M}) when J >= 1, J =< N ->
-    submatrix(1, J, M, 1, X).
+column(J, A) ->
+    {N,_M} = size(A),
+    submatrix(1, J, N, 1, A).
 
 %%
 %% select a portion of a matrix
@@ -678,21 +673,8 @@ column(J, X=#matrix{rowmajor=false,n=N,m=M}) when J >= 1, J =< N ->
 		N::unsigned(), M::unsigned(),
 		X::matrix()) -> matrix().
 
-%% fixme range check!
-submatrix(I,J,N,M, X=#matrix{rowmajor=true,offset=Offs,nstep=Sn,mstep=Sm}) ->
-    Offset1 = if Sn =:= 0, Sm =:= 0 ->
-		      Offs;
-		 true ->
-		      Offs + (I-1)*Sn + (J-1)
-	      end,
-    X#matrix { n=N, m=M, offset=Offset1};
-submatrix(I,J,N,M, X=#matrix{rowmajor=false,offset=Offs,nstep=Sn,mstep=Sm}) ->
-    Offset1 = if Sn =:= 0, Sm =:= 0 ->
-		      Offs;
-		 true ->
-		      Offs + (J-1)*Sn + (I-1)
-	      end,
-    X#matrix { n=M, m=N, offset=Offset1}.
+submatrix(_I,_J,_N,_M,_A) ->
+    ?nif_stub().
 
 %%
 %% convolve a NxM matrix over the matrix A (soon: with padding Px, Py and
@@ -963,3 +945,15 @@ encode_type(float32) -> ?float32;
 encode_type(float64) -> ?float64;
 encode_type(complex64) -> ?complex64;
 encode_type(complex128) -> ?complex128.
+
+decode_type(T) ->
+    case T of
+	?int8 -> int8;
+	?int16 -> int16;
+	?int32 -> int32;
+	?int64 -> int64;
+	?float32 -> float32;
+	?float64 -> float64;
+	?complex64 -> complex64;
+	?complex128 -> complex128
+    end.    
