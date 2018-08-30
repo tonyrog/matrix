@@ -632,21 +632,21 @@ test_max0() ->
 			  [3,4,5,1,2],
 			  [4,5,1,2,3],
 			  [5,1,2,3,4]],int32),
-    R = matrix:max(A,0),
-    C = matrix:max(A,1),
+    R = matrix:max(A,1),
+    C = matrix:max(A,2),
     [[5,5,5,5,5]] = matrix:to_list(R),
     [[5],[5],[5],[5],[5]] = matrix:to_list(C),
     5 = matrix:max(A),
     5 = matrix:max(R),
     5 = matrix:max(C),
-    5 = matrix:max(A,-1),
+    5 = matrix:max(A,0),
     ok.
 
 test_max(N,M,T) ->
     A = make(N,M,T),
-    R = matrix:max(A,0),     %% max over each column
-    C = matrix:max(A,1),     %% max over each row
-    Max = matrix:max(A,-1),  %% total maximum
+    R = matrix:max(A,1),     %% max over each column
+    C = matrix:max(A,2),     %% max over each row
+    Max = matrix:max(A,0),   %% total maximum
     Max = matrix:max(C),     %% min in column
     Max = matrix:max(R),     %% min in row
     ok.
@@ -664,25 +664,24 @@ test_sum0() ->
 			  [3,4,5,1,2],
 			  [4,5,1,2,3],
 			  [5,1,2,3,4]],int32),
-    R = matrix:sum(A,0),
-    C = matrix:sum(A,1),
+    R = matrix:sum(A,1),
+    C = matrix:sum(A,2),
     [[15,15,15,15,15]] = matrix:to_list(R),
     [[15],[15],[15],[15],[15]] = matrix:to_list(C),
     75 = matrix:sum(A),
     75 = matrix:sum(R),
     75 = matrix:sum(C),
-    75 = matrix:sum(A,-1),
+    75 = matrix:sum(A,0),
     ok.
 
 test_sum(N,M,T) ->
     A = make(N,M,T),
-    R = matrix:sum(A,0),
-    C = matrix:sum(A,1),
-    Sum = matrix:sum(A,-1),  %% total sum
+    R = matrix:sum(A,1),
+    C = matrix:sum(A,2),
+    Sum = matrix:sum(A,0),   %% total sum
     Sum = matrix:sum(C),     %% min in column
     Sum = matrix:sum(R),     %% min in row
     ok.
-
 
 test_argmax() ->
     test_argmax0(),
@@ -691,23 +690,26 @@ test_argmax() ->
     test_max(128,128,int32),
     ok.
 
-
 test_argmax0() ->
     A = matrix:from_list([[1,2,3,4,5],
 			  [2,3,4,5,1],
 			  [3,4,5,1,2],
 			  [4,5,1,2,3],
 			  [5,1,2,3,4]],int32),
-    R = matrix:argmax(A,0),
-    C = matrix:argmax(A,1),
+    R = matrix:argmax(A,1),
+    C = matrix:argmax(A,2),
     [[5,4,3,2,1]] = matrix:to_list(R),
     [[5],[4],[3],[2],[1]] = matrix:to_list(C),
+    %% argmax(A,0) return index to max element
+    I = matrix:element(1,1,matrix:argmax(matrix:max(A, 2),1)),
+    J = matrix:element(1,1,matrix:argmax(matrix:max(A, 1),2)),
+    {I, J} = matrix:argmax(A,0),
     ok.
 
 test_argmax(N,M,T) ->
     A = make(N,M,T),
-    R = matrix:argmax(A,0),
-    C = matrix:argmax(A,1),
+    R = matrix:argmax(A,1),
+    C = matrix:argmax(A,2),
     R1 = [lists:duplicate(M,N)],
     C1 = [[I] || I <- lists:duplicate(N,M)],
     R1 = matrix:to_list(R),

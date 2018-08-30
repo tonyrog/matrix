@@ -19,7 +19,7 @@
 -export([normal/2, uniform/2, zero/2, one/2, identity/2]).
 -export([normal/3, uniform/3, zero/3, one/3, identity/3]).
 -export([rep/3, rep/4]).
--export([constant/3, constant/4]).
+-export([constant/2, constant/3, constant/4]).
 
 -export([cdata/2, cdata/3]).
 -export([add/2,add/3]).
@@ -36,6 +36,7 @@
 -export([square/1]).
 -export([pow/2]).
 -export([negate/1, negate/2]).
+-export([reciprocal/1, reciprocal/2]).
 -export([size/1]).
 -export([type/1]).
 -export([signature/1]).
@@ -190,23 +191,8 @@ type_lists([], T) ->
 
 type_list(_, T) when T >= ?float32 ->
     T;
-type_list([E|_Es], _T) when ?is_complex(E) ->
-    ?complex128;
 type_list([E|Es], T) ->
-    if is_integer(E) ->
-	    if E >= -16#80, E < 16#80 ->
-		    type_list(Es, erlang:max(?int8,T));
-	       E >= -16#8000, E < 16#8000 ->
-		    type_list(Es, erlang:max(?int16,T));
-	       E >= -16#80000000, E < 16#80000000 ->
-		    type_list(Es, erlang:max(?int32,T));
-	       true ->
-		    type_list(Es, erlang:max(?int64,T))
-	    end;
-       is_float(E) ->
-	    type_list(Es, ?float64)
-
-    end;
+    type_list(Es, erlang:max(arg_type(E),T));
 type_list([], T) ->
     T.
 
@@ -220,9 +206,12 @@ to_list(A) ->
     [foldr_row(I, fun(Xij,Acc) -> [Xij|Acc] end, [], A) ||
 	I <- lists:seq(1,N)].
 
--spec normal({N::unsigned(), M::unsigned()}) -> matrix().
+-spec normal({N::unsigned(), M::unsigned()}) -> matrix();
+	    ({N::unsigned(), M::unsigned(),T::matrix_type()}) -> matrix().
 normal({N,M}) ->
-    normal(N,M,float64).
+    normal(N,M,float64);
+normal({N,M,T}) ->
+    normal(N,M,T).
 
 -spec normal({N::unsigned(), M::unsigned()},T::matrix_type()) -> matrix().
 normal({N,M},T) ->
@@ -235,9 +224,12 @@ normal(N,M,T) when is_integer(N), N >= 1,
     A = create(N,M,Type,true,[]),
     apply1(normal, A, A).
 
--spec uniform({N::unsigned(), M::unsigned()}) -> matrix().
+-spec uniform({N::unsigned(), M::unsigned()}) -> matrix();
+	     ({N::unsigned(), M::unsigned(),T::matrix_type()}) -> matrix().
 uniform({N,M}) ->
-    uniform(N,M,float64).
+    uniform(N,M,float64);
+uniform({N,M,T}) ->
+    uniform(N,M,T).
 
 -spec uniform({N::unsigned(), M::unsigned()},T::matrix_type()) -> matrix().
 uniform({N,M},T) ->
@@ -250,8 +242,12 @@ uniform(N,M,T) when is_integer(N), N >= 1,
     A = create(N,M,Type,true,[]),
     apply1(uniform, A, A).
 
--spec zero({N::unsigned(), M::unsigned()}) -> matrix().
-zero({N,M}) -> zero(N,M,float64).
+-spec zero({N::unsigned(), M::unsigned()}) -> matrix();
+	  ({N::unsigned(), M::unsigned(), T::matrix_type()}) -> matrix().
+zero({N,M}) ->
+    zero(N,M,float64);
+zero({N,M,T}) ->
+    zero(N,M,T).
 
 -spec zero({N::unsigned(), M::unsigned()}, T::matrix_type()) -> matrix().
 zero({N,M},T) -> zero(N,M,T).
@@ -261,16 +257,28 @@ zero(N,M,Type) when is_integer(N), N >= 1,
 		    is_integer(M), M >= 1 ->
     constant_(N, M, Type, 0).
 
--spec one({N::unsigned(), M::unsigned()}) -> matrix().
-one({N,M}) -> one(N,M,float64).
+-spec one({N::unsigned(), M::unsigned()}) -> matrix();
+	 ({N::unsigned(), M::unsigned(), T::matrix_type()}) -> matrix().
+one({N,M}) -> 
+    one(N,M,float64);
+one({N,M,T}) -> 
+    one(N,M,T).
 
 -spec one({N::unsigned(), M::unsigned()}, T::matrix_type()) -> matrix().
 one({N,M},T) -> one(N,M,T).
 
 -spec one(N::unsigned(), M::unsigned(), T::matrix_type()) -> matrix().
 one(N,M,Type) when is_integer(N), N >= 1,
-		 is_integer(M), M >= 1 ->
+		   is_integer(M), M >= 1 ->
     constant_(N, M, Type, 1).
+
+-spec constant({N::unsigned(),M::unsigned()},C::scalar()) -> matrix();
+	      ({N::unsigned(),M::unsigned(),T::matrix_type()},C::scalar()) ->
+		      matrix().
+constant({N,M},C) ->
+    constant_(N,M,arg_type(C),C);
+constant({N,M,T},C) ->
+    constant_(N,M,T,C).
 
 -spec constant(N::unsigned(), M::unsigned(),C::scalar()) -> matrix().
 constant({N,M},Type,C) ->
@@ -390,6 +398,10 @@ is_float_matrix(X) -> ?is_float_matrix(X).
 -spec is_complex_matrix(X::matrix()) -> boolean().
 is_complex_matrix(X) -> ?is_complex_matrix(X).
 
+%% element(I,A) -> A[I], row(I) or column(I) depening on rowmajor
+%% element([[r1,r2,..,rm]],A) -> [[A[r1][1], A[r2][2], ... A[rm][m]]]
+%% element([[c1],[c2],..,[cn]],A) -> [[A[1][c1]], [A[2][c2]], ... [A[n][cn]]]
+%%
 -spec element(I::unsigned(),J::unsigned(),X::matrix()) -> scalar().
 
 element(I,J,A) ->
@@ -397,6 +409,10 @@ element(I,J,A) ->
 
 element_(_I,_J,_A) ->
     ?nif_stub().
+
+%% pick diagonal with:
+%% Index = matrix:from_list([lists:seq(1,N)],int32),
+%% Diag = element(Index, A),
 
 -spec element(I::matrix(),A::matrix()) -> matrix();
 	     ({I::unsigned(),J::unsigned()},A::matrix()) -> scalar().
@@ -542,6 +558,17 @@ negate(_A, _Dst) ->
     ?nif_stub().
 
 %%
+%% Invert a matrix element wise
+%%
+-spec reciprocal(A::matrix()) -> matrix().
+reciprocal(_A) ->
+    ?nif_stub().
+
+-spec reciprocal(A::matrix(),Dst::matrix()) -> matrix().
+reciprocal(_A, _Dst) ->
+    ?nif_stub().
+
+%%
 %% Scale a matrix by a scalar number
 %%
 -spec scale(F::scalar(), X::matrix()) -> matrix().
@@ -570,7 +597,7 @@ mulsum(_X,_Y) ->
 sum(_X) ->
     ?nif_stub().
 
--spec sum(A::matrix(), Axis::0|1) -> matrix().
+-spec sum(A::matrix(), Axis::0..2) -> matrix().
 sum(_A, _Axis) ->
     ?nif_stub().
 
@@ -794,15 +821,17 @@ filter(_W, _Sn, _Sm, _A) ->
 filter(_W, _Sn, _Sm, _A, _Dst) ->
     ?nif_stub().
 
+%% pickout max element with (example)
+%% Index = argmax(A,1),
+%% Max = element(Index, A),
+
 %% argmax
 -spec argmax(A::matrix()) -> {I::integer(),J::integer()}.
 
-argmax(A) ->
-    I = element(1,1,argmax(matrix:max(A, 1),0)),
-    J = element(1,1,argmax(matrix:max(A, 0),1)),
-    {I, J}.
+argmax(_A) ->
+    ?nif_stub().
 
--spec argmax(A::matrix(),Axis::0|1) -> [integer()].
+-spec argmax(A::matrix(),Axis::0..2) -> matrix().
 
 argmax(_A,_I) ->
     ?nif_stub().
@@ -811,7 +840,7 @@ argmax(_A,_I) ->
 max(_A) ->
     ?nif_stub().
 
--spec max(A::matrix(), Axis::0|1) -> matrix().
+-spec max(A::matrix(), Axis::0..2) -> matrix().
 max(_A, _Axis) ->
     ?nif_stub().
 
@@ -819,7 +848,7 @@ max(_A, _Axis) ->
 min(_A) ->
     ?nif_stub().
 
--spec min(A::matrix(), Axis::0|1) -> matrix().
+-spec min(A::matrix(), Axis::0..2) -> matrix().
 min(_A, _Axis) ->
     ?nif_stub().
 
@@ -930,6 +959,18 @@ format_element(X,0) when is_float(X) ->
     lists:flatten(io_lib_format:fwrite_g(X));
 format_element(X,Prec) when is_float(X) ->
     lists:flatten(io_lib:format("~.*f", [Prec,X])).
+
+%% get argument type
+arg_type(X) ->
+    if is_integer(X) ->
+	    if X >= -16#80, X < 16#80 -> ?int8;
+	       X >= -16#8000, X < 16#8000 -> ?int16;
+	       X >= -16#80000000, X < 16#80000000 -> ?int32;
+	       true -> ?int64
+	    end;
+       is_float(X) -> ?float64;
+       ?is_complex(X) -> ?complex128
+    end.
 
 %% combine types to the more general one
 type_combine(T1,T2) -> erlang:max(T1,T2).

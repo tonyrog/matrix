@@ -368,6 +368,11 @@ static inline vcomplex64_t complex64_neg(vcomplex64_t x)
     return -x;
 }
 
+static inline vcomplex64_t complex64_reciprocal(vcomplex64_t x)
+{
+    return 1/x;
+}
+
 static inline vcomplex128_t complex128_add(vcomplex128_t x, vcomplex128_t y)
 {
     return x+y;
@@ -383,6 +388,12 @@ static inline vcomplex128_t complex128_neg(vcomplex128_t x)
 {
     return -x;
 }
+
+static inline vcomplex128_t complex128_reciprocal(vcomplex128_t x)
+{
+    return 1/x;
+}
+
 
 static inline complex128_t complex128_velement(vcomplex128_t x, int i)
 {
