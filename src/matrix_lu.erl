@@ -17,16 +17,21 @@
 -define(EPS, 2.2204460492503131e-16).        %% float32 smallest step
 
 test() ->
-    A = matrix:uniform(10,10,float32),
+    A = matrix:uniform(4,4,float32),
+    io:format("A=\n"), matrix:print(A),
     {L,U,P,Pn} = decompose(A),
-    LU = matrix:multiply(L,U),
-    AP = matrix:multiply(A,P),
-    io:format("AP=\n"), matrix:print(AP),
-    io:format("LU=\n"), matrix:print(LU),
     io:format("L=\n"), matrix:print(L),
     io:format("U=\n"), matrix:print(U),
     io:format("P=\n"), matrix:print(P),
-    io:format("Pn = ~w\n", [Pn]),
+    P1 = matrix:transpose(P),
+    io:format("P'=\n"), matrix:print(P1),
+    io:format("Pn=~w\n",[Pn]),
+
+    LU = matrix:multiply(L,U),
+    PA = matrix:multiply(P,A),
+    io:format("PA=\n"), matrix:print(PA),
+    io:format("LU=\n"), matrix:print(LU),
+    io:format("LUP'=\n"), matrix:print(matrix:multiply(LU,P1)),
     {L,U,P,Pn}.
 
 
@@ -58,12 +63,14 @@ decompose_(L,U,P,Pn,I,N) ->
 	false -> 
 	    false;
 	{Aii,I} ->
+	    %% FIXME: Ri=submatrix(I,I,1,N-I+1,U)
 	    {L1,U1} = eliminate(Aii,matrix:row(I,U),L,U,I+1,I,N),
 	    decompose_(L1,U1,P,Pn,I+1,N);
 	{Aii,I1} ->
 	    L1 = L,
 	    U1 = matrix:swap(I,I1,U,1),
 	    P1 = matrix:swap(I,I1,P,1),
+	    %% FIXME: Ri=submatrix(I,I,1,N-I+1,U)
 	    {L2,U2} = eliminate(Aii,matrix:row(I,U1),L1,U1,I+1,I,N),
 	    decompose_(L2,U2,P1,Pn+1,I+1,N)
     end.
@@ -75,10 +82,10 @@ eliminate(Aii,Rii,L,U,I,J,N) ->
     %% Try to keep integer factors if possible
     Factor = if is_integer(Aii), is_integer(Aij), Aij rem Aii =:= 0 ->
 		     -(Aij div Aii);
-		true ->
+		true -> %% fixme complex!
 		     -(Aij / Aii)
 	     end,
-    Ui = matrix:row(I,U), %% fixme: submatrix(I,J,1,N-J+1,U)?
+    Ui = matrix:row(I,U), %% fixme: Ui=submatrix(I,J,1,N-J+1,U)?
     matrix:add(Ui, matrix:times(Rii,Factor), Ui),
     matrix:setelement(I,J,L,-Factor),
     eliminate(Aii,Rii,L,U,I+1,J,N).

@@ -86,6 +86,7 @@
 -export([foldl_row/4, foldr_row/4]).
 -export([foldl_column/4, foldr_column/4]).
 -export([foldl_matrix/3, foldr_matrix/3]).
+-export([invert_l/1, invert_u/1]).
 
 -export_type([matrix/0]).
 
@@ -982,14 +983,16 @@ tanh(A) ->
 tanh_prime(_A,Out) ->
     apply1(tanh_prime1, Out).
 
--spec invert(A::matrix()) -> matrix().
+-spec invert(A::matrix()) -> matrix() | false.
 
 invert(A) ->
-    {L,U,P,Pn} = matrix_lu:decompose(A),
-    if Pn > 0 ->
-	    multiply(multiply(invert_u(U), invert_l(L)), P);
-       true ->
-	    multiply(invert_u(U), invert_l(L))
+    case matrix_lu:decompose(A) of
+	false ->
+	    false;
+	{L,U,_,0} ->
+	    multiply(invert_u(U), invert_l(L));
+	{L,U,P,_Pn} ->
+	    multiply(multiply(invert_u(U), invert_l(L)), matrix:transpose(P))
     end.
 
 invert_u(U) ->
@@ -997,10 +1000,10 @@ invert_u(U) ->
     U2 = invert_l(U1),
     transpose(U2).
 
-invert_l(A) ->
-    Signature = {N,_,_} = signature(A),
+invert_l(L) ->
+    Signature = {N,_,_} = signature(L),
     ID = identity(Signature),
-    invert_l_rows(1,N,A,ID).
+    invert_l_rows(1,N,L,ID).
 
 %% row by row
 invert_l_rows(I,N,A,X) when I =< N ->
