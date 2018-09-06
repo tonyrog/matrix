@@ -65,7 +65,7 @@
 -export([maxpool/3, maxpool/5, maxpool/6]).
 -export([l2pool/3, l2pool/5, l2pool/6]).
 -export([filter/2, filter/4, filter/5]).
--export([swap/4]).
+-export([swap/4, swap/6]).
 -export([sort/2, sort/3, sort/4]).
 
 -export([invert/1, det/1]).
@@ -94,7 +94,7 @@
 %% -define(MAX_NM, (256*4096)).
 -define(MAX_ADD_NM, (10*10)).
 -define(MAX_MUL_NM, (10*10)).
-
+-define(EPS, 2.2204460492503131e-16).        %% float32 smallest step
 -type compare_option() :: abs.
 -type sort_option() :: abs|ascend|descend.
 
@@ -835,10 +835,17 @@ filter(_W, _Sn, _Sm, _A) ->
 filter(_W, _Sn, _Sm, _A, _Dst) ->
     ?nif_stub().
 
--spec swap(K::integer(), L::integer(), A::matrix(), Axis::1..2) -> matrix().
-%% swap row K and L if Axis = 1
-%% swap column K and L if Axis = 2
-swap(_K, _L, _A, _Axis) ->
+-spec swap(K::integer(), I::integer(), A::matrix(), Axis::1..2) -> matrix().
+%% swap row K and I if Axis = 1
+%% swap column K and I if Axis = 2
+swap(_K, _I, _A, _Axis) ->
+    ?nif_stub().
+
+-spec swap(K::integer(), I::integer(), J::integer(), L::integer(),
+	   A::matrix(), Axis::1..2) -> matrix().
+%% swap row K and I if Axis = 1  column from J to L
+%% swap column K and L if Axis = 2  row from J to L
+swap(_K, _I, _J, _L, _A, _Axis) ->
     ?nif_stub().
 
 -spec sort(A::matrix(), K::integer()) -> 
@@ -986,13 +993,17 @@ tanh_prime(_A,Out) ->
 -spec invert(A::matrix()) -> matrix() | false.
 
 invert(A) ->
-    case matrix_lu:decompose(A) of
-	false ->
-	    false;
-	{L,U,_,0} ->
-	    multiply(invert_u(U), invert_l(L));
-	{L,U,P,_Pn} ->
-	    multiply(multiply(invert_u(U), invert_l(L)), matrix:transpose(P))
+    {L,U,P,Pn} = matrix_lu:decompose(A),
+    {N,_} = size(U),
+    D = det_u(N,1,U),
+    if abs(D) >= ?EPS -> 
+	    if Pn =:= 0 ->
+		    multiply(invert_u(U), invert_l(L));
+	       true ->
+		    multiply(multiply(invert_u(U), invert_l(L)), P)
+	    end;
+       true ->
+	    false
     end.
 
 invert_u(U) ->
@@ -1008,7 +1019,6 @@ invert_l(L) ->
 %% row by row
 invert_l_rows(I,N,A,X) when I =< N ->
     Xii = element(I,I,A),
-    io:format("Xii = ~p\n", [Xii]),
     X1 = setelement(I,I,X,1/Xii),            %% destructive! X1 = X
     X2  = invert_l_row(I, I-1, Xii, A, X1),  %% destructive! X2 = X1
     invert_l_rows(I+1,N,A,X2);

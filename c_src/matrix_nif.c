@@ -405,6 +405,7 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("sum",           2, matrix_sum),
     NIF_FUNC("sort",          4, matrix_sort),
     NIF_FUNC("swap",          4, matrix_swap),
+    NIF_FUNC("swap",          6, matrix_swap),
 };
 
 size_t element_size_exp_[NUM_TYPES] = {
@@ -480,16 +481,18 @@ static size_t element_size(matrix_type_t type)
     return element_size_[type];
 }
 
-static size_t size_of_array(matrix_type_t type, size_t nelems)
+static int size_of_array(matrix_type_t type, size_t nelems)
 {
     return nelems << element_size_exp_[type];
 }
 
 // element poistion from pointer diff
+#if 0
 static intptr_t element_pos(matrix_type_t type, intptr_t offs)
 {
     return (offs >> element_size_exp_[type]);
 }
+#endif
 
 static int is_integer(matrix_type_t type)
 {
@@ -1744,18 +1747,22 @@ static void reciprocal(bool_t use_vector,
 ///////////////////////////////////////////////////////////////////////////////
 
 #define CMP_FGT(a, b) \
-    ((opts&OPT_ABS) ? (fabs((a))>fabs((b))) : ((a)>(b)))
+    (((opts)&OPT_ABS) ? (fabs((a))>fabs((b))) : ((a)>(b)))
 #define CMP_IGT(a, b) \
-    ((opts&OPT_ABS) ? (labs((a))>labs((b))) : ((a)>(b)))
+    (((opts)&OPT_ABS) ? (labs((a))>labs((b))) : ((a)>(b)))
 #define CMP_CGT(a, b) \
     (cabs((a)) > cabs((b)))
 
 #define CMP_FLT(a, b) \
-    ((opts&OPT_ABS) ? (fabs((a))<fabs((b))) : ((a)<(b)))
+    (((opts)&OPT_ABS) ? (fabs((a))<fabs((b))) : ((a)<(b)))
 #define CMP_ILT(a, b) \
-    ((opts&OPT_ABS) ? (labs((a))<labs((b))) : ((a)<(b)))
+    (((opts)&OPT_ABS) ? (labs((a))<labs((b))) : ((a)<(b)))
 #define CMP_CLT(a, b) \
     (cabs((a))<cabs((b)))
+
+#define FCMP(a,b) (((opts)&OPT_DESCEND) ? CMP_FGT((a),(b)) : CMP_FLT((a),(b)))
+#define ICMP(a,b) (((opts)&OPT_DESCEND) ? CMP_IGT((a),(b)) : CMP_ILT((a),(b)))
+#define CCMP(a,b) (((opts)&OPT_DESCEND) ? CMP_CGT((a),(b)) : CMP_CLT((a),(b)))
 
 static void argmax(matrix_type_t at,byte_t* ap, int au, int av,
 		   int32_t* cp, int cv,
@@ -6003,54 +6010,99 @@ static ERL_NIF_TERM matrix_swap(ErlNifEnv* env, int argc,
     matrix_t mat[1];
     matrix_t *a;
     unsigned int k, l;
+    unsigned int j, i;
+    unsigned int len;
+    unsigned int js;
     int axis;
     byte_t* k_ptr;
-    byte_t* l_ptr;
+    byte_t* i_ptr;
+    ERL_NIF_TERM res;
     UNUSED(argc);
     
     if (!enif_get_uint(env, argv[0], &k))
 	return enif_make_badarg(env);
-    if (!enif_get_uint(env, argv[1], &l))
+    if (!enif_get_uint(env, argv[1], &i))
 	return enif_make_badarg(env);
-    if (!get_w_matrix_ptr(env, argv[2], &mat[0], &a))
-	return enif_make_badarg(env);
-    if (!enif_get_int(env, argv[3], &axis))
-	return enif_make_badarg(env);
-    if ((k < 1) || (l < 1))
+    if (argc == 6) {
+	unsigned int ln;
+	if (!enif_get_uint(env, argv[2], &j))
+	    return enif_make_badarg(env);
+	if (!enif_get_uint(env, argv[3], &l))
+	    return enif_make_badarg(env);
+	if (!get_w_matrix_ptr(env, argv[4], &mat[0], &a))
+	    return enif_make_badarg(env);
+	if (!enif_get_int(env, argv[5], &axis))
+	    return enif_make_badarg(env);
+	if (j < 1)
+	    return enif_make_badarg(env);
+	res = argv[4];
+	if ((j == 1) && (l == 0)) // special case
+	    return res;
+	else if (l < j)
+	    return enif_make_badarg(env);
+	if (axis == 1)
+	    ln = (a->rowmajor) ? a->m : a->n;
+	else if (axis == 2)
+	    ln = (a->rowmajor) ? a->n : a->m;
+	else
+	    return enif_make_badarg(env);
+	if (l > ln)
+	    return enif_make_badarg(env);
+    }
+    else {
+	if (!get_w_matrix_ptr(env, argv[2], &mat[0], &a))
+	    return enif_make_badarg(env);
+	if (!enif_get_int(env, argv[3], &axis))
+	    return enif_make_badarg(env);
+	res = argv[2];
+	j = 1;
+	if (axis == 1)
+	    l = (a->rowmajor) ? a->m : a->n;
+	else if (axis == 2)
+	    l = (a->rowmajor) ? a->n : a->m;
+	else 
+	    return enif_make_badarg(env);
+    }
+    if ((k < 1) || (i < 1))
 	return enif_make_badarg(env);
 
-    if (axis == 1) {  // swap row k and row l
+    len = l-j+1;  // number of elements to swap
+    if (axis == 1) {  // swap row k and row i
 	if (a->rowmajor) {
-	    if ((k > a->n) || (l > a->n)) return enif_make_badarg(env);
-	    k_ptr = a->first + (k-1)*size_of_array(a->type,a->nstep);
-	    l_ptr = a->first + (l-1)*size_of_array(a->type,a->nstep);
-	    swap_data(a->type, k_ptr, l_ptr, a->mstep, a->m);
+	    if ((k > a->n) || (i > a->n)) return enif_make_badarg(env);
+	    js = (j-1)*size_of_array(a->type,a->mstep);
+	    k_ptr = a->first + (k-1)*size_of_array(a->type,a->nstep) + js;
+	    i_ptr = a->first + (i-1)*size_of_array(a->type,a->nstep) + js;
+	    swap_data(a->type, k_ptr, i_ptr, a->mstep, len);
 	}
 	else {  // column major
-	    if ((k > a->m) || (l > a->m)) return enif_make_badarg(env);
-	    k_ptr = a->first + (k-1)*size_of_array(a->type,a->mstep);
-	    l_ptr = a->first + (l-1)*size_of_array(a->type,a->mstep);
-	    swap_data(a->type, k_ptr, l_ptr, a->nstep, a->n);
+	    if ((k > a->m) || (i > a->m)) return enif_make_badarg(env);
+	    js = (j-1)*size_of_array(a->type,a->nstep);
+	    k_ptr = a->first + (k-1)*size_of_array(a->type,a->mstep) + js;
+	    i_ptr = a->first + (i-1)*size_of_array(a->type,a->mstep) + js;
+	    swap_data(a->type, k_ptr, i_ptr, a->nstep, len);
 	}
     }
-    else if (axis == 2) { // swap column k and column l
+    else if (axis == 2) { // swap column k and column i
 	if (a->rowmajor) {
-	    if ((k > a->m) || (l > a->m)) return enif_make_badarg(env);
-	    k_ptr = a->first + (k-1)*size_of_array(a->type,a->mstep);
-	    l_ptr = a->first + (l-1)*size_of_array(a->type,a->mstep);
-	    swap_data(a->type, k_ptr, l_ptr, a->nstep, a->n);
+	    if ((k > a->m) || (i > a->m)) return enif_make_badarg(env);
+	    js = (j-1)*size_of_array(a->type,a->nstep);
+	    k_ptr = a->first + (k-1)*size_of_array(a->type,a->mstep) + js;
+	    i_ptr = a->first + (i-1)*size_of_array(a->type,a->mstep) + js;
+	    swap_data(a->type, k_ptr, i_ptr, a->nstep, len);
 	}
 	else {  // column major
-	    if ((k > a->n) || (l > a->n)) return enif_make_badarg(env);
-	    k_ptr = a->first + (k-1)*size_of_array(a->type,a->nstep);
-	    l_ptr = a->first + (l-1)*size_of_array(a->type,a->nstep);
-	    swap_data(a->type, k_ptr, l_ptr, a->mstep, a->m);
+	    if ((k > a->n) || (i > a->n)) return enif_make_badarg(env);
+	    js = (j-1)*size_of_array(a->type,a->mstep);	    
+	    k_ptr = a->first + (k-1)*size_of_array(a->type,a->nstep) + js;
+	    i_ptr = a->first + (i-1)*size_of_array(a->type,a->nstep) + js;
+	    swap_data(a->type, k_ptr, i_ptr, a->mstep, len);
 	}
     }
     else {
 	return enif_make_badarg(env);
     }
-    return argv[2];
+    return res;
 }
 
 // simple sort (try to avoid many swaps)
@@ -6064,26 +6116,26 @@ static void sort_data(matrix_type_t et, byte_t* ep, int eu, size_t n,
 {
     int eub = size_of_array(et,eu);
     int aub = size_of_array(at,au);
-    size_t en = n;
+    int en = (int)n;
     
     if (is_float(et)) {
 	float64_t (*read_af)(byte_t*) = read_float64_func[et];
 	// sort row/column from ptr ... ptr+n
-	while(en > 1) {
-	    float64_t min_v = read_af(ep);
+	while(en-- > 1) {
+	    float64_t v0 = read_af(ep);
 	    byte_t* ep1 = ep + eub;
-	    byte_t* min_ep = ep;
-	    size_t enn = en-1;
-	    intptr_t epos;
-	    while(enn--) {
+	    byte_t* ap1;
+	    byte_t* ep0 = ep;
+	    int k = 0;
+	    int k0 = 0;
+	    for (k=0; k<en;k++) {
 		float64_t v = read_af(ep1);
-		if (CMP_FLT(v,min_v)) { min_v = v; min_ep = ep1; }
+		if (FCMP(v,v0)) { v0=v; ep0=ep1; k0=k; }
 		ep1 += eub;
 	    }
-	    epos = element_pos(et, min_ep-ep);
-	    swap_data(at, ap, ap+size_of_array(at,epos), av, m);
-	    if (!overlap) swap_elem(et, ep, min_ep);
-	    en--;
+	    ap1 = ap + ((au == 1) ? size_of_array(at,k0) : aub*k0);
+	    swap_data(at, ap, ap1, av, m);
+	    if (!overlap) swap_elem(et, ep, ep0);
 	    ep += eub;
 	    ap += aub;
 	}
@@ -6091,21 +6143,21 @@ static void sort_data(matrix_type_t et, byte_t* ep, int eu, size_t n,
     else if (is_complex(et)) {
 	complex128_t (*read_af)(byte_t*) = read_complex128_func[et];
 	// sort row/column from ptr ... ptr+n
-	while(en > 1) {
-	    complex128_t min_v = read_af(ep);
+	while(en-- > 1) {
+	    complex128_t v0 = read_af(ep);
 	    byte_t* ep1 = ep + eub;
-	    byte_t* min_ep = ep;
-	    size_t enn = en-1;
-	    intptr_t epos;	    
-	    while(enn--) {
+	    byte_t* ap1;
+	    byte_t* ep0 = ep;
+	    int k = 0;
+	    int k0 = 0;
+	    for (k=0; k<en;k++) {	    
 		complex128_t v = read_af(ep1);
-		if (CMP_CLT(v,min_v)) { min_v = v; min_ep = ep1; }
+		if (CCMP(v,v0)) { v0=v; ep0=ep1; k0=k; }
 		ep1 += eub;
 	    }
-	    epos = element_pos(et, min_ep-ep);	    
-	    swap_data(at, ap, ap+size_of_array(at,epos), av, m);
-	    if (!overlap) swap_elem(et, ep, min_ep);	    
-	    en--;
+	    ap1 = ap + ((au == 1) ? size_of_array(at,k0) : aub*k0);
+	    swap_data(at, ap, ap1, av, m);
+	    if (!overlap) swap_elem(et, ep, ep0);	    
 	    ep += eub;
 	    ap += aub;
 	}
@@ -6113,21 +6165,21 @@ static void sort_data(matrix_type_t et, byte_t* ep, int eu, size_t n,
     else { // int64_t
 	int64_t (*read_af)(byte_t*) = read_int64_func[et];
 	// sort row/column from ptr ... ptr+n
-	while(en > 1) {
-	    int64_t min_v = read_af(ep);
+	while(en-- > 1) {
+	    int64_t v0 = read_af(ep);
 	    byte_t* ep1 = ep + eub;
-	    byte_t* min_ep = ep;
-	    size_t enn = en-1;
-	    intptr_t epos;	    
-	    while(enn--) {
+	    byte_t* ap1;
+	    byte_t* ep0 = ep;
+	    int k = 0;
+	    int k0 = 0;
+	    for (k=0; k<en-1;k++) {
 		int64_t v = read_af(ep1);
-		if (CMP_ILT(v,min_v)) { min_v = v; min_ep = ep1; }
+		if (ICMP(v,v0)) { v0=v; ep0=ep1; k0=k; }
 		ep1 += eub;
 	    }
-	    epos = element_pos(et, min_ep-ep);	    
-	    swap_data(at, ap, ap+size_of_array(at,epos), av, m);
-	    if (!overlap) swap_elem(et, ep, min_ep);
-	    en--;
+	    ap1 = ap + ((au == 1) ? size_of_array(at,k0) : aub*k0);
+	    swap_data(at, ap, ap1, av, m);
+	    if (!overlap) swap_elem(et, ep, ep0);	    
 	    ep += eub;
 	    ap += aub;
 	}

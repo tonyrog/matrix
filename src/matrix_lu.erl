@@ -8,7 +8,7 @@
 -module(matrix_lu).
 -export([decompose/1, decompose/2]).
 %% debug
--export([test/0]).
+-export([test/1, test_44/0, test_rand_44/0]).
 
 -include("matrix.hrl").
 
@@ -16,8 +16,19 @@
 -define(MAX_FLOAT, 1.7976931348623157e+308). %% max positive float
 -define(EPS, 2.2204460492503131e-16).        %% float32 smallest step
 
-test() ->
+%% example from http://www4.ncsu.edu/~kksivara/ma505/handouts/lu-pivot.pdf
+test_44() ->
+    A = matrix:from_list([[2,1,1,0],
+			  [4,3,3,1],
+			  [8,7,9,5],
+			  [6,7,9,8]],float32),
+    test(A).
+
+test_rand_44() ->
     A = matrix:uniform(4,4,float32),
+    test(A).
+
+test(A) ->
     io:format("A=\n"), matrix:print(A),
     {L,U,P,Pn} = decompose(A),
     io:format("L=\n"), matrix:print(L),
@@ -31,9 +42,8 @@ test() ->
     PA = matrix:multiply(P,A),
     io:format("PA=\n"), matrix:print(PA),
     io:format("LU=\n"), matrix:print(LU),
-    io:format("LUP'=\n"), matrix:print(matrix:multiply(LU,P1)),
+    io:format("P'LU=\n"), matrix:print(matrix:multiply(P1,LU)),
     {L,U,P,Pn}.
-
 
 %% Decompose square matrix A into L*U where 
 %% L is lower triangular and U is upper triangular
@@ -50,52 +60,77 @@ decompose(A) ->
     decompose_(L0,U0,P0,0,1,N).
     
 decompose(A,U0) ->
-    Signature = {N,N,_T} = matrix:signature(A),
+    Signature = {M,M,_T} = matrix:signature(A),
     L0 = matrix:identity(Signature),
     P0 = matrix:identity(Signature),
     matrix:copy(A,U0),
-    decompose_(L0,U0,P0,0,1,N).
+    decompose_(L0,U0,P0,0,1,M).
 
-decompose_(L,U,P,Pn,I,N) when I>N ->
+decompose_(L,U,P,Pn,K,M) when K>=M ->
     {L,U,P,Pn};
-decompose_(L,U,P,Pn,I,N) ->
-    case find_none_zero_element(U,I,N) of
-	false -> 
-	    false;
-	{Aii,I} ->
-	    %% FIXME: Ri=submatrix(I,I,1,N-I+1,U)
-	    {L1,U1} = eliminate(Aii,matrix:row(I,U),L,U,I+1,I,N),
-	    decompose_(L1,U1,P,Pn,I+1,N);
-	{Aii,I1} ->
-	    L1 = L,
-	    U1 = matrix:swap(I,I1,U,1),
-	    P1 = matrix:swap(I,I1,P,1),
-	    %% FIXME: Ri=submatrix(I,I,1,N-I+1,U)
-	    {L2,U2} = eliminate(Aii,matrix:row(I,U1),L1,U1,I+1,I,N),
-	    decompose_(L2,U2,P1,Pn+1,I+1,N)
+decompose_(L,U,P,Pn,K,M) ->
+    case select_pivot(U,K,M) of
+	{Ukk,K} ->
+	    %% FIXME: Ri=submatrix(K,K,1,M-K+1,U)
+	    {L1,U1} = eliminate(Ukk,matrix:row(K,U),L,U,K+1,K,M),
+	    decompose_(L1,U1,P,Pn,K+1,M);
+	{Ukk,I} ->
+	    U1 = matrix:swap(K,I,K,M,U,1),
+	    L1 = matrix:swap(K,I,1,K-1,L,1),
+	    P1 = matrix:swap(K,I,P,1),
+	    %% FIXME: Ri=submatrix(K,K,1,M-I+1,U)
+	    {L2,U2} = eliminate(Ukk,matrix:row(K,U1),L1,U1,K+1,K,M),
+	    decompose_(L2,U2,P1,Pn+1,K+1,M)
     end.
 
 eliminate(_Aii,_Rii,L,U,I,_J,N) when I > N ->
     {L,U};
 eliminate(Aii,Rii,L,U,I,J,N) ->
     Aij = matrix:element(I,J,U),
-    %% Try to keep integer factors if possible
-    Factor = if is_integer(Aii), is_integer(Aij), Aij rem Aii =:= 0 ->
-		     -(Aij div Aii);
-		true -> %% fixme complex!
-		     -(Aij / Aii)
-	     end,
+    F = element_div(Aij, Aii),
     Ui = matrix:row(I,U), %% fixme: Ui=submatrix(I,J,1,N-J+1,U)?
-    matrix:add(Ui, matrix:times(Rii,Factor), Ui),
-    matrix:setelement(I,J,L,-Factor),
+    matrix:add(Ui, matrix:times(Rii,-F), Ui),
+    matrix:setelement(I,J,L,F),
     eliminate(Aii,Rii,L,U,I+1,J,N).
 
 %% find the value in column I row I..N with the largest absolute value
-find_none_zero_element(U,I,N) ->
-    UC = matrix:submatrix(I,I,N-I+1,1,U),
-    {I1,_J} = matrix:argmax(UC,0,[abs]),
-    II = I+I1-1,
-    Aij = matrix:element(II,I,U),
-    if abs(Aij) =< ?EPS -> false;
-       true -> {Aij,II}
-    end.
+select_pivot(U,K,N) ->
+    UC = matrix:submatrix(K,K,N-K+1,1,U),
+    {I0,_J} = matrix:argmax(UC,0,[abs]),
+    I = K+I0-1,
+    Uik = matrix:element(I,K,U),
+    {Uik,I}.
+
+element_div(A,B) when is_integer(A), is_integer(B), A rem B =:= 0 ->
+    A div B;
+element_div(A,B) when is_number(A), is_number(B) ->
+    A / B;
+element_div({A1,B1},{A2,B2}) ->
+    D = A2*A2 + B2*B2,
+    {(A1*A2 + B1*B2) / D, -((A1*B2 + A2*B1) / D)}.
+
+
+complex_add({A1,B1},{A2,B2}) ->
+    {A1+A2,B1+B2}.
+
+complex_subtract({A1,B1},{A2,B2}) ->
+    {A1-A2,B1-B2}.
+
+complex_multiply({A1,B1},{A2,B2}) ->
+    {A1*A2-B1*B2,A1*B2+A2*B1}.
+
+complex_divide({A1,B1},{A2,B2}) ->
+    D = A2*A2 + B2*B2,
+    {(A1*A2 + B1*B2) / D, -((A1*B2 + A2*B1) / D)}.
+
+complex_negate({A,B}) ->
+    {-A,-B}.
+
+%% [1|0]/[A|B]
+complex_invert({A2,B2}) ->
+    D = A2*A2 + B2*B2,
+    {(A2) / D, -((B2) / D)}.
+
+%% conjugate  A+iB = A - iB
+complex_conjugate({A,B}) ->
+    {A,-B}.
