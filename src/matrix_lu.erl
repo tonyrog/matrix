@@ -8,7 +8,7 @@
 -module(matrix_lu).
 -export([decompose/1, decompose/2]).
 %% debug
--export([test/1, test_44/0, test_rand_44/0]).
+-export([test/1, test_44/0, test_rand_44/0, test_rand_44_complex/0]).
 
 -include("matrix.hrl").
 
@@ -26,6 +26,10 @@ test_44() ->
 
 test_rand_44() ->
     A = matrix:uniform(4,4,float32),
+    test(A).
+
+test_rand_44_complex() ->
+    A = matrix:uniform(4,4,complex64),
     test(A).
 
 test(A) ->
@@ -87,9 +91,10 @@ eliminate(_Aii,_Rii,L,U,I,_J,N) when I > N ->
     {L,U};
 eliminate(Aii,Rii,L,U,I,J,N) ->
     Aij = matrix:element(I,J,U),
-    F = element_div(Aij, Aii),
+    F = matrix:element_divide(Aij, Aii),
+    Fneg = matrix:element_negate(F),
     Ui = matrix:row(I,U), %% fixme: Ui=submatrix(I,J,1,N-J+1,U)?
-    matrix:add(Ui, matrix:times(Rii,-F), Ui),
+    matrix:add(Ui, matrix:times(Rii,Fneg), Ui),
     matrix:setelement(I,J,L,F),
     eliminate(Aii,Rii,L,U,I+1,J,N).
 
@@ -100,37 +105,3 @@ select_pivot(U,K,N) ->
     I = K+I0-1,
     Uik = matrix:element(I,K,U),
     {Uik,I}.
-
-element_div(A,B) when is_integer(A), is_integer(B), A rem B =:= 0 ->
-    A div B;
-element_div(A,B) when is_number(A), is_number(B) ->
-    A / B;
-element_div({A1,B1},{A2,B2}) ->
-    D = A2*A2 + B2*B2,
-    {(A1*A2 + B1*B2) / D, -((A1*B2 + A2*B1) / D)}.
-
-
-complex_add({A1,B1},{A2,B2}) ->
-    {A1+A2,B1+B2}.
-
-complex_subtract({A1,B1},{A2,B2}) ->
-    {A1-A2,B1-B2}.
-
-complex_multiply({A1,B1},{A2,B2}) ->
-    {A1*A2-B1*B2,A1*B2+A2*B1}.
-
-complex_divide({A1,B1},{A2,B2}) ->
-    D = A2*A2 + B2*B2,
-    {(A1*A2 + B1*B2) / D, -((A1*B2 + A2*B1) / D)}.
-
-complex_negate({A,B}) ->
-    {-A,-B}.
-
-%% [1|0]/[A|B]
-complex_invert({A2,B2}) ->
-    D = A2*A2 + B2*B2,
-    {(A2) / D, -((B2) / D)}.
-
-%% conjugate  A+iB = A - iB
-complex_conjugate({A,B}) ->
-    {A,-B}.

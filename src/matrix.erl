@@ -81,7 +81,8 @@
 -export([element_/2]).
 -export([type_combine/2]).
 -export([elem_to_bin/2]).
-
+-export([element_reciprocal/1, element_negate/1]).
+-export([element_divide/2, element_multiply/2]).
 %% debug
 -export([foldl_row/4, foldr_row/4]).
 -export([foldl_column/4, foldr_column/4]).
@@ -403,13 +404,23 @@ signature(A=#matrix_t{type=T}) ->
     {N,M,decode_type(T)}.
 
 -spec is_integer_matrix(X::matrix()) -> boolean().
-is_integer_matrix(X) -> ?is_int_matrix(X).
+is_integer_matrix(#matrix_t{type=T}) -> 
+    (T >= ?int8) andalso (T =< ?int64);
+is_integer_matrix(#matrix{type=T}) -> 
+    (T >= ?int8) andalso (T =< ?int64).
 
 -spec is_float_matrix(X::matrix()) -> boolean().
-is_float_matrix(X) -> ?is_float_matrix(X).
+is_float_matrix(#matrix_t{type=T}) ->
+    (T >= ?float32) andalso (T =< ?float64);
+is_float_matrix(#matrix{type=T}) ->
+    (T >= ?float32) andalso (T =< ?float64).
 
 -spec is_complex_matrix(X::matrix()) -> boolean().
-is_complex_matrix(X) -> ?is_complex_matrix(X).
+is_complex_matrix(#matrix_t{type=T}) ->
+    (T >= ?complex64) andalso (T =< ?complex128);
+is_complex_matrix(#matrix{type=T}) ->
+    (T >= ?complex64) andalso (T =< ?complex128).
+
 
 %% element(I,A) -> A[I], row(I) or column(I) depening on rowmajor
 %% element([[r1,r2,..,rm]],A) -> [[A[r1][1], A[r2][2], ... A[rm][m]]]
@@ -974,7 +985,7 @@ softplus_prime(A,_Out) ->
 -spec softmax(A::matrix()) -> matrix().
 softmax(A) ->
     A1 = subtract(A, max(A)),
-    scale(1/expsum(A1), apply1(exp,A1)).
+    scale(element_reciprocal(expsum(A1)), apply1(exp,A1)).
 
 -spec softmax_prime(A::matrix(),Out::matrix()) -> matrix().
 softmax_prime(A,_Out) ->
@@ -995,8 +1006,9 @@ tanh_prime(_A,Out) ->
 invert(A) ->
     {L,U,P,Pn} = matrix_lu:decompose(A),
     {N,_} = size(U),
-    D = det_u(N,1,U),
-    if abs(D) >= ?EPS -> 
+    D = det_u(N,element_one(A),U),
+    Abs = element_abs(D),
+    if Abs >= ?EPS -> 
 	    if Pn =:= 0 ->
 		    multiply(invert_u(U), invert_l(L));
 	       true ->
@@ -1019,8 +1031,8 @@ invert_l(L) ->
 %% row by row
 invert_l_rows(I,N,A,X) when I =< N ->
     Xii = element(I,I,A),
-    X1 = setelement(I,I,X,1/Xii),            %% destructive! X1 = X
-    X2  = invert_l_row(I, I-1, Xii, A, X1),  %% destructive! X2 = X1
+    X1  = setelement(I,I,X,element_reciprocal(Xii)),
+    X2  = invert_l_row(I, I-1, Xii, A, X1),
     invert_l_rows(I+1,N,A,X2);
 invert_l_rows(_I,_N,_A,X) ->
     X.
@@ -1028,14 +1040,17 @@ invert_l_rows(_I,_N,_A,X) ->
 invert_l_row(_I,0,_Xii,_A,X) ->
     X;
 invert_l_row(I,J,Xii,A,X) ->
-    S = sum_l(I, J, I-1, A, X, 0),
-    X1 = setelement(I,J,X,-S/Xii),  %% destructive!
+    S = sum_l(I, J, I-1, A, X, element_zero(A)),
+    Sneg = element_negate(S),
+    X1 = setelement(I,J,X,element_divide(Sneg,Xii)),  %% destructive!
     invert_l_row(I,J-1,Xii,A,X1).
 
 sum_l(_I,J,K,_A,_X,Sum)  when K < J->
     Sum;
 sum_l(I,J,K,A,X,Sum) ->
-    sum_l(I,J,K-1,A,X,element(I,K,A)*element(K,J,X) + Sum).
+    Aik = element(I,K,A),
+    Akj = element(K,J,X),
+    sum_l(I,J,K-1,A,X,element_add(element_multiply(Aik,Akj),Sum)).
     
 -spec det(A::matrix()) -> scalar().
 
@@ -1044,12 +1059,11 @@ sum_l(I,J,K,A,X,Sum) ->
 det(A) ->
     {_L,U,_P,Pn} = matrix_lu:decompose(A),
     {N,_} = size(U),
-    D = det_u(N,1,U),  %% multiply diagonal
-    D*?pow_sign(Pn).   %% with -1^Pn
+    D = det_u(N,element_one(A),U),       %% multiply diagonal
+    element_multiply(D,?pow_sign(Pn)).   %% with -1^Pn
     
 det_u(0,D,_U) -> D;
-det_u(I,D,U) -> det_u(I-1,D*element(I,I,U),U).
-
+det_u(I,D,U) -> det_u(I-1,element_multiply(D,element(I,I,U)),U).
 
 print(A) ->
     io:put_chars(format(A)).
@@ -1164,3 +1178,78 @@ decode_type(T) ->
 	?complex64 -> complex64;
 	?complex128 -> complex128
     end.    
+
+
+element_divide(A,B) when is_integer(A), is_integer(B), A rem B =:= 0 ->
+    A div B;
+element_divide(A,B) when is_number(A), is_number(B) ->
+    A / B;
+element_divide({A1,B1},{A2,B2}) ->
+    D = A2*A2 + B2*B2,
+    {(A1*A2 + B1*B2) / D, -((A1*B2 + A2*B1) / D)}.
+
+element_reciprocal(A) when is_number(A) -> 1/A;
+element_reciprocal({A2,B2}) ->
+    D = A2*A2 + B2*B2,
+    {(A2) / D, -((B2) / D)}.
+    
+element_negate(A) when is_number(A) -> -A;
+element_negate({A,B}) -> {-A,-B}.
+
+element_multiply(A,B) when is_number(A), is_number(B) -> A*B;
+element_multiply({A1,B1},{A2,B2}) ->
+    {A1*A2-B1*B2,A1*B2+A2*B1};
+element_multiply({A1,B1},C) when is_number(C) ->
+    {A1*C, B1*C};
+element_multiply(C, {A2,B2}) when is_number(C) ->
+    {C*A2,C*B2}.
+
+element_add(A,B) when is_number(A), is_number(B) -> A+B;
+element_add({A1,B1},{A2,B2}) ->
+    {A1+A2,B1+B2};
+element_add({A1,B1},C) when is_number(C) ->
+    {A1+C, B1};
+element_add(C, {A2,B2}) when is_number(C) ->
+    {C+A2,B2}.
+
+element_subtract(A,B) when is_number(A), is_number(B) -> A-B;
+element_subtract({A1,B1},{A2,B2}) ->
+    {A1-A2,B1-B2};
+element_subtract({A1,B1},C) when is_number(C) ->
+    {A1-C, B1};
+element_subtract(C, {A2,B2}) when is_number(C) ->
+    {C-A2,B2}.
+
+element_abs(C) when is_number(C) -> abs(C);
+element_abs({A,B}) -> math:sqrt(A*A+B*B).
+
+element_zero(#matrix_t{type=T}) -> element_zero_(T);
+element_zero(#matrix{type=T}) -> element_zero_(T).
+
+element_one(#matrix_t{type=T}) -> element_one_(T);
+element_one(#matrix{type=T}) -> element_one_(T).
+
+element_zero_(T) ->
+    case T of
+	?int8 -> 0;
+	?int16 -> 0;
+	?int32 -> 0;
+	?int64 -> 0;
+	?float32 -> 0.0;
+	?float64 -> 0.0;
+	?complex64 -> {0.0, 0.0};
+	?complex128 -> {0.0, 0.0}
+    end.
+
+element_one_(T) ->
+    case T of
+	?int8 -> 1;
+	?int16 -> 1;
+	?int32 -> 1;
+	?int64 -> 1;
+	?float32 -> 1.0;
+	?float64 -> 1.0;
+	?complex64 -> {1.0, 0.0};
+	?complex128 -> {1.0, 0.0}
+    end.
+    

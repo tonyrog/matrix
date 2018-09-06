@@ -48,6 +48,8 @@ typedef enum {
 
 #define OPT_ABS      0x0001   // max/min/argmax/argmin/sort
 #define OPT_DESCEND  0x0002   // sort
+#define OPT_REAL     0x0004   // sort real part only
+#define OPT_IMAG     0x0008   // sort imag part only
 
 typedef enum {
     ADD = 0,

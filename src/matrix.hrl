@@ -49,15 +49,6 @@
 
 -define(is_matrix(X), (is_record((X),matrix) orelse is_record((X),matrix_t))).
 
--define(is_complex_matrix(X),
-	((X#matrix.type >= ?complex64) andalso (X#matrix.type =< ?complex128))).
-
--define(is_float_matrix(X),
-	((X#matrix.type >= ?float32) andalso (X#matrix.type =< ?float64))).
-
--define(is_int_matrix(X),
-	((X#matrix.type >= ?int8) andalso (X#matrix.type =< ?int64))).
-
 -define(is_complex(X), (is_number(erlang:element(1,(X))) andalso is_number(erlang:element(2,(X))))).
 -define(is_scalar(X), (is_number((X)) orelse ?is_complex(X))).
 
