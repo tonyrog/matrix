@@ -39,7 +39,9 @@ all() ->
 	     test_min,
 	     test_max,
 	     test_sum,
-	     test_argmax]).
+	     test_argmax,
+	     test_det
+	    ]).
 
 test_em([F|Fs]) ->
     test_it(F),
@@ -715,6 +717,60 @@ test_argmax(N,M,T) ->
     R1 = matrix:to_list(R),
     C1 = matrix:to_list(C),
     ok.
+
+%% test determinant
+
+test_det() ->
+    A = matrix:from_list([[0.0,2.0,3.0],
+			  [4.0,5.0,0.0],
+			  [2.0,0.0,19.0]]),
+    Det33 = det33(A),
+    Det33 = matrix:det(A),
+    ok.
+
+det33(M) ->
+    A = matrix:element(1,1,M),
+    B = matrix:element(1,2,M),
+    C = matrix:element(1,3,M),
+    D = matrix:element(2,1,M),
+    E = matrix:element(2,2,M),
+    F = matrix:element(2,3,M),
+    G = matrix:element(3,1,M),
+    H = matrix:element(3,2,M),
+    I = matrix:element(3,3,M),
+    A*E*I + B*F*G + C*D*H - C*E*G - B*D*I - A*F*H.
+
+
+test_invert() ->
+    A = matrix:from_list([[0.0,2.0,3.0],
+			  [4.0,5.0,0.0],
+			  [2.0,0.0,19.0]]),
+    IA = inv33(A),
+    io:format("A=\n"),matrix:print(A),
+    io:format("A^-1=\n"),matrix:print(IA),
+    {L,U,P,Pn} = matrix_lu:decompose(A),
+    io:format("L(A)=\n"),matrix:print(L),    
+    io:format("U(A)=\n"),matrix:print(U),
+    io:format("P(A)=\n"),matrix:print(P),
+    IIA = matrix:invert(A),
+    io:format("invert(A)=\n"),
+    matrix:print(IIA),
+    ok.
+
+inv33(M) ->
+    A = matrix:element(1,1,M),
+    B = matrix:element(1,2,M),
+    C = matrix:element(1,3,M),
+    D = matrix:element(2,1,M),
+    E = matrix:element(2,2,M),
+    F = matrix:element(2,3,M),
+    G = matrix:element(3,1,M),
+    H = matrix:element(3,2,M),
+    I = matrix:element(3,3,M),
+    matrix:from_list([[E*I-F*H, -(B*I-C*H), (B*F-C*E)],
+		      [-(D*I-F*G),(A*I-C*G),-(A*F-C*D)],
+		      [(D*H-E*G),-(A*H-B*G),(E*E-B*D)]]).
+
 
 %% replicate marix A (as list) into N*A rows and M*A columns
 tile(N,M,A) ->

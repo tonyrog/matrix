@@ -55,15 +55,20 @@
 -export([transpose_data/1, transpose_data/2]).
 -export([print/1, print/2, format/1, format/2]).
 -export([row/2, column/2, submatrix/5]).
--export([argmax/1, argmax/2]).
--export([min/2, max/2]).
--export([min/1, max/1]).
+-export([argmax/1, argmax/2, argmax/3]).
+-export([argmin/1, argmin/2, argmin/3]).
+-export([min/1, min/2, min/3]).
+-export([max/1, max/2, max/3]).
 -export([topk/2]).
 -export([convolve/4, convolve/6]).
 -export([rconvolve/4, rconvolve/6]).
 -export([maxpool/3, maxpool/5, maxpool/6]).
 -export([l2pool/3, l2pool/5, l2pool/6]).
 -export([filter/2, filter/4, filter/5]).
+-export([swap/4]).
+-export([sort/2, sort/3, sort/4]).
+
+-export([invert/1, det/1]).
 
 %% internal nifs
 -export([create_/5, identity_/3]).
@@ -88,6 +93,10 @@
 %% -define(MAX_NM, (256*4096)).
 -define(MAX_ADD_NM, (10*10)).
 -define(MAX_MUL_NM, (10*10)).
+
+-type compare_option() :: abs.
+-type sort_option() :: abs|ascend|descend.
+
 
 -compile({no_auto_import,[size/1]}).
 -compile({no_auto_import,[max/2]}).
@@ -344,9 +353,12 @@ cdata_(N,T,CData) ->
     Bin = list_to_binary([elem_to_bin(T,E) || E <- CData]),
     #matrix { type=T, n=N, m=M, nstep=0, mstep=1, rowmajor=true, resource=Bin }.
 
--spec identity({N::unsigned(), M::unsigned()}) -> matrix().
+-spec identity({N::unsigned(), M::unsigned()}) -> matrix();
+	      ({N::unsigned(), M::unsigned(), T::matrix_type()}) -> matrix().
 identity({N,M}) ->
-    identity(N,M,float64).
+    identity(N,M,float64);
+identity({N,M,T}) ->
+    identity(N,M,T).
 
 -spec identity({N::unsigned(),M::unsigned()},T::matrix_type()) -> matrix().
 identity({N,M},T) ->
@@ -423,6 +435,7 @@ element(I,A) -> element_(I,A).
 element_(_I,_A) ->
     ?nif_stub().
 
+%% DESTRUCTIVE
 -spec setelement(I::unsigned(),J::unsigned(),X::matrix(),V::scalar()) ->
 			matrix().
 setelement(I,J,X,V) ->
@@ -821,35 +834,92 @@ filter(_W, _Sn, _Sm, _A) ->
 filter(_W, _Sn, _Sm, _A, _Dst) ->
     ?nif_stub().
 
+-spec swap(K::integer(), L::integer(), A::matrix(), Axis::1..2) -> matrix().
+%% swap row K and L if Axis = 1
+%% swap column K and L if Axis = 2
+swap(_K, _L, _A, _Axis) ->
+    ?nif_stub().
+
+-spec sort(A::matrix(), K::integer()) -> 
+		  matrix();
+	  (A::matrix(), Elems::matrix()) -> 
+		  matrix().
+sort(A,K) -> 
+    sort(A, K, 1, []).
+
+-spec sort(A::matrix(), K::integer(), Axis::1..2) -> 
+		  matrix();
+	  (A::matrix(), Elems::matrix(), Axis::1..2) -> 
+		  matrix().
+
+sort(A, K, Axis) ->
+    sort(A, K, Axis, []).
+
+-spec sort(A::matrix(), K::integer(), Axis::1..2, Opts::[sort_option()]) -> 
+		  matrix();
+	  (A::matrix(), Elems::matrix(), Axis::1..2, Opts::[sort_option()]) -> 
+		  matrix().
+
+%% Sort columns according to row K if Axis = 1
+%% Sort rows according to column K if Axis = 2
+%% or sort according to row matrix Elems if Axis = 1
+%% or sort according to column matrix Elems if Axis = 2
+
+sort(_A, _K, _Axis, _Opts) ->
+    ?nif_stub().    
+
 %% pickout max element with (example)
 %% Index = argmax(A,1),
 %% Max = element(Index, A),
 
 %% argmax
 -spec argmax(A::matrix()) -> {I::integer(),J::integer()}.
-
-argmax(_A) ->
-    ?nif_stub().
+argmax(A) ->
+    argmax(A, 0, []).
 
 -spec argmax(A::matrix(),Axis::0..2) -> matrix().
+argmax(A,I) ->
+    argmax(A,I,[]).
 
-argmax(_A,_I) ->
+-spec argmax(A::matrix(),Axis::0..2,Opts::[compare_option()]) -> matrix().
+argmax(_A,_I,_Opts) ->
+    ?nif_stub().
+
+%% argmin
+-spec argmin(A::matrix()) -> {I::integer(),J::integer()}.
+argmin(A) ->
+    argmin(A,0,[]).
+
+-spec argmin(A::matrix(),Axis::0..2) -> matrix().
+argmin(A,I) ->
+    argmin(A,I,[]).
+
+-spec argmin(A::matrix(),Axis::0..2,Opts::[compare_option()]) -> matrix().
+argmin(_A,_I,_Opts) ->
     ?nif_stub().
 
 -spec max(A::matrix()) -> scalar().
-max(_A) ->
-    ?nif_stub().
+max(A) ->
+    max(A,0,[]).
 
 -spec max(A::matrix(), Axis::0..2) -> matrix().
-max(_A, _Axis) ->
+max(A, Axis) -> 
+    max(A,Axis,[]).
+
+-spec max(A::matrix(), Axis::0..2,Opts::[compare_option()]) -> matrix().
+max(_A, _Axis, _Opts) ->
     ?nif_stub().
 
 -spec min(A::matrix()) -> scalar().
-min(_A) ->
-    ?nif_stub().
+min(A) ->
+    min(A, 0, []).
 
 -spec min(A::matrix(), Axis::0..2) -> matrix().
-min(_A, _Axis) ->
+min(A, Axis) ->
+    min(A, Axis, []).
+
+-spec min(A::matrix(), Axis::0..2,Opts::[compare_option()]) -> matrix().
+min(_A, _Axis, _Opts) ->
     ?nif_stub().
 
 -spec sigmoid(A::matrix()) -> matrix().
@@ -911,6 +981,62 @@ tanh(A) ->
 %% grad'(x) =
 tanh_prime(_A,Out) ->
     apply1(tanh_prime1, Out).
+
+-spec invert(A::matrix()) -> matrix().
+
+invert(A) ->
+    {L,U,P,Pn} = matrix_lu:decompose(A),
+    if Pn > 0 ->
+	    multiply(multiply(invert_u(U), invert_l(L)), P);
+       true ->
+	    multiply(invert_u(U), invert_l(L))
+    end.
+
+invert_u(U) ->
+    U1 = transpose(U),
+    U2 = invert_l(U1),
+    transpose(U2).
+
+invert_l(A) ->
+    Signature = {N,_,_} = signature(A),
+    ID = identity(Signature),
+    invert_l_rows(1,N,A,ID).
+
+%% row by row
+invert_l_rows(I,N,A,X) when I =< N ->
+    Xii = element(I,I,A),
+    io:format("Xii = ~p\n", [Xii]),
+    X1 = setelement(I,I,X,1/Xii),            %% destructive! X1 = X
+    X2  = invert_l_row(I, I-1, Xii, A, X1),  %% destructive! X2 = X1
+    invert_l_rows(I+1,N,A,X2);
+invert_l_rows(_I,_N,_A,X) ->
+    X.
+
+invert_l_row(_I,0,_Xii,_A,X) ->
+    X;
+invert_l_row(I,J,Xii,A,X) ->
+    S = sum_l(I, J, I-1, A, X, 0),
+    X1 = setelement(I,J,X,-S/Xii),  %% destructive!
+    invert_l_row(I,J-1,Xii,A,X1).
+
+sum_l(_I,J,K,_A,_X,Sum)  when K < J->
+    Sum;
+sum_l(I,J,K,A,X,Sum) ->
+    sum_l(I,J,K-1,A,X,element(I,K,A)*element(K,J,X) + Sum).
+    
+-spec det(A::matrix()) -> scalar().
+
+-define(pow_sign(N), ((((N)+1) band 1)*2 - 1)).
+
+det(A) ->
+    {_L,U,_P,Pn} = matrix_lu:decompose(A),
+    {N,_} = size(U),
+    D = det_u(N,1,U),  %% multiply diagonal
+    D*?pow_sign(Pn).   %% with -1^Pn
+    
+det_u(0,D,_U) -> D;
+det_u(I,D,U) -> det_u(I-1,D*element(I,I,U),U).
+
 
 print(A) ->
     io:put_chars(format(A)).
