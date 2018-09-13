@@ -7,8 +7,6 @@
 
 -module(matrix_lu).
 -export([decompose/1, decompose/2]).
-%% debug
--export([test/1, test_44/0, test_rand_44/0, test_rand_44_complex/0]).
 
 -include("matrix.hrl").
 
@@ -16,38 +14,6 @@
 -define(MAX_FLOAT, 1.7976931348623157e+308). %% max positive float
 -define(EPS, 2.2204460492503131e-16).        %% float32 smallest step
 
-%% example from http://www4.ncsu.edu/~kksivara/ma505/handouts/lu-pivot.pdf
-test_44() ->
-    A = matrix:from_list([[2,1,1,0],
-			  [4,3,3,1],
-			  [8,7,9,5],
-			  [6,7,9,8]],float32),
-    test(A).
-
-test_rand_44() ->
-    A = matrix:uniform(4,4,float32),
-    test(A).
-
-test_rand_44_complex() ->
-    A = matrix:uniform(4,4,complex64),
-    test(A).
-
-test(A) ->
-    io:format("A=\n"), matrix:print(A),
-    {L,U,P,Pn} = decompose(A),
-    io:format("L=\n"), matrix:print(L),
-    io:format("U=\n"), matrix:print(U),
-    io:format("P=\n"), matrix:print(P),
-    P1 = matrix:transpose(P),
-    io:format("P'=\n"), matrix:print(P1),
-    io:format("Pn=~w\n",[Pn]),
-
-    LU = matrix:multiply(L,U),
-    PA = matrix:multiply(P,A),
-    io:format("PA=\n"), matrix:print(PA),
-    io:format("LU=\n"), matrix:print(LU),
-    io:format("P'LU=\n"), matrix:print(matrix:multiply(P1,LU)),
-    {L,U,P,Pn}.
 
 %% Decompose square matrix A into L*U where 
 %% L is lower triangular and U is upper triangular

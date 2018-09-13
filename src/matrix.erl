@@ -54,7 +54,9 @@
 -export([transpose/1]).
 -export([transpose_data/1, transpose_data/2]).
 -export([print/1, print/2, format/1, format/2]).
--export([row/2, column/2, submatrix/5]).
+-export([row/2, row/4]).
+-export([column/2, column/4]).
+-export([submatrix/5]).
 -export([argmax/1, argmax/2, argmax/3]).
 -export([argmin/1, argmin/2, argmin/3]).
 -export([min/1, min/2, min/3]).
@@ -737,6 +739,13 @@ row(I, A) ->
     {_N,M} = size(A),
     submatrix(I, 1, 1, M, A).
 
+%% select part of a row as row vector
+-spec row(I::unsigned(),J1::unsigned(),J2::unsigned(),A::matrix()) -> 
+		 matrix().
+
+row(I,J1,J2,A) when J1 =< J2 ->
+    submatrix(I, J1, 1, J2-J1+1, A).
+
 %%
 %% select a column, return as a matrix with one column
 %%
@@ -744,6 +753,11 @@ row(I, A) ->
 column(J, A) ->
     {N,_M} = size(A),
     submatrix(1, J, N, 1, A).
+
+-spec column(J::unsigned(),I1::unsigned(),I2::unsigned(),A::matrix()) -> 
+		    matrix().
+column(J,I1,I2,A) when I1 =< I2 ->
+    submatrix(I1,J,I2-I1+1,1,A).
 
 %%
 %% select a portion of a matrix
@@ -1040,7 +1054,13 @@ invert_l_rows(_I,_N,_A,X) ->
 invert_l_row(_I,0,_Xii,_A,X) ->
     X;
 invert_l_row(I,J,Xii,A,X) ->
-    S = sum_l(I, J, I-1, A, X, element_zero(A)),
+    K = I-1,
+    Aik = row(I,J,K,A),     %% A[I][J]..A[I][K]
+    print(Aik),
+    Xkj = column(J,J,K,X),  %% X[J][J]..X[K][J]
+    print(Xkj),
+    S = mulsum(Aik,transpose(Xkj)),
+    %% S = sum_l(I, J, I-1, A, X, element_zero(A)),
     Sneg = element_negate(S),
     X1 = setelement(I,J,X,element_divide(Sneg,Xii)),  %% destructive!
     invert_l_row(I,J-1,Xii,A,X1).
@@ -1049,8 +1069,8 @@ sum_l(_I,J,K,_A,_X,Sum)  when K < J->
     Sum;
 sum_l(I,J,K,A,X,Sum) ->
     Aik = element(I,K,A),
-    Akj = element(K,J,X),
-    sum_l(I,J,K-1,A,X,element_add(element_multiply(Aik,Akj),Sum)).
+    Xkj = element(K,J,X),
+    sum_l(I,J,K-1,A,X,element_add(element_multiply(Aik,Xkj),Sum)).
     
 -spec det(A::matrix()) -> scalar().
 
@@ -1058,8 +1078,8 @@ sum_l(I,J,K,A,X,Sum) ->
 
 det(A) ->
     {_L,U,_P,Pn} = matrix_lu:decompose(A),
-    {N,_} = size(U),
-    D = det_u(N,element_one(A),U),       %% multiply diagonal
+    {N,_,T} = signature(U),
+    D = det_u(N,elem_one(T),U),       %% multiply diagonal
     element_multiply(D,?pow_sign(Pn)).   %% with -1^Pn
     
 det_u(0,D,_U) -> D;
@@ -1223,13 +1243,13 @@ element_subtract(C, {A2,B2}) when is_number(C) ->
 element_abs(C) when is_number(C) -> abs(C);
 element_abs({A,B}) -> math:sqrt(A*A+B*B).
 
-element_zero(#matrix_t{type=T}) -> element_zero_(T);
-element_zero(#matrix{type=T}) -> element_zero_(T).
+element_zero(#matrix_t{type=T}) -> elem_zero(T);
+element_zero(#matrix{type=T}) -> elem_zero(T).
 
-element_one(#matrix_t{type=T}) -> element_one_(T);
-element_one(#matrix{type=T}) -> element_one_(T).
+element_one(#matrix_t{type=T}) -> elem_one(T);
+element_one(#matrix{type=T}) -> elem_one(T).
 
-element_zero_(T) ->
+elem_zero(T) ->
     case T of
 	?int8 -> 0;
 	?int16 -> 0;
@@ -1241,7 +1261,7 @@ element_zero_(T) ->
 	?complex128 -> {0.0, 0.0}
     end.
 
-element_one_(T) ->
+elem_one(T) ->
     case T of
 	?int8 -> 1;
 	?int16 -> 1;
@@ -1252,4 +1272,3 @@ element_one_(T) ->
 	?complex64 -> {1.0, 0.0};
 	?complex128 -> {1.0, 0.0}
     end.
-    

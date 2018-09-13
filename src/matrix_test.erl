@@ -748,7 +748,7 @@ test_invert() ->
     IA = inv33(A),
     io:format("A=\n"),matrix:print(A),
     io:format("A^-1=\n"),matrix:print(IA),
-    {L,U,P,Pn} = matrix_lu:decompose(A),
+    {L,U,P,_Pn} = matrix_lu:decompose(A),
     io:format("L(A)=\n"),matrix:print(L),    
     io:format("U(A)=\n"),matrix:print(U),
     io:format("P(A)=\n"),matrix:print(P),
@@ -771,6 +771,39 @@ inv33(M) ->
 		      [-(D*I-F*G),(A*I-C*G),-(A*F-C*D)],
 		      [(D*H-E*G),-(A*H-B*G),(E*E-B*D)]]).
 
+
+%% example from http://www4.ncsu.edu/~kksivara/ma505/handouts/lu-pivot.pdf
+test_decomp_44() ->
+    A = matrix:from_list([[2,1,1,0],
+			  [4,3,3,1],
+			  [8,7,9,5],
+			  [6,7,9,8]],float32),
+    test_decomp(A).
+
+test_decomp_rand_44() ->
+    A = matrix:uniform(4,4,float32),
+    test_decomp(A).
+
+test_decomp_rand_44_complex() ->
+    A = matrix:uniform(4,4,complex64),
+    test_decomp(A).
+
+test_decomp(A) ->
+    io:format("A=\n"), matrix:print(A),
+    {L,U,P,Pn} = matrix_lu:decompose(A),
+    io:format("L=\n"), matrix:print(L),
+    io:format("U=\n"), matrix:print(U),
+    io:format("P=\n"), matrix:print(P),
+    P1 = matrix:transpose(P),
+    io:format("P'=\n"), matrix:print(P1),
+    io:format("Pn=~w\n",[Pn]),
+
+    LU = matrix:multiply(L,U),
+    PA = matrix:multiply(P,A),
+    io:format("PA=\n"), matrix:print(PA),
+    io:format("LU=\n"), matrix:print(LU),
+    io:format("P'LU=\n"), matrix:print(matrix:multiply(P1,LU)),
+    {L,U,P,Pn}.
 
 %% replicate marix A (as list) into N*A rows and M*A columns
 tile(N,M,A) ->
@@ -1070,3 +1103,4 @@ bench_inline_loop(0, _F, _, _, _) ->
 bench_inline_loop(I, F, A, B, C) ->
     C1 = F(A,B,C),
     bench_inline_loop(I-1,F,A,B,C1).
+

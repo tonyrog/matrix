@@ -4429,7 +4429,6 @@ ERL_NIF_TERM matrix_kmultiply(ErlNifEnv* env, int argc,
 	}
     }
 
-    // K is a row of boolean data
     if (k->type != INT32)
 	return enif_make_badarg(env);
     if (!k->rowmajor || (k->n != 1))
