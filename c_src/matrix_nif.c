@@ -64,12 +64,11 @@ typedef enum {
 #define DECL_ATOM(name) \
     ERL_NIF_TERM atm_##name = 0
 
-// require env in context (ugly)
-#define LOAD_ATOM(name)			\
-    atm_##name = enif_make_atom(env,#name)
+#define LOAD_ATOM(env,name)			\
+    atm_##name = enif_make_atom((env),#name)
 
-#define LOAD_ATOM_STRING(name,string)		\
-    atm_##name = enif_make_atom(env,string)
+#define LOAD_ATOM_STRING(env,name,string)	\
+    atm_##name = enif_make_atom((env),string)
 
 #define CAT_HELPER3(p,x,y) p ## x ## y
 #define CAT3(p,x,y) CAT_HELPER3(p,x,y)
@@ -6460,38 +6459,37 @@ static void matrix_dtor(ErlNifEnv* env, matrix_t* mat)
 
 static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
 {
-    UNUSED(env);
     UNUSED(load_info);
     ErlNifResourceFlags tried;
 
     DBG("matrix_load\r\n");
-    LOAD_ATOM(matrix);
-    LOAD_ATOM(matrix_t);
-    LOAD_ATOM(sigmoid);
-    LOAD_ATOM(sigmoid_prime);
-    LOAD_ATOM(sigmoid_prime1);
-    LOAD_ATOM(relu);
-    LOAD_ATOM(relu_prime);
-    LOAD_ATOM(leaky_relu);
-    LOAD_ATOM(leaky_relu_prime);
-    LOAD_ATOM(tanh);
-    LOAD_ATOM(tanh_prime);
-    LOAD_ATOM(tanh_prime1);
-    LOAD_ATOM(softplus);
-    LOAD_ATOM(softplus_prime);
-    LOAD_ATOM(negate);
-    LOAD_ATOM(uniform);
-    LOAD_ATOM(normal);
-    LOAD_ATOM(zero);
-    LOAD_ATOM(one);
-    LOAD_ATOM(copy);
-    LOAD_ATOM(true);
-    LOAD_ATOM(false);
-    LOAD_ATOM(undefined);
-    LOAD_ATOM(exp);
-    LOAD_ATOM(abs);
-    LOAD_ATOM(ascend);
-    LOAD_ATOM(descend);
+    LOAD_ATOM(env,matrix);
+    LOAD_ATOM(env,matrix_t);
+    LOAD_ATOM(env,sigmoid);
+    LOAD_ATOM(env,sigmoid_prime);
+    LOAD_ATOM(env,sigmoid_prime1);
+    LOAD_ATOM(env,relu);
+    LOAD_ATOM(env,relu_prime);
+    LOAD_ATOM(env,leaky_relu);
+    LOAD_ATOM(env,leaky_relu_prime);
+    LOAD_ATOM(env,tanh);
+    LOAD_ATOM(env,tanh_prime);
+    LOAD_ATOM(env,tanh_prime1);
+    LOAD_ATOM(env,softplus);
+    LOAD_ATOM(env,softplus_prime);
+    LOAD_ATOM(env,negate);
+    LOAD_ATOM(env,uniform);
+    LOAD_ATOM(env,normal);
+    LOAD_ATOM(env,zero);
+    LOAD_ATOM(env,one);
+    LOAD_ATOM(env,copy);
+    LOAD_ATOM(env,true);
+    LOAD_ATOM(env,false);
+    LOAD_ATOM(env,undefined);
+    LOAD_ATOM(env,exp);
+    LOAD_ATOM(env,abs);
+    LOAD_ATOM(env,ascend);
+    LOAD_ATOM(env,descend);
     
     matrix_res = enif_open_resource_type(env, 0, "matrix",
 					 (ErlNifResourceDtor*) matrix_dtor,
