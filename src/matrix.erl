@@ -51,7 +51,7 @@
 -export([tanh/1, tanh_prime/2]).
 -export([softplus/1,softplus_prime/2]).
 -export([softmax/1,softmax_prime/2]).
--export([transpose/1]).
+-export([transpose/1,transpose/2]).
 -export([transpose_data/1, transpose_data/2]).
 -export([print/1, print/2, format/1, format/2]).
 -export([row/2, row/4]).
@@ -718,9 +718,14 @@ ktimes_(_A, _B, _K) ->
 ktimes_(_A, _B, _K, _C) ->
     ?nif_stub().
 
-%% Transpose a matrix
+%% Transpose a matrix (as a submatrix to A)
 -spec transpose(A::matrix()) -> matrix().
 transpose(_A) ->
+    ?nif_stub().
+
+%% Transpose a matrix (into C)
+-spec transpose(A::matrix(),C::matrix()) -> matrix().
+transpose(_A,_C) ->
     ?nif_stub().
 
 -spec transpose_data(Src::matrix()) -> matrix().
