@@ -1144,15 +1144,11 @@ int128_t op128_bnot(int128_t a)
 //  operations
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "matrix_add.i"
-#include "matrix_sub.i"
-#include "matrix_times.i"
-#include "matrix_neg.i"
+#include "matrix_arith.i"
+#include "matrix_bitwise.i"
+#include "matrix_cmp.i"
+
 #include "matrix_dot.i"
-#include "matrix_band.i"
-#include "matrix_bor.i"
-#include "matrix_bxor.i"
-#include "matrix_bnot.i"
 #include "matrix_multiply.i"
 #include "matrix_multiply_t.i"
 #include "matrix_kmultiply.i"
@@ -1160,30 +1156,14 @@ int128_t op128_bnot(int128_t a)
 #include "matrix_sigmoid.i"
 #include "matrix_sigmoid_prime1.i"
 #include "matrix_rectifier.i"
-#include "matrix_reciprocal.i"
-#include "matrix_eq.i"
-#include "matrix_lt.i"
-#include "matrix_lte.i"
 
 // SIMD versions
 #ifdef USE_VECTOR
-#include "matrix_vadd.i"
-#include "matrix_vsub.i"
-#include "matrix_vtimes.i"
-#include "matrix_vneg.i"
 #include "matrix_vdot.i"
-#include "matrix_vband.i"
-#include "matrix_vbor.i"
-#include "matrix_vbxor.i"
-#include "matrix_vbnot.i"
 #include "matrix_vmultiply.i"
 #include "matrix_vmultiply_t.i"
 #include "matrix_vkmultiply.i"
 #include "matrix_vkmultiply_t.i"
-#include "matrix_vreciprocal.i"
-#include "matrix_veq.i"
-#include "matrix_vlt.i"
-#include "matrix_vlte.i"
 #endif
 
 // float unary functions
