@@ -40,7 +40,8 @@ all() ->
 	     test_max,
 	     test_sum,
 	     test_argmax,
-	     test_det
+	     test_det,
+	     test_lu
 	    ]).
 
 test_em([F|Fs]) ->
@@ -804,6 +805,109 @@ test_decomp(A) ->
     io:format("LU=\n"), matrix:print(LU),
     io:format("P'LU=\n"), matrix:print(matrix:multiply(P1,LU)),
     {L,U,P,Pn}.
+
+data(1,a) ->
+    matrix:from_list([[8,9,11,14],
+		      [8,0,11,0],
+		      [8,10,11,1],
+		      [1,0,0,0]],float32);
+data(1,l) ->
+    matrix:from_list([[1,0,0,0],
+		      [1,1,0,0],
+		      [1/8,1/8,1,0],
+		      [1,-1/9,0,1]],float32);
+data(1,u) ->
+    matrix:from_list([[8,9,11,14],
+		      [0,-9,0,-14],
+		      [0,0,-11/8,0],
+		      [0,0,0,-131/9]],float32);
+data(1,p) ->
+    matrix:from_list([[1,0,0,0],
+		      [0,1,0,0],
+		      [0,0,0,1],
+		      [0,0,1,0]], float32);
+%% Data-2
+data(2,a) ->
+    matrix:from_list([[1,2,3,4,5],
+		      [5,4,3,2,1],
+		      [1,4,3,2,1],
+		      [3,2,1,5,4],
+		      [4,3,2,1,5]], float32);
+data(2,l) ->
+    matrix:from_list([[1,0,0,0,0],
+		      [5,1,0,0,0],
+		      [1,-1/3,1,0,0],
+		      [3,2/3,0,1,0],
+		      [4,5/6,0,0,1]], float32);
+data(2,u) ->
+    matrix:from_list([[1,2,3,4,5],
+		      [0,-6,-12,-18,-24],
+		      [0,0,-4,-8,-12],
+		      [0,0,0,5,5],
+		      [0,0,0,0,5]], float32);
+data(2,p) ->
+    matrix:identity(5,5,float32).
+
+test_lu() ->
+    test_lu(1),
+    test_lu(2).
+
+test_lu(N) ->
+    A = data(N,a),
+    L = data(N,l),
+    U = data(N,u),
+    P = data(N,p),
+    {L1,U1,P1,_Pn} = matrix_lu:decompose(A),
+    %% io:format("L = \n"), matrix:print(L), 
+    %% io:format("L1 = \n"), matrix:print(L1), 
+    %% io:format("U = \n"), matrix:print(U), 
+    %% io:format("U1 = \n"), matrix:print(U1), 
+    %% io:format("P = \n"), matrix:print(P), 
+    %% io:format("P1 = \n"), matrix:print(P1), 
+    %% io:format("A = \n"), matrix:print(A), 
+    A1 = matrix:multiply(P,matrix:multiply(L,U)),
+    %% io:format("A1 = \n"), matrix:print(A1),     
+    A2 = matrix:multiply(matrix:transpose(P1),matrix:multiply(L1,U1)),
+    %% io:format("A2 = \n"), matrix:print(A2),
+    0 = compare_matrix(A, A1),
+    0 = compare_matrix(A, A2),
+    ok.
+
+compare_matrix(A,B) ->
+    {An,Am} = matrix:size(A),
+    {Bn,Bm} = matrix:size(B),
+    if An < Bn -> -1;
+       An > Bn -> 1;
+       Am < Bm -> -1;
+       Am > Bm -> 1;
+       true ->
+	    case matrix:is_integer_matrix(A) andalso 
+		matrix:is_integer_matrix(B) of
+		true -> compare_elements(1,An,Am,A,B,0);
+		false -> compare_elements(1,An,Am,A,B,1.0E-8)
+	    end
+    end.
+
+compare_elements(I,N,M,A,B,Eps) when I =< N ->
+    case compare_row(1,M,I,A,B,Eps) of
+	0 -> compare_elements(I+1,N,M,A,B,Eps);
+	R -> R
+    end;
+compare_elements(_I,_N,_M,_A,_B,_Eps) ->
+    0.
+
+compare_row(J,M,I,A,B,Eps) when J =< M ->
+    Aij = matrix:element(I,J,A),
+    Bij = matrix:element(I,J,B),
+    Delta = Aij-Bij,
+    if 	
+	abs(Delta) =< Eps -> compare_row(J+1,M,I,A,B,Eps);
+	Delta>0 -> 1;
+	Delta<0 -> -1
+    end;
+compare_row(_J,_M,_I,_A,_B,_Eps) ->
+    0.
+
 
 %% replicate marix A (as list) into N*A rows and M*A columns
 tile(N,M,A) ->
