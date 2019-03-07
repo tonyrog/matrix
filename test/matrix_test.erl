@@ -27,6 +27,12 @@ all() ->
 	     test_sub,
 	     test_times,
 	     test_negate,
+	     test_band,
+	     test_bor,
+	     test_bxor,
+	     test_eq,
+	     test_lt,
+	     test_lte,
 	     test_zero,
 	     test_identity,
 	     test_multiply,
@@ -108,7 +114,9 @@ test_times() ->
     test_em([
 	     {test_times,[4,4,int16]},
 	     {test_times,[24,24,int32]},
-	     {test_times,[128,128,int32]}]).
+	     {test_times,[128,128,int32]},
+	     {test_times,[128,128,int64]}
+	    ]).
 
 test_times(N,M,T) ->
     A = make(N,M,T),
@@ -118,16 +126,110 @@ test_times(N,M,T) ->
     Ref = matrix:to_list(C),
     ok.
 
+test_band() ->
+    test_em([
+	     {test_band,[4,3,int8]},
+	     {test_band,[24,24,int16]},
+	     {test_band,[128,128,int32]},
+	     {test_band,[256,256,int64]}
+	    ]).
+
+test_band(N,M,T) ->
+    test_binary(N,M,T,bitwise_and,fun(Aij,Bij) -> (Aij band Bij) end).
+
+test_bor() ->
+    test_em([
+	     {test_bor,[4,3,int8]},
+	     {test_bor,[24,24,int16]},
+	     {test_bor,[128,128,int32]},
+	     {test_bor,[256,256,int64]}
+	    ]).
+
+test_bor(N,M,T) ->
+    test_binary(N,M,T,bitwise_or,fun(Aij,Bij) -> (Aij bor Bij) end).
+
+test_bxor() ->
+    test_em([
+	     {test_bxor,[4,3,int8]},
+	     {test_bxor,[24,24,int16]},
+	     {test_bxor,[128,128,int32]},
+	     {test_bxor,[256,256,int64]}
+	    ]).
+
+test_bxor(N,M,T) ->
+    test_binary(N,M,T,bitwise_xor,fun(Aij,Bij) -> (Aij bxor Bij) end).
+
+
+test_eq() ->
+    test_em([
+	     {test_eq,[4,3,int8]},
+	     {test_eq,[24,24,int16]},
+	     {test_eq,[128,128,int32]},
+	     {test_eq,[256,256,int64]}
+	    ]).
+
+test_eq(N,M,T) ->
+    test_binary(N,M,T,eq,fun(Aij,Bij) ->
+				 if Aij =:= Bij -> -1;
+				    true -> 0
+				 end
+			 end).
+
+
+test_lt() ->
+    test_em([
+	     {test_lt,[4,3,int8]},
+	     {test_lt,[24,24,int16]},
+	     {test_lt,[128,128,int32]},
+	     {test_lt,[256,256,int64]}
+	    ]).
+
+test_lt(N,M,T) ->
+    test_binary(N,M,T,lt,fun(Aij,Bij) ->
+				 if Aij < Bij -> -1;
+				    true -> 0
+				 end
+			 end).
+
+test_lte() ->
+    test_em([
+	     {test_lte,[4,3,int8]},
+	     {test_lte,[24,24,int16]},
+	     {test_lte,[128,128,int32]},
+	     {test_lte,[256,256,int64]}
+	    ]).
+
+test_lte(N,M,T) ->
+    test_binary(N,M,T,lte,fun(Aij,Bij) ->
+				 if Aij =< Bij -> -1;
+				    true -> 0
+				 end
+			 end).
+
 test_negate() ->
     test_em([{test_negate,[4,4,int8]},
 	     {test_negate,[24,24,int16]},
 	     {test_negate,[128,128,int32]}]).
 
-
 test_negate(N,M,T) ->
     A = make(N,M,T),
     C = matrix:negate(A),
     Ref = [[-J || J <- lists:seq(I,I+M-1)] || I <- lists:seq(1,N*M,M)],
+    Ref = matrix:to_list(C),
+    ok.
+
+test_binary(N,M,T,MatrixOp,BinOp) ->
+    As = make_random(N,M,T),
+    Bs = make_random(N,M,T),
+    C = matrix:MatrixOp(matrix:from_list(As,T),matrix:from_list(Bs,T)),
+    Ref = mmap(BinOp, As, Bs),
+    Ref = matrix:to_list(C),
+    ok.
+
+test_unary(N,M,T,MatrixOp,UnaryOp) ->
+    A = make(N,M,T),
+    C = matrix:MatrixOp(A),
+    Ref = mmap(UnaryOp, make_list(N,M)),
     Ref = matrix:to_list(C),
     ok.
 
@@ -925,13 +1027,60 @@ merge_vertical([],[]) ->
 merge_horizontal(As, Bs) ->
     As ++ Bs.
 
+rndt(int8) -> rand:uniform(16#80)-1;
+rndt(int16) -> rand:uniform(16#8000)-1;
+rndt(int32) -> rand:uniform(16#80000000)-1;
+rndt(int64) -> rand:uniform(16#8000000000000000)-1;
+rndt(int128) -> rand:uniform(16#80000000000000000000000000000000)-1;
+rndt(float32) -> rand:uniform();
+rndt(float64) -> rand:uniform();
+rndt(float128) -> rand:uniform();
+rndt(complex64) -> {rand:uniform(),rand:uniform()};
+rndt(complex128) -> {rand:uniform(),rand:uniform()}.
+    
+make_random(N,M,T) ->
+    [[rndt(T) || _ <- lists:seq(I,I+M-1)] ||
+	I <- lists:seq(1,N*M,M)].
+
 make_list(N,M) ->
-    [lists:seq(I,I+M-1) || I <- lists:seq(1,N*M,M)].
+    [lists:seq(I,I+M-1) ||
+	I <- lists:seq(1,N*M,M)].
+
+make_rev_list(N,M) ->
+    lists:reverse([lists:seq(I,I+M-1) ||
+		      I <- lists:reverse(lists:seq(1,N*M,M))]).
 
 make(N,M,T) ->
     Es = make_list(N,M),
     matrix:from_list(Es, T).
-    
+
+make_rev(N,M,T) ->
+    Es = make_rev_list(N,M),
+    matrix:from_list(Es, T).
+
+mmap(Fun, [A|As], [B|Bs]) ->
+    [mmap1(Fun,A,B)|mmap(Fun,As,Bs)];
+mmap(_Fun, [], []) ->
+    [].
+
+mmap1(Fun,[A|As],[B|Bs]) ->
+    [Fun(A,B)|mmap1(Fun,As,Bs)];
+mmap1(_Fun, [], []) ->
+    [].
+
+mmap(Fun, [A|As]) ->
+    [mmap1(Fun,A)|mmap(Fun,As)];
+mmap(_Fun, []) ->
+    [].
+
+mmap1(Fun,[A|As]) ->
+    [Fun(A)|mmap1(Fun,As)];
+mmap1(_Fun,[]) ->
+    [].
+
+
+
+
 %%%
 %%%% BENCHMARK (MackBook Pro, 13-inch 2012 2.5 GHz Intel Core i5, 4 core)
 %%%
