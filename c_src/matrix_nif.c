@@ -418,13 +418,18 @@ static ERL_NIF_TERM matrix_bxor(ErlNifEnv* env, int argc,
 static ERL_NIF_TERM matrix_bnot(ErlNifEnv* env, int argc,
 				const ERL_NIF_TERM argv[]);
 
-#if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 12))
-//#define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
+// Dirty optional since 2.7 and mandatory since 2.12
+#if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 7))
+#ifdef USE_DIRTY_SCHEDULER
+#define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
+#define NIF_DIRTY_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
+#else
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(0)}
-#elif (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 7))
-#define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr),(0)}
+#define NIF_DIRTY_FUNC(name,arity,fptr) {(name),(arity),(fptr),(ERL_NIF_DIRTY_JOB_CPU_BOUND)}
+#endif
 #else
 #define NIF_FUNC(name,arity,fptr) {(name),(arity),(fptr)}
+#define NIF_DIRTY_FUNC(name,arity,fptr) {(name),(arity),(fptr)}
 #endif
 
 ErlNifFunc matrix_funcs[] =
@@ -1774,16 +1779,6 @@ static float64_t (*binop_float64[NUM_BINOP])(float64_t, float64_t) = {
     [SUB]  = sub_float64,
     [MUL]  = mul_float64,
 };
-
-static float64_t mask_float64(float64_t a, int64_t m)
-{
-    float64_t r;
-    int64_t* ap = (int64_t*) &a;
-    int64_t* rp = (int64_t*) &r;
-    
-    *rp = op_band(*ap, m);
-    return r;
-}
 
 static int64_t eq_float64(float64_t a, float64_t b)
 {
@@ -4113,6 +4108,7 @@ static int get_matrix(ErlNifEnv* env, ERL_NIF_TERM arg,
 // get a row oriented matrix  (n=number or rows, m=number of columns)
 // (or update swapped parameters) to fake it.
 //
+#if 0
 static int get_row_matrix(ErlNifEnv* env, ERL_NIF_TERM arg,
 			  matrix_t* mp, matrix_t** mpp)
 {
@@ -4197,7 +4193,7 @@ static int get_row_matrix(ErlNifEnv* env, ERL_NIF_TERM arg,
     *mpp = mp;
     return 1;
 }
-
+#endif
 
 // check if matrices a is submatrix to b or wiseversa
 static bool_t is_overlapping(matrix_t* a, matrix_t* b)
