@@ -15,9 +15,9 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, size_t au,
-		      TYPE* bp, size_t bu,
-		      TYPE* cp, size_t cu,
+static void PROCEDURE(TYPE* ap, int au,
+		      TYPE* bp, int bu,
+		      TYPE_R* cp, int cu,
 		      size_t n, size_t m
 		      PARAMS_DECL)
 {
@@ -25,14 +25,14 @@ static void PROCEDURE(TYPE* ap, size_t au,
     while(n--) {
 	TYPE* ap1 = ap;
 	TYPE* bp1 = bp;
-	TYPE* cp1 = cp;
+	TYPE_R* cp1 = cp;
 	size_t m1 = m;
 	while(m1 >= VELEMS(TYPE)) {
 	    VTYPE a = *(VTYPE*)ap1;
 	    VTYPE b = *(VTYPE*)bp1;
 	    ap1 += VELEMS(TYPE);
 	    bp1 += VELEMS(TYPE);
-	    *(VTYPE*)cp1 = VOPERATION(a,b);
+	    *((VTYPE_R*)cp1) = VOPERATION(a,b);
 	    cp1 += VELEMS(TYPE);
 	    m1  -= VELEMS(TYPE);
 	}
@@ -49,6 +49,7 @@ static void PROCEDURE(TYPE* ap, size_t au,
 
 #undef PROCEDURE
 #undef TYPE
+#undef TYPE_R
 #undef PARAMS_DECL
 #undef LOCALS_DECL
 #undef VOPERATION

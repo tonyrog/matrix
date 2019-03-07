@@ -72,9 +72,9 @@
 #define TYPE2          complex64_t
 #define OPERATION(a,b)   CAT2(op_,OP)((a),(b))
 #define OPERATION2(a,b)  CAT2(op_,OP2)((a),(b))
-#define VOPERATION(a,b)  complex64_mul((a),(b))
-#define VOPERATION2(a,b) complex64_add((a),(b))
-#define VELEMENT(a,i)    complex64_velement((a),(i))
+#define VOPERATION(a,b)  vcop64_mul((a),(b))
+#define VOPERATION2(a,b) vcop64_add((a),(b))
+#define VELEMENT(a,i)    vcop64_velement((a),(i))
 #include "mtv_dot.i"
 
 #define TYPE           complex128_t
@@ -82,9 +82,9 @@
 #define TYPE2          complex128_t
 #define OPERATION(a,b)   CAT2(op_,OP)((a),(b))
 #define OPERATION2(a,b)  CAT2(op_,OP2)((a),(b))
-#define VOPERATION(a,b)  complex128_mul((a),(b))
-#define VOPERATION2(a,b) complex128_add((a),(b))
-#define VELEMENT(a,i)    complex128_velement((a),(i))
+#define VOPERATION(a,b)  vcop128_mul((a),(b))
+#define VOPERATION2(a,b) vcop128_add((a),(b))
+#define VELEMENT(a,i)    vcop128_velement((a),(i))
 #include "mtv_dot.i"
 
 #undef OP2

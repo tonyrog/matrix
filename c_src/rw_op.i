@@ -19,6 +19,11 @@ static int64_t read_int64_int64(byte_t* ptr)
     return (int64_t) *((int64_t*)ptr);
 }
 
+static int64_t read_int64_int128(byte_t* ptr)
+{
+    return (int64_t) ((int128_t*)ptr)->lo;
+}
+
 static int64_t read_int64_float32(byte_t* ptr)
 {
     return (int64_t) *((float32_t*)ptr);
@@ -244,6 +249,7 @@ static int64_t (*read_int64_func[NUM_TYPES])(byte_t*) = {
   [INT16] = read_int64_int16,
   [INT32] = read_int64_int32,
   [INT64] = read_int64_int64,
+  [INT128] = read_int64_int128,
   [FLOAT32] = read_int64_float32,
   [FLOAT64] = read_int64_float64,
   [COMPLEX64] = read_int64_complex64,

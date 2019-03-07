@@ -25,6 +25,15 @@
 -export([add/2,add/3]).
 -export([subtract/2,subtract/3]).
 -export([multiply/2,multiply/3]).
+-export([eq/2,eq/3]).
+-export([lt/2,lt/3]).
+-export([lte/2,lte/3]).
+-export([gt/2,gt/3]).
+-export([gte/2,gte/3]).
+-export([bitwise_and/2, bitwise_and/3]).
+-export([bitwise_or/2, bitwise_or/3]).
+-export([bitwise_xor/2, bitwise_xor/3]).
+-export([bitwise_not/1, bitwise_not/2]).
 -export([kmultiply/3]).
 -export([mulsum/2]).
 -export([expsum/1]).
@@ -407,15 +416,15 @@ signature(A=#matrix_t{type=T}) ->
 
 -spec is_integer_matrix(X::matrix()) -> boolean().
 is_integer_matrix(#matrix_t{type=T}) -> 
-    (T >= ?int8) andalso (T =< ?int64);
+    (T >= ?int8) andalso (T =< ?int128);
 is_integer_matrix(#matrix{type=T}) -> 
-    (T >= ?int8) andalso (T =< ?int64).
+    (T >= ?int8) andalso (T =< ?int128).
 
 -spec is_float_matrix(X::matrix()) -> boolean().
 is_float_matrix(#matrix_t{type=T}) ->
-    (T >= ?float32) andalso (T =< ?float64);
+    (T >= ?float32) andalso (T =< ?float128);
 is_float_matrix(#matrix{type=T}) ->
-    (T >= ?float32) andalso (T =< ?float64).
+    (T >= ?float32) andalso (T =< ?float128).
 
 -spec is_complex_matrix(X::matrix()) -> boolean().
 is_complex_matrix(#matrix_t{type=T}) ->
@@ -537,6 +546,7 @@ add(_A,_B) ->
 add(_A, _B, _Dst) ->
     ?nif_stub().
 
+
 %%
 %% Subtract two matrices
 %%
@@ -554,6 +564,82 @@ subtract(_A, _B) ->
 	      (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
 
 subtract(_A,_B,_Dst) ->
+    ?nif_stub().
+
+%% Compare two matrices
+
+-spec eq(A::matrix(), B::matrix()) -> matrix();
+	(A::matrix(), B::scalar()) -> matrix();
+	(A::scalar(), B::matrix()) -> matrix().
+
+eq(_A,_B) ->
+    ?nif_stub().
+
+-spec eq(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
+	(A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
+	(A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+
+eq(_A, _B, _Dst) ->
+    ?nif_stub().
+
+-spec lt(A::matrix(), B::matrix()) -> matrix();
+	(A::matrix(), B::scalar()) -> matrix();
+	(A::scalar(), B::matrix()) -> matrix().
+
+lt(_A,_B) ->
+    ?nif_stub().
+
+-spec lt(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
+	(A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
+	(A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+
+lt(_A, _B, _Dst) ->
+    ?nif_stub().
+
+-spec lte(A::matrix(), B::matrix()) -> matrix();
+	(A::matrix(), B::scalar()) -> matrix();
+	(A::scalar(), B::matrix()) -> matrix().
+
+lte(_A,_B) ->
+    ?nif_stub().
+
+-spec lte(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
+	(A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
+	(A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+
+lte(_A, _B, _Dst) ->
+    ?nif_stub().
+
+
+gt(A, B) -> lt(B, A).
+gte(A, B) -> lte(B, A).
+
+gt(A, B, C) -> lt(B, A, C).
+gte(A, B, C) -> lte(B, A, C).
+
+
+bitwise_and(_A,_B) ->
+    ?nif_stub().
+
+bitwise_and(_A,_B,_C) ->
+    ?nif_stub().
+
+bitwise_or(_A,_B) ->
+    ?nif_stub().
+
+bitwise_or(_A,_B,_C) ->
+    ?nif_stub().
+
+bitwise_xor(_A,_B) ->
+    ?nif_stub().
+
+bitwise_xor(_A,_B,_C) ->
+    ?nif_stub().
+
+bitwise_not(_A) ->
+    ?nif_stub().
+
+bitwise_not(_A, _C) ->
     ?nif_stub().
 
 %%
@@ -1144,9 +1230,10 @@ arg_type(X) ->
 	    if X >= -16#80, X < 16#80 -> ?int8;
 	       X >= -16#8000, X < 16#8000 -> ?int16;
 	       X >= -16#80000000, X < 16#80000000 -> ?int32;
-	       true -> ?int64
+	       X >= -16#8000000000000000, X < 16#8000000000000000 -> ?int64;
+	       true -> ?int128
 	    end;
-       is_float(X) -> ?float64;
+       is_float(X) -> ?float128;
        ?is_complex(X) -> ?complex128
     end.
 
@@ -1161,10 +1248,14 @@ elem_to_bin(?complex64, {R,I}) ->
     <<(float(R)):32/native-float,(float(I)):32/native-float>>;
 elem_to_bin(?complex64, R) ->
     <<(float(R)):32/native-float,0.0:32/native-float>>;
-elem_to_bin(?float64, X) ->
-    <<(float(X)):64/native-float>>;
 elem_to_bin(?float32, X) ->
     <<(float(X)):32/native-float>>;
+elem_to_bin(?float64, X) ->
+    <<(float(X)):64/native-float>>;
+elem_to_bin(?float128, X) ->
+    float128_to_binary(X);
+elem_to_bin(?int128, X) ->
+    <<(trunc(X)):128/native-signed-integer>>;
 elem_to_bin(?int64, X) ->
     <<(trunc(X)):64/native-signed-integer>>;
 elem_to_bin(?int32, X) ->
@@ -1175,20 +1266,20 @@ elem_to_bin(?int8, X) ->
     <<(trunc(X)):8/native-signed-integer>>.
 
 %% simulate float128 binary
--ifdef(not_used).
 float128_to_binary(X) ->
     <<S:1,E:11,F:52>> = <<(float(X)):64/float>>, %% first 64 bit
     E1 = E-1023,
     <<Xi:128>> = <<S:1,(E1+16383):15,F:52,0:60>>,  %% endian
     <<Xi:128/native>>.
--endif.
 
 encode_type(int8) -> ?int8;
 encode_type(int16) -> ?int16;
 encode_type(int32) -> ?int32;
 encode_type(int64) -> ?int64;
+encode_type(int128) -> ?int128;
 encode_type(float32) -> ?float32;
 encode_type(float64) -> ?float64;
+encode_type(float128) -> ?float128;
 encode_type(complex64) -> ?complex64;
 encode_type(complex128) -> ?complex128.
 
@@ -1198,8 +1289,10 @@ decode_type(T) ->
 	?int16 -> int16;
 	?int32 -> int32;
 	?int64 -> int64;
+	?int128 -> int128;
 	?float32 -> float32;
 	?float64 -> float64;
+	?float128 -> float128;
 	?complex64 -> complex64;
 	?complex128 -> complex128
     end.    
@@ -1260,8 +1353,10 @@ elem_zero(T) ->
 	?int16 -> 0;
 	?int32 -> 0;
 	?int64 -> 0;
+	?int128 -> 0;
 	?float32 -> 0.0;
 	?float64 -> 0.0;
+	?float128 -> 0.0;
 	?complex64 -> {0.0, 0.0};
 	?complex128 -> {0.0, 0.0}
     end.
@@ -1272,8 +1367,10 @@ elem_one(T) ->
 	?int16 -> 1;
 	?int32 -> 1;
 	?int64 -> 1;
+	?int128 -> 1;
 	?float32 -> 1.0;
 	?float64 -> 1.0;
+	?float128 -> 1.0;
 	?complex64 -> {1.0, 0.0};
 	?complex128 -> {1.0, 0.0}
     end.

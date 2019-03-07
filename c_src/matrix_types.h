@@ -19,6 +19,8 @@ typedef float  float32_t;
 typedef double float64_t;
 typedef float complex complex64_t;
 typedef double complex complex128_t;
+typedef struct { int64_t hi; int64_t lo; } int128_t;
+typedef struct { float64_t hi; float64_t lo; } float128_t;
 
 #define UNUSED(a) ((void) a)
 #define VOIDPTR(x) ((void*)&(x))
@@ -54,8 +56,10 @@ typedef int8_t       vint8_t;
 typedef int16_t      vint16_t;
 typedef int32_t      vint32_t;
 typedef int64_t      vint64_t;
+typedef int128_t     vint128_t;
 typedef float32_t    vfloat32_t;
 typedef float64_t    vfloat64_t;
+typedef float128_t   vfloat128_t;
 typedef complex64_t  vcomplex64_t;
 typedef complex128_t vcomplex128_t;
 
@@ -63,6 +67,7 @@ typedef complex128_t vcomplex128_t;
 #define vint16_t_const(a)      (a)
 #define vint32_t_const(a)      (a)
 #define vint64_t_const(a)      (a)
+#define vint128_t_const(a)     {(0),(a)}
 #define vfloat32_t_const(a)    (a)
 #define vfloat64_t_const(a)    (a)
 #define vcomplex64_t_const(a)  (a)
@@ -76,6 +81,7 @@ typedef int8_t    vint8_t    __attribute__ ((vector_size (VSIZE)));
 typedef int16_t   vint16_t   __attribute__ ((vector_size (VSIZE)));
 typedef int32_t   vint32_t   __attribute__ ((vector_size (VSIZE)));
 typedef int64_t   vint64_t   __attribute__ ((vector_size (VSIZE)));
+typedef int64_t   vint128_t  __attribute__ ((vector_size (VSIZE)));
 typedef float32_t vfloat32_t __attribute__ ((vector_size (VSIZE)));
 typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
 typedef float32_t vcomplex64_t __attribute__ ((vector_size (VSIZE)));
@@ -90,6 +96,7 @@ typedef float64_t vcomplex128_t __attribute__ ((vector_size (VSIZE)));
 #define vint16_t_const(a)   {(a),(a),(a),(a),(a),(a),(a),(a)}
 #define vint32_t_const(a)   {(a),(a),(a),(a)}
 #define vint64_t_const(a)   {(a),(a)}
+#define vint128_t_const(a)  {{(0),(a)},{(0),(a)}}
 #define vfloat32_t_const(a) {(a),(a),(a),(a)}
 #define vfloat64_t_const(a) {(a),(a)}
 #define vcomplex64_t_const(a) {crealf((a)),cimagf((a)),crealf((a)),cimagf((a))}
@@ -103,6 +110,7 @@ typedef float64_t vcomplex128_t __attribute__ ((vector_size (VSIZE)));
 	                     (a),(a),(a),(a),(a),(a),(a),(a)}
 #define vint32_t_const(a)   {(a),(a),(a),(a),(a),(a),(a),(a)}
 #define vint64_t_const(a)   {(a),(a),(a),(a)}
+#define vint128_t_const(a)  {{(0),(a)},{(0),(a)},{(0),(a)},{(0),(a)}}
 #define vfloat32_t_const(a) {(a),(a),(a),(a),(a),(a),(a),(a)}
 #define vfloat64_t_const(a) {(a),(a),(a),(a)}
 #define vcomplex64_t_const(a) {crealf((a)),cimagf((a)),\
@@ -119,6 +127,7 @@ typedef float64_t vcomplex128_t __attribute__ ((vector_size (VSIZE)));
 #define vint16_t_zero   vint16_t_const(0)
 #define vint32_t_zero   vint32_t_const(0)
 #define vint64_t_zero   vint64_t_const(0)
+#define vint128_t_zero  vint128_t_const(0)
 #define vfloat32_t_zero vfloat32_t_const(0.0)
 #define vfloat64_t_zero vfloat64_t_const(0.0)
 #define vcomplex64_t_zero vcomplex64_t_const(CMPLXF(0.0,0.0))
@@ -134,13 +143,44 @@ typedef enum {
     INT16   = 1,
     INT32   = 2,
     INT64   = 3,
-    FLOAT32 = 4,
-    FLOAT64 = 5,
-    COMPLEX64 = 6,
-    COMPLEX128 = 7,
+    INT128  = 4, 
+    FLOAT32 = 5,
+    FLOAT64 = 6,
+    FLOAT128 = 7,
+    COMPLEX64 = 8,
+    COMPLEX128 = 9,
 } matrix_type_t;
 
 #define NUM_TYPES (COMPLEX128+1)
+
+// type bits
+#define INT8_TYPE     (1 << INT8)
+#define INT16_TYPE    (1 << INT16)
+#define INT32_TYPE    (1 << INT32)
+#define INT64_TYPE    (1 << INT64)
+#define INT128_TYPE   (1 << INT128)
+#define INT_TYPES (INT8_TYPE|INT16_TYPE|INT32_TYPE|INT64_TYPE|INT128_TYPE)
+
+#define FLOAT32_TYPE  (1 << FLOAT32)
+#define FLOAT64_TYPE  (1 << FLOAT64)
+#define FLOAT128_TYPE (1 << FLOAT128)
+#define FLOAT_TYPES (FLOAT32_TYPE|FLOAT64_TYPE|FLOAT128_TYPE)
+
+#define COMPLEX64_TYPE  (1 << COMPLEX64)
+#define COMPLEX128_TYPE (1 << COMPLEX128)
+#define COMPLEX_TYPES (COMPLEX64_TYPE|COMPLEX128_TYPE)
+
+#define NONE_COMPLEX_TYPES (INT_TYPES|FLOAT_TYPE)
+#define NONE_INTEGER_TYPES (FLOAT_TYPES|COMPLEX_TYPES)   
+#define ALL_TYPES (INT_TYPES|FLOAT_TYPES|COMPLEX_TYPES)
+
+#define IS_TYPE(t, types)  ( ((1<<(t)) & (types)) != 0 )
+#define IS_INTEGER_TYPE(t) ( ((1<<(t)) & INT_TYPES) != 0 )
+#define IS_FLOAT_TYPE(t)   ( ((1<<(t)) & FLOAT_TYPES) != 0 )
+#define IS_COMPLEX_TYPE(t)   ( ((1<<(t)) & COMPLEX_TYPES) != 0 )
+#define IS_NONE_INTEGER_TYPE(t)   ( ((1<<(t)) & NONE_INTEGER_TYPES) != 0 )
+
+typedef uint16_t matrix_type_flags_t;
 
 // a union to represent all possible scalar data types
 typedef union {
@@ -160,13 +200,13 @@ typedef union {
     vint16_t      vi16;
     vint32_t      vi32;
     vint64_t      vi64;
+    vint128_t     vi128;
     vfloat32_t    vf32;
     vfloat64_t    vf64;
     vcomplex64_t  vc64;
     vcomplex128_t vc128;
     byte_t        data[VSIZE];
 } vscalar_t;
-
 
 #if defined(__x86_64__) && (VSIZE == 16)
 // FIXME use m256_addsub_ps/pd  for VSIZE==32
@@ -183,6 +223,39 @@ static inline vfloat64_t addsub_64(vfloat64_t x, vfloat64_t y)
 {
     return (vfloat64_t) __builtin_ia32_addsubpd(x,y);
 }
+
+#if 0
+// return x & y
+static inline vint128_t vop128_band(vint128_t x, vint128_t y)
+{
+    return (vint128_t) _mm_and_si128(x, y);
+}
+
+// return ~x & y
+static inline vint128_t vop128_bandn(vint128_t x, vint128_t y)
+{
+    return (vint128_t) _mm_andnot_si128(x, y);
+}
+
+// return x | y
+static inline vint128_t vop128_bor(vint128_t x, vint128_t y)
+{
+    return (vint128_t) _mm_or_si128(x, y);
+}
+
+// return x ^ y
+static inline vint128_t vop128_bxor(vint128_t x, vint128_t y)
+{
+    return (vint128_t) _mm_xor_si128(x, y);
+}
+
+// return ~x
+static inline vint128_t vop128_bnot(vint128_t x)
+{
+    return (vint128_t) _mm_xor_si128(x, -1);
+}
+#endif
+
 
 #elif defined(__x86_64__) && (VSIZE == 32)
 
@@ -230,7 +303,7 @@ static inline vfloat64_t addsub_64(vfloat64_t x, vfloat64_t y)
 //
 
 #ifdef __clang__
-static inline vcomplex64_t complex64_mul(vcomplex64_t x, vcomplex64_t y)
+static inline vcomplex64_t vcop64_mul(vcomplex64_t x, vcomplex64_t y)
 {
     vcomplex64_t a, b, c, d;
     vcomplex64_t r1,r2;
@@ -250,7 +323,7 @@ static inline vcomplex64_t complex64_mul(vcomplex64_t x, vcomplex64_t y)
     return addsub_32(r1,r2);
 }
 #else // gcc 
-static inline vcomplex64_t complex64_mul(vcomplex64_t x, vcomplex64_t y)
+static inline vcomplex64_t vcop64_mul(vcomplex64_t x, vcomplex64_t y)
 {
     vcomplex64_t a, b, c, d;
     vcomplex64_t r1,r2;
@@ -288,7 +361,7 @@ static inline vcomplex64_t complex64_mul(vcomplex64_t x, vcomplex64_t y)
 //
 
 #ifdef __clang__
-static inline vcomplex128_t complex128_mul(vcomplex128_t x,vcomplex128_t y)
+static inline vcomplex128_t vcop128_mul(vcomplex128_t x,vcomplex128_t y)
 {
     vcomplex128_t a, b, c, d;
     vcomplex128_t r1,r2;
@@ -308,7 +381,7 @@ static inline vcomplex128_t complex128_mul(vcomplex128_t x,vcomplex128_t y)
     return addsub_64(r1,r2);
 }
 #else
-static inline vcomplex128_t complex128_mul(vcomplex128_t x,vcomplex128_t y)
+static inline vcomplex128_t vcop128_mul(vcomplex128_t x,vcomplex128_t y)
 {
     vcomplex128_t a, b, c, d;
     vcomplex128_t r1,r2;
@@ -332,17 +405,17 @@ static inline vcomplex128_t complex128_mul(vcomplex128_t x,vcomplex128_t y)
 #endif
 
 
-static inline vcomplex64_t complex64_add(vcomplex64_t x, vcomplex64_t y)
+static inline vcomplex64_t vcop64_add(vcomplex64_t x, vcomplex64_t y)
 {
     return x+y;
 }
 
-static inline vcomplex64_t complex64_sub(vcomplex64_t x, vcomplex64_t y)
+static inline vcomplex64_t vcop64_sub(vcomplex64_t x, vcomplex64_t y)
 {
     return x-y;
 }
 
-static inline complex64_t complex64_velement(vcomplex64_t x, int i)
+static inline complex64_t vcop64_velement(vcomplex64_t x, int i)
 {
 #if VSIZE == 1
     return x;
@@ -352,7 +425,7 @@ static inline complex64_t complex64_velement(vcomplex64_t x, int i)
 }
 
 #if 0
-static inline void complex64_vsetelement(vcomplex64_t* xp, int i, complex64_t v)
+static inline void vcop64_vsetelement(vcomplex64_t* xp, int i, complex64_t v)
 {
 #if VSIZE == 1
     *xp = v;
@@ -363,39 +436,69 @@ static inline void complex64_vsetelement(vcomplex64_t* xp, int i, complex64_t v)
 }
 #endif
 
-static inline vcomplex64_t complex64_neg(vcomplex64_t x)
+static inline vcomplex64_t vcop64_neg(vcomplex64_t x)
 {
     return -x;
 }
 
-static inline vcomplex64_t complex64_reciprocal(vcomplex64_t x)
+static inline vcomplex64_t vcop64_reciprocal(vcomplex64_t x)
 {
     return 1/x;
 }
 
-static inline vcomplex128_t complex128_add(vcomplex128_t x, vcomplex128_t y)
+static inline vint64_t vcop64_eq(vcomplex64_t a, vcomplex64_t b)
+{
+    return (a == b);
+}
+
+// use cabs to compare comlex
+static inline vint64_t vcop64_lt(vcomplex64_t a, vcomplex64_t b)
+{
+    return (a < b);
+}
+
+static inline vint64_t vcop64_lte(vcomplex64_t a, vcomplex64_t b)
+{
+    return (a <= b);
+}
+
+static inline vcomplex128_t vcop128_add(vcomplex128_t x, vcomplex128_t y)
 {
     return x+y;
 }
 
-static inline vcomplex128_t complex128_sub(vcomplex128_t x,
+static inline vcomplex128_t vcop128_sub(vcomplex128_t x,
 					   vcomplex128_t y)
 {
     return x-y;
 }
 
-static inline vcomplex128_t complex128_neg(vcomplex128_t x)
+static inline vcomplex128_t vcop128_neg(vcomplex128_t x)
 {
     return -x;
 }
 
-static inline vcomplex128_t complex128_reciprocal(vcomplex128_t x)
+static inline vcomplex128_t vcop128_reciprocal(vcomplex128_t x)
 {
     return 1/x;
 }
 
+static inline vint64_t vcop128_eq(vcomplex128_t a, vcomplex128_t b)
+{
+    return (a == b);
+}
 
-static inline complex128_t complex128_velement(vcomplex128_t x, int i)
+static inline vint64_t vcop128_lt(vcomplex128_t a, vcomplex128_t b)
+{
+    return (a < b);
+}
+
+static inline vint64_t vcop128_lte(vcomplex128_t a, vcomplex128_t b)
+{
+    return (a <= b);
+}
+
+static inline complex128_t vcop128_velement(vcomplex128_t x, int i)
 {
 #if VSIZE == 1
     return x;
@@ -405,8 +508,8 @@ static inline complex128_t complex128_velement(vcomplex128_t x, int i)
 }
 
 #if 0
-static inline void complex128_vsetelement(vcomplex128_t* xp, int i,
-					  complex128_t v)
+static inline void vcop128_vsetelement(vcomplex128_t* xp, int i,
+				       complex128_t v)
 {
 #if VSIZE == 1
     *xp = v;

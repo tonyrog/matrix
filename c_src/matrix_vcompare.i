@@ -36,7 +36,7 @@
 
 #define PROCEDURE      CAT3(mtv_,NAME,_float32)
 #define TYPE           float32_t
-#define TYPE_R         float32_t
+#define TYPE_R         int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define VOPERATION(a,b) CAT2(op_,OP)((a),(b))
@@ -45,7 +45,7 @@
 
 #define PROCEDURE      CAT3(mtv_,NAME,_float64)
 #define TYPE           float64_t
-#define TYPE_R         float64_t
+#define TYPE_R         int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define VOPERATION(a,b) CAT2(op_,OP)((a),(b))
@@ -54,20 +54,20 @@
 
 #define PROCEDURE      CAT3(mtv_,NAME,_complex64)
 #define TYPE           complex64_t
-#define TYPE_R         complex64_t
+#define TYPE_R         int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define VOPERATION(a,b) CAT2(vcop64_,OP)((a),(b))
-#define OPERATION(a,b)  CAT2(op_,OP)((a),(b))
+#define OPERATION(a,b)  CAT2(cop64_,OP)((a),(b))
 #include "mtv_binary_op.i"
 
 #define PROCEDURE      CAT3(mtv_,NAME,_complex128)
 #define TYPE           complex128_t
-#define TYPE_R         complex128_t
+#define TYPE_R         int128_t
 #define PARAMS_DECL
 #define LOCALS_DECL
 #define VOPERATION(a,b) CAT2(vcop128_,OP)((a),(b))
-#define OPERATION(a,b)  CAT2(op_,OP)((a),(b))
+#define OPERATION(a,b)  CAT2(cop128_,OP)((a),(b))
 #include "mtv_binary_op.i"
 
 static mtv_binary_func_t CAT3(mtv_,NAME,_funcs)[NUM_TYPES] = {

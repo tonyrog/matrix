@@ -12,16 +12,18 @@
 -define(int16,      1).
 -define(int32,      2).
 -define(int64,      3).
--define(float32,    4).
--define(float64,    5).
--define(complex64,  6).
--define(complex128, 7).
+-define(int128,     4).
+-define(float32,    5).
+-define(float64,    6).
+-define(float128,   7).
+-define(complex64,  8).
+-define(complex128, 9).
 
 -type unsigned() :: non_neg_integer().
--type matrix_type() :: int8|int16|int32|int64|
-		       float32|float64|
+-type matrix_type() :: int8|int16|int32|int64|int128|
+		       float32|float64|float128|
 		       complex64|complex128.
--type encoded_type() :: 0..7.
+-type encoded_type() :: 0..8.
 		       
 -type complex() :: {float(),float()}.
 -type scalar() :: integer()|float()|complex().
