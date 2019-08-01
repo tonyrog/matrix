@@ -80,6 +80,7 @@
 -export([sort/2, sort/3, sort/4]).
 
 -export([invert/1, det/1]).
+-export([info/2, info/1]).
 
 %% internal nifs
 -export([create_/5, identity_/3]).
@@ -102,10 +103,6 @@
 
 -export_type([matrix/0]).
 
-%% maximum numbr of elements for add/sub/times/negate...
-%% -define(MAX_NM, (256*4096)).
--define(MAX_ADD_NM, (10*10)).
--define(MAX_MUL_NM, (10*10)).
 -define(EPS, 2.2204460492503131e-16).        %% float32 smallest step
 -type compare_option() :: abs.
 -type sort_option() :: abs|ascend|descend.
@@ -641,6 +638,14 @@ bitwise_not(_A) ->
 
 bitwise_not(_A, _C) ->
     ?nif_stub().
+
+-spec info(Src::matrix(),Info::atom()) ->  term().
+info(_Src, _Info) ->
+    ?nif_stub().
+
+info(Src) ->
+    [{Info,info(Src,Info)} ||
+	Info <- [rowmajor,n,nstep,m,mstep,rows,columns,type,size,parent]].
 
 %%
 %% Multiply two matrices element wise

@@ -417,6 +417,8 @@ static ERL_NIF_TERM matrix_bxor(ErlNifEnv* env, int argc,
 				const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_bnot(ErlNifEnv* env, int argc,
 				const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_info(ErlNifEnv* env, int argc,
+				const ERL_NIF_TERM argv[]);
 
 // Dirty optional since 2.7 and mandatory since 2.12
 #if (ERL_NIF_MAJOR_VERSION > 2) || ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 7))
@@ -500,7 +502,9 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("bitwise_xor",   2, matrix_bxor),
     NIF_FUNC("bitwise_xor",   3, matrix_bxor),
     NIF_FUNC("bitwise_not",   1, matrix_bnot),
-    NIF_FUNC("bitwise_not",   2, matrix_bnot),    
+    NIF_FUNC("bitwise_not",   2, matrix_bnot),
+    
+    NIF_FUNC("info",          2, matrix_info),        
 };
 
 size_t element_size_exp_[NUM_TYPES] = {
@@ -585,6 +589,17 @@ DECL_ATOM(exp);
 DECL_ATOM(abs);
 DECL_ATOM(ascend);
 DECL_ATOM(descend);
+// info
+DECL_ATOM(rowmajor);
+DECL_ATOM(n);
+DECL_ATOM(nstep);
+DECL_ATOM(m);
+DECL_ATOM(mstep);
+DECL_ATOM(rows);
+DECL_ATOM(columns);
+DECL_ATOM(type);
+DECL_ATOM(size);
+DECL_ATOM(parent);
 
 static size_t element_size(matrix_type_t type)
 {
@@ -3531,10 +3546,10 @@ static void mop_copy1(bool_t use_vector,
 //  simple tranpose
 ///////////////////////////////////////////////////////////////////////////////
 
-static void mop_transpose1(bool_t use_vector,
-			   matrix_type_t at, byte_t* ap, int au, int av,
-			   matrix_type_t ct, byte_t* cp, int cu, int cv,
-			   size_t n, size_t m)
+static void mop_transpose(bool_t use_vector,
+			  matrix_type_t at, byte_t* ap, int au, int av,
+			  matrix_type_t ct, byte_t* cp, int cu, int cv,
+			  size_t n, size_t m)
 {
     UNUSED(use_vector);
     if (at == ct) {
@@ -3836,14 +3851,33 @@ static matrix_t* init_matrix(matrix_t* mp,
     return mp;
 }
 
+//
+// Allocate matrix memory space
+// n = rows and m = columns
+// each row is padded so each row is aligned to internal vector size
+// so vector size is 64 then each row will be padded to 64 byte alignment.
+// Extra memory is created to allow for memory to be transposed
+// inline or by copy.
+// example: align=8
+//   create | 1 2 3 |
+//   then memory that will be create is | 1 2 3 0 0 0 0 0 |
+// but when transposed the data used must be
+//   | 1 0 0 0 0 0 0 0 |
+//   | 2 0 0 0 0 0 0 0 |
+//   | 3 0 0 0 0 0 0 0 |
+// so allocation is the max of a nxm matrix and mxn matrix
+//
 matrix_t* alloc_matrix_resource(size_t n, size_t m,
 				bool_t rowmajor,matrix_type_t type,size_t align)
 {
     matrix_t* mp = enif_alloc_resource(matrix_res, sizeof(matrix_t));
 
     if (mp != NULL) {
-	size_t byte_stride = (size_of_array(type,m)+align-1) & ~(align-1);
-	size_t size   = n*byte_stride;
+	size_t r_stride = (size_of_array(type,m)+align-1) & ~(align-1);
+	size_t r_size   = n*r_stride;	
+	size_t c_stride = (size_of_array(type,n)+align-1) & ~(align-1);
+	size_t c_size   = m*c_stride;
+	size_t size     = op_max(r_size, c_size);
 
 	mp->n       = n;
 	mp->m       = m;
@@ -3859,7 +3893,7 @@ matrix_t* alloc_matrix_resource(size_t n, size_t m,
 	
 	if ((mp->base = enif_alloc(size+align-1)) != NULL) {
 	    mp->size  = size;
-	    mp->nstep = byte_stride / element_size(type);
+	    mp->nstep = r_stride / element_size(type);
 	    mp->mstep = 1;
 	    mp->rw_lock = enif_rwlock_create("matrix");
 	    mp->data = align_ptr(mp->base,align);
@@ -7012,12 +7046,12 @@ ERL_NIF_TERM matrix_transpose(ErlNifEnv* env, int argc,
 	matrix_t *c;
 	if (!get_w_matrix(env, argv[1], &mat[1], &c))
 	    return enif_make_badarg(env);
-	if ((a->rowmajor == c->rowmajor) && ((a->n != c->n) || (a->m != c->m)))
+	if ((a->rowmajor != c->rowmajor) && ((a->n != c->n) || (a->m != c->m)))
 	    return enif_make_badarg(env);
-	else if ((a->rowmajor != c->rowmajor) && ((a->n != c->m) || (a->m != c->n)))
+	if ((a->rowmajor == c->rowmajor) && ((a->n != c->m) || (a->m != c->n)))
 	    return enif_make_badarg(env);
 	matrix_rw_lock(a,c);
-	m_apply1(mop_transpose1, a, c);
+	m_apply1(mop_transpose, a, c);
 	matrix_rw_unlock(a,c);	
 	return argv[1];
     }
@@ -7028,9 +7062,37 @@ ERL_NIF_TERM matrix_transpose(ErlNifEnv* env, int argc,
 ERL_NIF_TERM matrix_transpose_data(ErlNifEnv* env, int argc,
 				   const ERL_NIF_TERM argv[])
 {
-    return unary_op(env, argc, argv, mop_transpose1,
-		    copy_type,
-		    ALL_TYPES, ALL_TYPES);
+    matrix_t mat[2];
+    matrix_t *a, *c;
+
+    if (!get_matrix(env, argv[0], &mat[0], &a))
+	return enif_make_badarg(env);
+
+    if (argc == 1) {
+	ERL_NIF_TERM res;
+	matrix_type_t ct = a->type;
+
+	if ((c = create_matrix(env,a->m,a->n,a->rowmajor,ct,&res)) == NULL)
+	    return enif_make_badarg(env);
+	matrix_r_lock(a);
+	m_apply1(mop_transpose,a,c);
+	matrix_r_unlock(a);
+	return make_matrix_t(env,c,res);
+    }
+    else { // args == 2
+	if (!get_w_matrix(env, argv[1], &mat[1], &c))
+	    return enif_make_badarg(env);
+	// FIXME: allow destructive update on if A == C, then
+	// rearrange data and update toggle rowmajor!
+	if ((a->rowmajor != c->rowmajor) && ((a->n != c->n) || (a->m != c->m)))
+	    return enif_make_badarg(env);
+	if ((a->rowmajor == c->rowmajor) && ((a->n != c->m) || (a->m != c->n)))
+	    return enif_make_badarg(env);
+	matrix_rw_lock(a, c);
+	m_apply1(mop_transpose, a, c);
+	matrix_rw_unlock(a, c);
+	return argv[1];
+    }
 }
 
 ERL_NIF_TERM matrix_submatrix(ErlNifEnv* env, int argc,
@@ -7095,6 +7157,41 @@ ERL_NIF_TERM matrix_submatrix(ErlNifEnv* env, int argc,
     }
 }
 
+ERL_NIF_TERM matrix_info(ErlNifEnv* env, int argc,
+			      const ERL_NIF_TERM argv[])
+{
+    matrix_t mat[1];
+    matrix_t *a;
+    UNUSED(argc);
+    
+    if (!get_matrix(env, argv[0], &mat[0], &a))
+	return enif_make_badarg(env);
+    if (argv[1] == ATOM(rowmajor))
+	return make_bool(env, a->rowmajor);
+    if (argv[1] == ATOM(n))
+	return enif_make_uint(env, a->n);
+    if (argv[1] == ATOM(nstep))
+	return enif_make_uint(env, a->nstep);
+    if (argv[1] == ATOM(m))
+	return enif_make_uint(env, a->m);
+    if (argv[1] == ATOM(mstep))
+	return enif_make_uint(env, a->mstep);
+    if (argv[1] == ATOM(rows))
+	return a->rowmajor ? enif_make_uint(env, a->n) :
+	    enif_make_uint(env, a->m);
+    if (argv[1] == ATOM(columns))
+	return !a->rowmajor ? enif_make_uint(env, a->n) :
+	    enif_make_uint(env, a->m);
+    if (argv[1] == ATOM(type))
+	return enif_make_uint(env, a->type);
+    if (argv[1] == ATOM(size))
+	return enif_make_uint(env, a->size);
+    if (argv[1] == ATOM(parent))
+	return a->parent;
+    return enif_make_badarg(env);    
+}
+
+
 static void matrix_dtor(ErlNifEnv* env, matrix_t* mat)
 {
     UNUSED(env);
@@ -7138,6 +7235,17 @@ static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     LOAD_ATOM(env,abs);
     LOAD_ATOM(env,ascend);
     LOAD_ATOM(env,descend);
+    // info
+    LOAD_ATOM(env,rowmajor);
+    LOAD_ATOM(env,n);
+    LOAD_ATOM(env,nstep);
+    LOAD_ATOM(env,m);
+    LOAD_ATOM(env,mstep);
+    LOAD_ATOM(env,rows);
+    LOAD_ATOM(env,columns);
+    LOAD_ATOM(env,type);
+    LOAD_ATOM(env,size);
+    LOAD_ATOM(env,parent);
     
     matrix_res = enif_open_resource_type(env, 0, "matrix",
 					 (ErlNifResourceDtor*) matrix_dtor,
