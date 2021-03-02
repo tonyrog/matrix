@@ -9,7 +9,7 @@
 #define TYPE_R         int8_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) CAT2(op_,OP)((a),(b))
+#define OPERATION(a,b) CAT2(op_i,OP)((a),(b))
 #include "mt_binary_op.i"
 
 #define PROCEDURE      CAT3(mt_,NAME,_int16)
@@ -17,7 +17,7 @@
 #define TYPE_R         int16_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) CAT2(op_,OP)((a),(b))
+#define OPERATION(a,b) CAT2(op_i,OP)((a),(b))
 #include "mt_binary_op.i"
 
 #define PROCEDURE      CAT3(mt_,NAME,_int32)
@@ -25,7 +25,7 @@
 #define TYPE_R         int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) CAT2(op_,OP)((a),(b))
+#define OPERATION(a,b) CAT2(op_i,OP)((a),(b))
 #include "mt_binary_op.i"
 
 #define PROCEDURE      CAT3(mt_,NAME,_int64)
@@ -33,7 +33,7 @@
 #define TYPE_R         int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) CAT2(op_,OP)((a),(b))
+#define OPERATION(a,b) CAT2(op_i,OP)((a),(b))
 #include "mt_binary_op.i"
 
 #define PROCEDURE      CAT3(mt_,NAME,_float32)
@@ -41,7 +41,7 @@
 #define TYPE_R         int32_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) CAT2(op_,OP)((a),(b))
+#define OPERATION(a,b) CAT2(op_i,OP)((a),(b))
 #include "mt_binary_op.i"
 
 #define PROCEDURE      CAT3(mt_,NAME,_float64)
@@ -49,7 +49,7 @@
 #define TYPE_R         int64_t
 #define PARAMS_DECL
 #define LOCALS_DECL
-#define OPERATION(a,b) CAT2(op_,OP)((a),(b))
+#define OPERATION(a,b) CAT2(op_i,OP)((a),(b))
 #include "mt_binary_op.i"
 
 #define PROCEDURE      CAT3(mt_,NAME,_complex64)

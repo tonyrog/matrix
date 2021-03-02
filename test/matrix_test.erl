@@ -220,10 +220,20 @@ test_negate(N,M,T) ->
 
 test_binary(N,M,T,MatrixOp,BinOp) ->
     As = make_random(N,M,T),
+    Am = matrix:from_list(As, T),
     Bs = make_random(N,M,T),
-    C = matrix:MatrixOp(matrix:from_list(As,T),matrix:from_list(Bs,T)),
+    Bm = matrix:from_list(Bs, T),
+    Cm = matrix:MatrixOp(Am, Bm),
     Ref = mmap(BinOp, As, Bs),
-    Ref = matrix:to_list(C),
+    Cs = matrix:to_list(Cm),
+    %% if N =:= 4, M =:= 3 ->
+    %%  matrix:print(Am),
+    %%  matrix:print(Bm),
+    %%  matrix:print(Cm);
+    %% true ->
+    %%  ok
+    %% end,
+    Cs = Ref,
     ok.
 
 test_unary(N,M,T,MatrixOp,UnaryOp) ->

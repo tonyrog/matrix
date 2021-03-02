@@ -1076,6 +1076,10 @@ complex128_t normal_c128(rand_alg_t a, float64_t m, float64_t s)
 #define op_eq(x,y)    ((x)==(y))
 #define op_lt(x,y)    ((x)<(y))
 #define op_lte(x,y)   ((x)<=(y))
+// scalar version
+#define op_ieq(x,y)    (-((x)==(y)))
+#define op_ilt(x,y)    (-((x)<(y)))
+#define op_ilte(x,y)   (-((x)<=(y)))
 
 // special...
 //  vector versions of max and min are possible to
@@ -1112,21 +1116,21 @@ int64_t cop64_lte(complex128_t a, complex128_t b)
 
 int128_t cop128_eq(complex128_t a, complex128_t b)
 {
-    int64_t t = (a == b) ? 0 : -1;
+    int64_t t = op_ieq(a,b);
     int128_t r = {t,t};
     return r;
 }
 
 int128_t cop128_lt(complex128_t a, complex128_t b)
 {
-    int64_t t = (cabs(a) < cabs(b)) ? 0 : -1;
+    int64_t t = -(cabs(a) < cabs(b));
     int128_t r = {t,t};
     return r;
 }
 
 int128_t cop128_lte(complex128_t a, complex128_t b)
 {
-    int64_t t = (cabs(a) <= cabs(b)) ? 0 : -1;
+    int64_t t = -(cabs(a) <= cabs(b));
     int128_t r = {t,t};
     return r;
 }
@@ -1734,17 +1738,17 @@ static int64_t (*ibinop_int64[NUM_IBINOP])(int64_t, int64_t) = {
 
 static int64_t eq_int64(int64_t a, int64_t b)
 {
-    return op_eq(a,b);
+    return op_ieq(a,b);
 }
 
 static int64_t lt_int64(int64_t a, int64_t b)
 {
-    return op_lt(a,b);
+    return op_ilt(a,b);
 }
 
 static int64_t lte_int64(int64_t a, int64_t b)
 {
-    return op_lte(a,b);
+    return op_ilte(a,b);
 }
 
 static int64_t (*cmpop_int64[NUM_CMPOP])(int64_t, int64_t) = {
@@ -1782,12 +1786,12 @@ static int64_t eq_float64(float64_t a, float64_t b)
 
 static int64_t lt_float64(float64_t a, float64_t b)
 {
-    return op_lt(a,b);
+    return op_ilt(a,b);
 }
 
 static int64_t lte_float64(float64_t a, float64_t b)
 {
-    return op_lte(a,b);
+    return op_ilte(a,b);
 }
 
 static int64_t (*cmpop_float64[NUM_CMPOP])(float64_t, float64_t) = {

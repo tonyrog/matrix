@@ -93,7 +93,10 @@
 -export([element_/2]).
 -export([type_combine/2]).
 -export([elem_to_bin/2]).
+-export([element_zero/1, element_one/1]).
+-export([element_abs/1]).
 -export([element_reciprocal/1, element_negate/1]).
+-export([element_add/2, element_subtract/2]).
 -export([element_divide/2, element_multiply/2]).
 %% debug
 -export([foldl_row/4, foldr_row/4]).
@@ -118,7 +121,7 @@
 	erlang:nif_error({nif_not_loaded,module,?MODULE,line,?LINE})).
 
 init() ->
-    Nif = filename:join(code:priv_dir(matrix), "matrix_drv"),
+    Nif = filename:join(code:priv_dir(matrix), "matrix_nif"),
     erlang:load_nif(Nif, 0).
 
 -spec create(N::unsigned(), M::unsigned(), T::matrix_type(), Data::iolist()) ->
@@ -1161,12 +1164,14 @@ invert_l_row(I,J,Xii,A,X) ->
     X1 = setelement(I,J,X,element_divide(Sneg,Xii)),  %% destructive!
     invert_l_row(I,J-1,Xii,A,X1).
 
+-ifdef(not_used).
 sum_l(_I,J,K,_A,_X,Sum)  when K < J->
     Sum;
 sum_l(I,J,K,A,X,Sum) ->
     Aik = element(I,K,A),
     Xkj = element(K,J,X),
     sum_l(I,J,K-1,A,X,element_add(element_multiply(Aik,Xkj),Sum)).
+-endif
     
 -spec det(A::matrix()) -> scalar().
 
