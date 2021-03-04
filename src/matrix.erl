@@ -66,7 +66,7 @@
 -export([softmax/1,softmax_prime/2]).
 -export([transpose/1,transpose/2]).
 -export([transpose_data/1, transpose_data/2]).
--export([print/1, print/2, format/1, format/2]).
+-export([print/1, print/2, print/3, format/1, format/2, format/3]).
 -export([row/2, row/4]).
 -export([column/2, column/4]).
 -export([submatrix/5]).
@@ -103,6 +103,7 @@
 -export([element_add/2, element_subtract/2]).
 -export([element_divide/2, element_multiply/2]).
 %% debug
+-export([type_from_lists/1, type_from_list/1]).
 -export([foldl_row/4, foldr_row/4]).
 -export([foldl_column/4, foldr_column/4]).
 -export([foldl_matrix/3, foldr_matrix/3]).
@@ -183,9 +184,9 @@ from_list(Rows,Type) ->
     from_list(Rows,N,M,Type).
 
 from_list(Rows, N, M) ->
-    from_list_(Rows, N, M, type_lists(Rows)).
+    from_list_(Rows, N, M, type_from_lists(Rows)).
 
-from_list(Rows, N, M, Type) ->
+from_list(Rows, N, M, Type) when is_atom(Type) ->
     from_list_(Rows, N, M, encode_type(Type)).
 
 from_list_(Rows, N, M, T) ->
@@ -204,23 +205,14 @@ from_list_([R|Rs], I, N, M, T) ->
       from_list_(Rs, I+1, N, M, T)].
 
 %% scan elements and find a matrix type
-type_lists(Rows) ->
-    type_lists(Rows, -1).
-
-type_lists(_, T) when T >= ?float32_t ->
-    T;
-type_lists([R|Rs], T) ->
-    T1 = type_list(R, T),
-    type_lists(Rs, T1);
-type_lists([], T) ->
-    T.
-
-type_list(_, T) when T >= ?float32_t ->
-    T;
-type_list([E|Es], T) ->
-    type_list(Es, erlang:max(arg_type(E),T));
-type_list([], T) ->
-    T.
+type_from_lists(Rows) ->
+    lists:foldl(fun(Row,Type) -> 
+			erlang:max(type_from_list(Row),Type) 
+		end, -1, Rows).
+type_from_list(Elems) ->
+    lists:foldl(fun(E,Type) -> 
+			erlang:max(arg_type(E), Type) 
+		end, -1, Elems).
 
 %%
 %% Produce a list of lists representation of a matrix
@@ -359,7 +351,7 @@ cdata(N,X=#matrix{n=1,m=_M}) when N > 0 ->
 cdata(M,X=#matrix{m=1,n=_N}) when M > 0 ->
     X#matrix { m=M, mstep=0 };
 cdata(N,CData) when is_integer(N), N>=0, is_list(CData) ->
-    T = type_list(CData, -1),
+    T = type_from_list(CData),
     cdata_(N, T, CData).
 
 cdata(N,Type,CData) when is_integer(N), N>=0, is_list(CData) ->
@@ -1217,9 +1209,9 @@ invert_l_row(_I,0,_Xii,_A,X) ->
 invert_l_row(I,J,Xii,A,X) ->
     K = I-1,
     Aik = row(I,J,K,A),     %% A[I][J]..A[I][K]
-    print(Aik),
+    %% print(Aik),
     Xkj = column(J,J,K,X),  %% X[J][J]..X[K][J]
-    print(Xkj),
+    %% print(Xkj),
     S = mulsum(Aik,transpose(Xkj)),
     %% S = sum_l(I, J, I-1, A, X, element_zero(A)),
     Sneg = element_negate(S),
@@ -1254,14 +1246,21 @@ print(A) ->
 print(A,Prec) ->
     io:put_chars(format(A,Prec)).
 
+print(A,Prec,FChars) ->
+    io:put_chars(format(A,Prec,FChars)).
+
 format(X) ->
     format(X, 2).
 
 format(X,Prec) ->
+    format(X,Prec,"| |\n").
+
+%% note that B(egin),S(eparator),E(end),N(ewline) may be strings!
+format(X,Prec,[B,S,E,N]) ->
     Rows = to_list(X),
-    FRows = [ [format_element(E,Prec) || E <- Row] || Row <- Rows],
+    FRows = [ [format_element(Ei,Prec) || Ei <- Row] || Row <- Rows],
     ColWs = column_width(FRows),
-    format_rows(FRows,ColWs,"|","|\n"," ","~s",[]).
+    format_rows(FRows,ColWs,[B],[E,N],[S],"~s",[]).
 
 format_rows([],_ColWs,_Rb,_Re,_Sep,_Fmt,_Args) ->
     [];
@@ -1305,8 +1304,8 @@ arg_type(X) ->
 	       X >= -16#8000000000000000, X < 16#8000000000000000 -> ?int64_t;
 	       true -> ?int128_t
 	    end;
-       is_float(X) -> ?float128_t;
-       ?is_complex(X) -> ?complex128_t
+       is_float(X) -> ?float32_t;  %% fixme check range
+       ?is_complex(X) -> ?complex64_t  %% fixme check range
     end.
 
 %% combine types to the more general one
