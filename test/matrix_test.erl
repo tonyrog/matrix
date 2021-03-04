@@ -26,6 +26,8 @@ all() ->
     test_em([test_add,
 	     test_sub,
 	     test_times,
+	     test_divide,
+	     test_remainder,
 	     test_negate,
 	     test_band,
 	     test_bor,
@@ -123,6 +125,39 @@ test_times(N,M,T) ->
     B = make(N,M,T),
     C = matrix:times(A,B),
     Ref = [[J*J || J <- lists:seq(I,I+M-1)] || I <- lists:seq(1,N*M,M)],
+    Ref = matrix:to_list(C),
+    ok.
+
+
+test_divide() ->
+    test_em([
+	     {test_divide,[4,4,int16]},
+	     {test_divide,[24,24,int32]},
+	     {test_divide,[128,128,int32]},
+	     {test_divide,[128,128,int64]}
+	    ]).
+
+test_divide(N,M,T) ->
+    A = make(N,M,T),
+    B = make(N,M,T),
+    C = matrix:divide(A,B),
+    Ref = [[1 || _J <- lists:seq(I,I+M-1)] || I <- lists:seq(1,N*M,M)],
+    Ref = matrix:to_list(C),
+    ok.
+
+test_remainder() ->
+    test_em([
+	     {test_remainder,[4,4,int16]},
+	     {test_remainder,[24,24,int32]},
+	     {test_remainder,[128,128,int32]},
+	     {test_remainder,[128,128,int64]}
+	    ]).
+
+test_remainder(N,M,T) ->
+    A = make(N,M,T),
+    B = make(N,M,T),
+    C = matrix:remainder(A,B),
+    Ref = [[0 || _J <- lists:seq(I,I+M-1)] || I <- lists:seq(1,N*M,M)],
     Ref = matrix:to_list(C),
     ok.
 
@@ -1087,9 +1122,6 @@ mmap1(Fun,[A|As]) ->
     [Fun(A)|mmap1(Fun,As)];
 mmap1(_Fun,[]) ->
     [].
-
-
-
 
 %%%
 %%%% BENCHMARK (MackBook Pro, 13-inch 2012 2.5 GHz Intel Core i5, 4 core)

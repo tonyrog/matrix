@@ -8,7 +8,7 @@
 -module(matrix_lu).
 -export([decompose/1, decompose/2]).
 
--include("matrix.hrl").
+-include("../include/matrix.hrl").
 
 -define(MIN_FLOAT, 2.2250738585072014e-308). %% min non-negative float
 -define(MAX_FLOAT, 1.7976931348623157e+308). %% max positive float

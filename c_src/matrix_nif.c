@@ -82,7 +82,11 @@ typedef enum {
     ADD = 0,
     SUB = 1,
     MUL = 2,
-    LAST_BINARY_OP = MUL
+    MIN = 3,
+    MAX = 4,
+    DIV = 5,
+    REM = 6,
+    LAST_BINARY_OP = REM
 } binary_operation_t;
 
 #define NUM_BINOP (LAST_BINARY_OP+1)
@@ -348,6 +352,14 @@ static ERL_NIF_TERM matrix_subtract(ErlNifEnv* env, int argc,
 				    const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc,
 				 const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_divide(ErlNifEnv* env, int argc,
+				  const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_remainder(ErlNifEnv* env, int argc,
+				     const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_minimum(ErlNifEnv* env, int argc,
+			       const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM matrix_maximum(ErlNifEnv* env, int argc,
+			       const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc,
 				  const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM matrix_multiply(ErlNifEnv* env, int argc,
@@ -448,6 +460,10 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("subtract",     3, matrix_subtract),
     NIF_FUNC("times",        2, matrix_times),
     NIF_FUNC("times",        3, matrix_times),
+    NIF_FUNC("divide",       2, matrix_divide),
+    NIF_FUNC("divide",       3, matrix_divide),
+    NIF_FUNC("remainder",    2, matrix_remainder),
+    NIF_FUNC("remainder",    3, matrix_remainder),
     NIF_FUNC("ktimes_",       3, matrix_ktimes),
     NIF_FUNC("ktimes_",       4, matrix_ktimes),
     NIF_FUNC("multiply",     2, matrix_multiply),
@@ -484,6 +500,10 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("argmin",        3, matrix_argmin),
     NIF_FUNC("max",           3, matrix_max),
     NIF_FUNC("min",           3, matrix_min),
+    NIF_FUNC("maximum",       2, matrix_maximum),
+    NIF_FUNC("maximum",       3, matrix_maximum),
+    NIF_FUNC("minimum",       2, matrix_minimum),
+    NIF_FUNC("minimum",       3, matrix_minimum),
     NIF_FUNC("sum",           1, matrix_sum),
     NIF_FUNC("sum",           2, matrix_sum),
     NIF_FUNC("sort",          4, matrix_sort),
@@ -503,8 +523,7 @@ ErlNifFunc matrix_funcs[] =
     NIF_FUNC("bitwise_xor",   3, matrix_bxor),
     NIF_FUNC("bitwise_not",   1, matrix_bnot),
     NIF_FUNC("bitwise_not",   2, matrix_bnot),
-    
-    NIF_FUNC("info",          2, matrix_info),        
+    NIF_FUNC("info",          2, matrix_info),
 };
 
 size_t element_size_exp_[NUM_TYPES] = {
@@ -524,7 +543,7 @@ size_t element_size_[NUM_TYPES] = {
     [INT16] = 2,
     [INT32] = 4,
     [INT64] = 8,
-    [INT128] = 16,    
+    [INT128] = 16,
     [FLOAT32] = 4,
     [FLOAT64] = 8,
     [COMPLEX64] = 8,
@@ -537,7 +556,7 @@ matrix_type_t integer_type_[NUM_TYPES] = {
     [INT16] = INT16,
     [INT32] = INT32,
     [INT64] = INT64,
-    [INT128] = INT128,    
+    [INT128] = INT128,
     [FLOAT32] = INT32,
     [FLOAT64] = INT64,
     [COMPLEX64] = INT64,
@@ -1708,11 +1727,34 @@ static int64_t mul_int64(int64_t a, int64_t b)
     return op_mul(a,b);
 }
 
+static int64_t min_int64(int64_t a, int64_t b)
+{
+    return op_min(a,b);
+}
+
+static int64_t max_int64(int64_t a, int64_t b)
+{
+    return op_max(a,b);
+}
+
+static int64_t div_int64(int64_t a, int64_t b)
+{
+    return (b == 0) ? 0 : a / b;
+}
+
+static int64_t rem_int64(int64_t a, int64_t b)
+{
+    return (b == 0) ? 0 : a % b;
+}
 
 static int64_t (*binop_int64[NUM_BINOP])(int64_t, int64_t) = {
     [ADD] = add_int64,
     [SUB] = sub_int64,
     [MUL] = mul_int64,
+    [MIN] = min_int64,
+    [MAX] = max_int64,
+    [DIV] = div_int64,
+    [REM] = rem_int64,
 };
 
 static int64_t band_int64(int64_t a, int64_t b)
@@ -1773,10 +1815,34 @@ static float64_t mul_float64(float64_t a, float64_t b)
     return op_mul(a,b);
 }
 
+static float64_t min_float64(float64_t a, float64_t b)
+{
+    return op_min(a,b);
+}
+
+static float64_t max_float64(float64_t a, float64_t b)
+{
+    return op_max(a,b);
+}
+
+static float64_t div_float64(float64_t a, float64_t b)
+{
+    return (b == 0.0) ? 0.0 : a / b;
+}
+
+static float64_t rem_float64(float64_t a, float64_t b)
+{
+    return (b == 0.0) ? 0.0 : fmod(a, b);
+}
+
 static float64_t (*binop_float64[NUM_BINOP])(float64_t, float64_t) = {
     [ADD]  = add_float64,
     [SUB]  = sub_float64,
     [MUL]  = mul_float64,
+    [MIN]  = min_float64,
+    [MAX]  = max_float64,
+    [DIV]  = div_float64,
+    [REM]  = rem_float64,
 };
 
 static int64_t eq_float64(float64_t a, float64_t b)
@@ -1816,10 +1882,38 @@ static complex128_t mul_complex128(complex128_t a, complex128_t b)
     return op_mul(a,b);
 }
 
+static complex128_t min_complex128(complex128_t a, complex128_t b)
+{
+    return cmp_lt_complex128(a,b) ? a : b;
+}
+
+static complex128_t max_complex128(complex128_t a, complex128_t b)
+{
+    return cmp_gt_complex128(a,b) ? a : b;
+}
+
+static complex128_t div_complex128(complex128_t a, complex128_t b)
+{
+    return op_div(a,b);
+}
+
+static complex128_t rem_complex128(complex128_t a, complex128_t b)
+{
+    complex128_t x = op_div(a, b);
+    complex128_t z;
+    x = CMPLX(round(creal(x)), round(cimag(x)));
+    z = x*b;
+    return op_sub(a,z);
+}
+
 static complex128_t (*binop_complex128[NUM_BINOP])(complex128_t,complex128_t)={
     [ADD] = add_complex128,
     [SUB] = sub_complex128,
     [MUL] = mul_complex128,
+    [MIN] = min_complex128,
+    [MAX] = max_complex128,
+    [DIV] = div_complex128,
+    [REM] = rem_complex128,
 };
 
 // complex128 operation eq/lt/lte
@@ -2120,6 +2214,33 @@ static void mop_subtract(bool_t use_vector,
     }
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// minimum
+///////////////////////////////////////////////////////////////////////////////
+
+static void mop_minimum(bool_t use_vector,
+			matrix_type_t at, byte_t* ap, int au, int av,
+			matrix_type_t bt, byte_t* bp, int bu, int bv,
+			matrix_type_t ct, byte_t* cp, int cu, int cv,
+			size_t n, size_t m)
+{
+    UNUSED(use_vector);
+    apply2(MIN, at, ap, au, av, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// maximum
+///////////////////////////////////////////////////////////////////////////////
+
+static void mop_maximum(bool_t use_vector,
+			matrix_type_t at, byte_t* ap, int au, int av,
+			matrix_type_t bt, byte_t* bp, int bu, int bv,
+			matrix_type_t ct, byte_t* cp, int cu, int cv,
+			size_t n, size_t m)
+{
+    UNUSED(use_vector);
+    apply2(MAX, at, ap, au, av, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // eq
@@ -2299,6 +2420,34 @@ static void mop_times(bool_t use_vector,
     }
 }
 
+
+///////////////////////////////////////////////////////////////////////////////
+// divide
+///////////////////////////////////////////////////////////////////////////////
+
+static void mop_divide(bool_t use_vector,
+		       matrix_type_t at, byte_t* ap, int au, int av,
+		       matrix_type_t bt, byte_t* bp, int bu, int bv,
+		       matrix_type_t ct, byte_t* cp, int cu, int cv,
+		       size_t n, size_t m)
+{
+    UNUSED(use_vector);
+    apply2(DIV, at, ap, au, av, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// remainder
+///////////////////////////////////////////////////////////////////////////////
+
+static void mop_remainder(bool_t use_vector,
+			  matrix_type_t at, byte_t* ap, int au, int av,
+			  matrix_type_t bt, byte_t* bp, int bu, int bv,
+			  matrix_type_t ct, byte_t* cp, int cu, int cv,
+			  size_t n, size_t m)
+{
+    UNUSED(use_vector);
+    apply2(REM, at, ap, au, av, bt, bp, bu, bv, ct, cp, cu, cv, n, m);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // negate
@@ -4849,6 +4998,34 @@ ERL_NIF_TERM matrix_subtract(ErlNifEnv* env, int argc,
 ERL_NIF_TERM matrix_times(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
     return binary_op(env, argc, argv, mop_times, combine_type,
+		     ALL_TYPES, ALL_TYPES, ALL_TYPES);
+}
+
+// divide element wise
+ERL_NIF_TERM matrix_divide(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    return binary_op(env, argc, argv, mop_divide, combine_type,
+		     ALL_TYPES, ALL_TYPES, ALL_TYPES);
+}
+
+// remainder element wise
+ERL_NIF_TERM matrix_remainder(ErlNifEnv* env,int argc,const ERL_NIF_TERM argv[])
+{
+    return binary_op(env, argc, argv, mop_remainder, combine_type,
+		     ALL_TYPES, ALL_TYPES, ALL_TYPES);
+}
+
+// min element wise
+ERL_NIF_TERM matrix_minimum(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    return binary_op(env, argc, argv, mop_minimum, combine_type,
+		     ALL_TYPES, ALL_TYPES, ALL_TYPES);
+}
+
+// max element wise
+ERL_NIF_TERM matrix_maximum(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    return binary_op(env, argc, argv, mop_maximum, combine_type,
 		     ALL_TYPES, ALL_TYPES, ALL_TYPES);
 }
 
