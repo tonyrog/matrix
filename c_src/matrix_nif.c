@@ -27,6 +27,9 @@
 
 #include "matrix_types.h"
 
+// for testing that USE_VECTOR may be disabled!
+// #undef USE_VECTOR  
+
 typedef enum {
     ZERO           = 0,
     ONE            = 1,
@@ -1474,8 +1477,6 @@ static void ev_binary(binary_op_t* opv,matrix_type_t type,
     }
 }
 
-#define EVAL_STACK_SIZE 8
-
 // splat data into dst vector
 static void set_const(matrix_type_t t, uint8_t* data, scalar_t* dst)
 {
@@ -1484,12 +1485,12 @@ static void set_const(matrix_type_t t, uint8_t* data, scalar_t* dst)
     case INT16: memcpy(&dst->i16, data, sizeof(dst->i16)); break;
     case INT32: memcpy(&dst->i32, data, sizeof(dst->i32)); break;
     case INT64: memcpy(&dst->i64, data, sizeof(dst->i64)); break;
-    case INT128: memcpy(&dst->i128, data, sizeof(dst->i128)); break;		
+    case INT128: memcpy(&dst->i128, data, sizeof(dst->i128)); break;
     case UINT8: memcpy(&dst->u8, data, sizeof(dst->u8)); break;
     case UINT16: memcpy(&dst->u16, data, sizeof(dst->u16)); break;
     case UINT32: memcpy(&dst->u32, data, sizeof(dst->u32)); break;
     case UINT64: memcpy(&dst->u64, data, sizeof(dst->u64)); break;
-    case UINT128: memcpy(&dst->u128, data, sizeof(dst->u128)); break;	
+    case UINT128: memcpy(&dst->u128, data, sizeof(dst->u128)); break;
 	
     case FLOAT16: memcpy(&dst->f16, data, sizeof(dst->f16)); break;
     case FLOAT32: memcpy(&dst->f32, data, sizeof(dst->f32)); break;
@@ -1559,6 +1560,21 @@ next:
     goto next;
 }
 
+#ifdef USE_VECTOR
+
+#if 0
+// if element access is allowed (sometime)
+static void fetch_vector_element(matrix_type_t type, scalar_t* ep, int i)
+{
+    switch(component_size(type)) {
+    case 1: ep->u8  = ep->vu8[i]; break;
+    case 2: ep->u16 = ep->vu16[i]; break;
+    case 4: ep->u32 = ep->vu32[i]; break;
+    case 8: ep->u64 = ep->vu64[i]; break;
+    default: break;
+    }
+}
+#endif
 
 // splat data into dst vector
 static void set_vconst(matrix_type_t t, uint8_t* data, vscalar_t* dst)
@@ -1707,16 +1723,9 @@ next:
     goto next;
 }
 
-static void fetch_vector_element(matrix_type_t type, scalar_t* ep, int i)
-{
-    switch(component_size(type)) {
-    case 1: ep->u8  = ep->vu8[i]; break;
-    case 2: ep->u16 = ep->vu16[i]; break;
-    case 4: ep->u32 = ep->vu32[i]; break;
-    case 8: ep->u64 = ep->vu64[i]; break;
-    default: break;
-    }
-}
+#endif
+
+
 
 static void apply1(unary_operation_t func,
 		   matrix_type_t at, byte_t* ap, int au, int av,
@@ -2156,6 +2165,7 @@ static void mt_unary_eval(unary_op_t* opv, matrix_type_t type,
     }
 }
 
+#ifdef USE_VECTOR
 static void mtv_unary_eval(unary_vop_t* vopv, unary_op_t* opv,
 			   matrix_type_t type,
 			   byte_t* ap, int au, int av,
@@ -2166,9 +2176,7 @@ static void mtv_unary_eval(unary_vop_t* vopv, unary_op_t* opv,
     size_t k = get_vector_size(type);    
     unary_vop_t vop = vopv[t];
     unary_op_t op = opv[t];
-#ifdef USE_VECTOR
     size_t kk = components_per_vector_t(type);
-#endif
 
     if (k > 1) {
 	m *= k;
@@ -2194,6 +2202,7 @@ static void mtv_unary_eval(unary_vop_t* vopv, unary_op_t* opv,
         cp += cu;
     }
 }
+#endif
 
 // av, au ... are byte steps
 static void mt_binary_eval(binary_op_t* opv, matrix_type_t type,
@@ -2238,6 +2247,7 @@ static void mt_binary_eval(binary_op_t* opv, matrix_type_t type,
     }
 }
 
+#ifdef USE_VECTOR    
 // au,bu,cu ... are byte steps
 static void mtv_binary_eval(binary_vop_t* vopv, binary_op_t* opv,
 			    matrix_type_t type,
@@ -2250,9 +2260,7 @@ static void mtv_binary_eval(binary_vop_t* vopv, binary_op_t* opv,
     size_t k = get_vector_size(type);    
     binary_vop_t vop = vopv[t];
     binary_op_t op = opv[t];
-#ifdef USE_VECTOR    
     size_t kk = components_per_vector_t(type);
-#endif
     /*
     enif_fprintf(stderr, "mtv_binary_eval:n=%ld,m=%ld,k=%ld,kk=%ld,type=%x\r\n",
 		 n,m,k,kk,type);
@@ -2291,6 +2299,7 @@ static void mtv_binary_eval(binary_vop_t* vopv, binary_op_t* opv,
         cp += cu;
     }
 }
+#endif
 
 
 // a more general function for binary operations but a lot slower
