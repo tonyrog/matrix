@@ -9,6 +9,9 @@
 %% -compile(native).
 -on_load(init/0).
 -export([create/4, create/5]).
+-export([size/1]).
+-export([native_vector_width/1]).
+-export([preferred_vector_width/1]).
 -export([element/2, element/3]).
 -export([setelement/4]).
 -export([copy/1, copy/2, copy/4]).
@@ -50,12 +53,16 @@
 -export([pow/2]).
 -export([negate/1, negate/2]).
 -export([reciprocal/1, reciprocal/2]).
--export([size/1]).
+-export([sqrt/1, sqrt/2]).
+-export([validate/1, validate/2]).
+-export([eval/2, eval/3]).
+-export([eval1/2, eval1/3]).
+-export([eval2/3, eval2/4]).
 -export([type/1]).
 -export([signature/1]).
 -export([is_integer_matrix/1]).
 -export([is_float_matrix/1]).
--export([is_complex_matrix/1]).
+%%-export([is_complex_matrix/1]).
 
 -export([sigmoid/1, sigmoid_prime/2]).
 -export([relu/1, relu_prime/2]).
@@ -91,11 +98,12 @@
 -export([kmultiply_/4, ktimes_/4]).
 
 %% internal use
+-export([arg_type/1]).
+-export([decode_type/1]).
 -export([encode_type/1]).
--export([setelement_/4]).
--export([element_/3]).
--export([element_/2]).
--export([type_combine/2]).
+%% -export([setelement_/4]).
+%% -export([element_/3]).
+%% -export([element_/2]).
 -export([elem_to_bin/2]).
 -export([element_zero/1, element_one/1]).
 -export([element_abs/1]).
@@ -196,11 +204,11 @@ from_list_(Rows, N, M, T) ->
 from_list_([], N, N, _M, _T) ->
     [];
 from_list_([], I, N, M, T) when I < N ->
-    Pad = lists:duplicate(M, elem_to_bin(T, 0)),
+    Pad = lists:duplicate(M, elem_to_bin(T, elem_zero(T))),
     [Pad | from_list_([], I+1, N, M, T)];
 from_list_([R|Rs], I, N, M, T) ->
     L = length(R),
-    Pad = lists:duplicate(M - L, elem_to_bin(T, 0)),
+    Pad = lists:duplicate(M - L, elem_to_bin(T, elem_zero(T))),
     [ [ elem_to_bin(T,E) || E <- R ], Pad |
       from_list_(Rs, I+1, N, M, T)].
 
@@ -290,47 +298,53 @@ one(N,M,Type) when is_integer(N), N >= 1,
 		   is_integer(M), M >= 1 ->
     constant_(N, M, Type, 1).
 
--spec constant({N::unsigned(),M::unsigned()},C::scalar()) -> matrix();
-	      ({N::unsigned(),M::unsigned(),T::matrix_type()},C::scalar()) ->
+-spec constant({N::unsigned(),M::unsigned()},C::constant()) -> matrix();
+	      ({N::unsigned(),M::unsigned(),T::matrix_type()},C::constant()) ->
 		      matrix().
 constant({N,M},C) ->
     constant_(N,M,arg_type(C),C);
 constant({N,M,T},C) ->
     constant_(N,M,T,C).
 
--spec constant(N::unsigned(), M::unsigned(),C::scalar()) -> matrix().
+-spec constant(N::unsigned(), M::unsigned(),C::constant()) -> matrix().
 constant({N,M},Type,C) ->
     constant(N,M,Type,C);
 constant(N,M,C) when is_integer(C) ->
     constant(N,M,int32,C);
 constant(N,M,C) when is_float(C) ->
     constant(N,M,float32,C);
-constant(N,M,C) when ?is_complex(C) ->
-    constant(N,M,complex64,C).
+constant(N,M,C) when is_tuple(C), tuple_size(C) > 0, tuple_size(C) =< 16 ->
+    T = arg_type(C),
+    constant_(N,M,T,C).
 
--spec constant(N::unsigned(), M::unsigned(), T::matrix_type(), C::scalar()) ->
+-spec constant(N::unsigned(), M::unsigned(), T::matrix_type(), C::constant()) ->
 		      matrix().
 constant(N,M,Type,C) when is_integer(N), N >= 1,
 			  is_integer(M), M >= 1,
-			  ?is_scalar(C) ->
+			  ?is_constant(C) ->
     constant_(N,M,Type,C).
 
-constant_(N,M,Type,C) ->
+constant_(N,M,Type,C) when is_atom(Type) ->
     T = encode_type(Type),
     Bin = elem_to_bin(T,C),
-    #matrix { type=T, n=N, m=M, nstep=0, mstep=0, rowmajor=true, resource=Bin }.
+    #matrix { type=T, n=N, m=M, n_stride=0, m_stride=0, k_stride=0,
+	      rowmajor=true, resource=Bin };
+constant_(N,M,T,C) ->
+    Bin = elem_to_bin(T,C),
+    #matrix { type=T, n=N, m=M, n_stride=0, m_stride=0, k_stride=0,
+	      rowmajor=true, resource=Bin }.
 
--spec rep(N::unsigned(), M::unsigned(), scalar()) -> matrix().
+-spec rep(N::unsigned(), M::unsigned(), constant()) -> matrix().
 rep(N, M, C) when is_integer(C) ->
     rep(N,M,int32,C);
 rep(N, M, C) when is_float(C) ->
     rep(N,M,int32,C);
-rep(N, M, C) when ?is_complex(C) ->
-    rep(N,M,complex64,C);
+%%rep(N, M, C) when ?is_complex(C) ->
+%%    rep(N,M,complex64,C);
 rep(N, 1, A=#matrix{n=1,rowmajor=true}) ->
-    A#matrix { n=N, nstep=0 };
+    A#matrix { n=N, n_stride=0 };
 rep(1, M, A=#matrix{m=1,rowmajor=false}) ->
-    A#matrix { m=M, mstep=0 };
+    A#matrix { m=M, m_stride=0 };
 rep(N, M, A) when ?is_matrix(A) ->
     rep_(N, M, A).
 
@@ -339,17 +353,18 @@ rep_(N, M, A) ->
     Dst = create(N*Na,M*Ma,Ta,[]),
     copy(A, Dst, N, M).
 
-rep(N, M, Type, C) when is_atom(Type), ?is_scalar(C) ->
+rep(N, M, Type, C) when is_atom(Type), ?is_constant(C) ->
     T = encode_type(Type),
     Bin = elem_to_bin(T,C),
-    #matrix { type=T, n=N, m=M, nstep=0, mstep=0, rowmajor=true, resource=Bin }.
+    #matrix { type=T, n=N, m=M, n_stride=0, m_stride=0, k_stride=0,
+	      rowmajor=true, resource=Bin }.
 
 
--spec cdata(N::unsigned(), Data::[scalar()]) -> matrix().
+-spec cdata(N::unsigned(), Data::[constant()]) -> matrix().
 cdata(N,X=#matrix{n=1,m=_M}) when N > 0 ->
-    X#matrix { n=N, nstep=0 };
+    X#matrix { n=N, n_stride=0 };
 cdata(M,X=#matrix{m=1,n=_N}) when M > 0 ->
-    X#matrix { m=M, mstep=0 };
+    X#matrix { m=M, m_stride=0 };
 cdata(N,CData) when is_integer(N), N>=0, is_list(CData) ->
     T = type_from_list(CData),
     cdata_(N, T, CData).
@@ -360,7 +375,10 @@ cdata(N,Type,CData) when is_integer(N), N>=0, is_list(CData) ->
 cdata_(N,T,CData) ->
     M = length(CData),
     Bin = list_to_binary([elem_to_bin(T,E) || E <- CData]),
-    #matrix { type=T, n=N, m=M, nstep=0, mstep=1, rowmajor=true, resource=Bin }.
+    #matrix { type=T, n=N, m=M, n_stride=0,
+	      m_stride=?get_vector_size(T)*?get_comp_size(T),
+	      k_stride=?get_comp_size(T),
+	      rowmajor=true, resource=Bin }.
 
 -spec identity({N::unsigned(), M::unsigned()}) -> matrix();
 	      ({N::unsigned(), M::unsigned(), T::matrix_type()}) -> matrix().
@@ -397,6 +415,14 @@ apply1(_A, _Dst, _Op) ->
 size(_A) ->
     ?nif_stub().
 
+-spec native_vector_width(Type::atom()) -> unsigned().
+native_vector_width(_Type) when is_atom(_Type) ->
+    ?nif_stub().
+
+-spec preferred_vector_width(Type::atom()) -> unsigned().
+preferred_vector_width(_Type) when is_atom(_Type) ->
+    ?nif_stub().
+
 -spec type(A::matrix()) -> matrix_type().
 type(#matrix_t{type=T}) -> decode_type(T);
 type(#matrix{type=T}) -> decode_type(T).
@@ -418,26 +444,23 @@ is_integer_matrix(#matrix{type=T}) ->
 
 -spec is_float_matrix(X::matrix()) -> boolean().
 is_float_matrix(#matrix_t{type=T}) ->
-    (T >= ?float32_t) andalso (T =< ?float128_t);
+    (T >= ?float32_t) andalso (T =< ?float64_t);
 is_float_matrix(#matrix{type=T}) ->
-    (T >= ?float32_t) andalso (T =< ?float128_t).
+    (T >= ?float32_t) andalso (T =< ?float64_t).
 
--spec is_complex_matrix(X::matrix()) -> boolean().
-is_complex_matrix(#matrix_t{type=T}) ->
-    (T >= ?complex64_t) andalso (T =< ?complex128_t);
-is_complex_matrix(#matrix{type=T}) ->
-    (T >= ?complex64_t) andalso (T =< ?complex128_t).
+%%-spec is_complex_matrix(X::matrix()) -> boolean().
+%%is_complex_matrix(#matrix_t{type=T}) ->
+%%    (T >= ?complex64_t) andalso (T =< ?complex128_t);
+%%is_complex_matrix(#matrix{type=T}) ->
+%%    (T >= ?complex64_t) andalso (T =< ?complex128_t).
 
 %% element(I,A) -> A[I], row(I) or column(I) depening on rowmajor
 %% element([[r1,r2,..,rm]],A) -> [[A[r1][1], A[r2][2], ... A[rm][m]]]
 %% element([[c1],[c2],..,[cn]],A) -> [[A[1][c1]], [A[2][c2]], ... [A[n][cn]]]
 %%
--spec element(I::unsigned(),J::unsigned(),X::matrix()) -> scalar().
+-spec element(I::unsigned(),J::unsigned(),X::matrix()) -> constant().
 
-element(I,J,A) ->
-    element_(I,J,A).
-
-element_(_I,_J,_A) ->
+element(_I,_J,_A) ->
     ?nif_stub().
 
 %% pick diagonal with:
@@ -445,24 +468,24 @@ element_(_I,_J,_A) ->
 %% Diag = element(Index, A),
 
 -spec element(I::matrix(),A::matrix()) -> matrix();
-	     ({I::unsigned(),J::unsigned()},A::matrix()) -> scalar().
+	     ({I::unsigned(),J::unsigned()},A::matrix()) -> constant().
+%% element({I,J},A) when is_integer(I), is_integer(J) -> element(I,J,A);
+%% element(I,A) -> element_(I,A).
 
-element({I,J},A) when is_integer(I), is_integer(J) -> element(I,J,A);
-element(I,A) -> element_(I,A).
-
-element_(_I,_A) ->
+element(_I,_A) ->
     ?nif_stub().
 
 %% DESTRUCTIVE
--spec setelement(I::unsigned(),J::unsigned(),X::matrix(),V::scalar()) ->
+-spec setelement(I::unsigned(),J::unsigned(),X::matrix(),V::constant()) ->
 			matrix().
-setelement(I,J,X,V) ->
-    setelement_(I,J,X,V).
-
--spec setelement_(I::unsigned(),J::unsigned(),X::matrix(),V::scalar()) ->
-			matrix().
-setelement_(_I,_J,_X,_V) ->
+setelement(_I,_J,_X,_V) ->
     ?nif_stub().
+%%     setelement_(I,J,X,V).
+
+%% -spec setelement_(I::unsigned(),J::unsigned(),X::matrix(),V::constant()) ->
+%%			matrix().
+%% setelement_(_I,_J,_X,_V) ->
+%%    ?nif_stub().
 
 foldl_matrix(F,A,X) ->
     {N,M} = size(X),
@@ -527,16 +550,16 @@ foldr_column_(I,J,F,A,X) ->
 %% Add two matrices
 %%
 -spec add(A::matrix(), B::matrix()) -> matrix();
-	 (A::matrix(), B::scalar()) -> matrix();
-	 (A::scalar(), B::matrix()) -> matrix().
+	 (A::matrix(), B::constant()) -> matrix();
+	 (A::constant(), B::matrix()) -> matrix().
 
 add(_A,_B) ->
     ?nif_stub().
 
 %% destructive add
 -spec add(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	 (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	 (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	 (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	 (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 
 add(_A, _B, _Dst) ->
     ?nif_stub().
@@ -547,16 +570,16 @@ add(_A, _B, _Dst) ->
 %%
 
 -spec subtract(A::matrix(), B::matrix()) -> matrix();
-	      (A::matrix(), B::scalar()) -> matrix();
-	      (A::scalar(), B::matrix()) -> matrix().
+	      (A::matrix(), B::constant()) -> matrix();
+	      (A::constant(), B::matrix()) -> matrix().
 
 subtract(_A, _B) ->
     ?nif_stub().
 
 %% destructive subtract
 -spec subtract(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	      (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	      (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	      (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	      (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 
 subtract(_A,_B,_Dst) ->
     ?nif_stub().
@@ -566,15 +589,15 @@ subtract(_A,_B,_Dst) ->
 %% Element wise maximum
 %%
 -spec maximum(A::matrix(), B::matrix()) -> matrix();
-	     (A::matrix(), B::scalar()) -> matrix();
-	     (A::scalar(), B::matrix()) -> matrix().
+	     (A::matrix(), B::constant()) -> matrix();
+	     (A::constant(), B::matrix()) -> matrix().
 maximum(_A,_B) ->
     ?nif_stub().
 
 %% DESTRUTIVE
 -spec maximum(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	     (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	     (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	     (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	     (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 maximum(_A, _B, _Dst) ->
     ?nif_stub().
 
@@ -582,58 +605,58 @@ maximum(_A, _B, _Dst) ->
 %% Element wise minimum
 %%
 -spec minimum(A::matrix(), B::matrix()) -> matrix();
-	     (A::matrix(), B::scalar()) -> matrix();
-	     (A::scalar(), B::matrix()) -> matrix().
+	     (A::matrix(), B::constant()) -> matrix();
+	     (A::constant(), B::matrix()) -> matrix().
 minimum(_A,_B) ->
     ?nif_stub().
 
 %% DESTRUTIVE
 -spec minimum(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	     (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	     (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	     (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	     (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 minimum(_A, _B, _Dst) ->
     ?nif_stub().
 
 %% Compare two matrices
 
 -spec eq(A::matrix(), B::matrix()) -> matrix();
-	(A::matrix(), B::scalar()) -> matrix();
-	(A::scalar(), B::matrix()) -> matrix().
+	(A::matrix(), B::constant()) -> matrix();
+	(A::constant(), B::matrix()) -> matrix().
 
 eq(_A,_B) ->
     ?nif_stub().
 
 -spec eq(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	(A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	(A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	(A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	(A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 
 eq(_A, _B, _Dst) ->
     ?nif_stub().
 
 -spec lt(A::matrix(), B::matrix()) -> matrix();
-	(A::matrix(), B::scalar()) -> matrix();
-	(A::scalar(), B::matrix()) -> matrix().
+	(A::matrix(), B::constant()) -> matrix();
+	(A::constant(), B::matrix()) -> matrix().
 
 lt(_A,_B) ->
     ?nif_stub().
 
 -spec lt(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	(A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	(A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	(A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	(A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 
 lt(_A, _B, _Dst) ->
     ?nif_stub().
 
 -spec lte(A::matrix(), B::matrix()) -> matrix();
-	(A::matrix(), B::scalar()) -> matrix();
-	(A::scalar(), B::matrix()) -> matrix().
+	(A::matrix(), B::constant()) -> matrix();
+	(A::constant(), B::matrix()) -> matrix().
 
 lte(_A,_B) ->
     ?nif_stub().
 
 -spec lte(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	(A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	(A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	(A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	(A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 
 lte(_A, _B, _Dst) ->
     ?nif_stub().
@@ -676,49 +699,50 @@ info(_Src, _Info) ->
 
 info(Src) ->
     [{Info,info(Src,Info)} ||
-	Info <- [rowmajor,n,nstep,m,mstep,rows,columns,type,size,parent]].
+	Info <- [rowmajor,n,n_stride,m,m_stride,k_stride,
+		 rows,columns,type,size,parent]].
 
 %% Multiply two matrices element wise
 -spec times(A::matrix(), B::matrix()) -> matrix();
-	   (A::matrix(), B::scalar()) -> matrix();
-	   (A::scalar(), B::matrix()) -> matrix().
+	   (A::matrix(), B::constant()) -> matrix();
+	   (A::constant(), B::matrix()) -> matrix().
 
 times(_A,_B) ->
     ?nif_stub().
 
 -spec times(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	   (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	   (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	   (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	   (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 
 times(_X,_Y,_Dst) ->
     ?nif_stub().
 
 %% Divide two matrices element wise
 -spec divide(A::matrix(), B::matrix()) -> matrix();
-	    (A::matrix(), B::scalar()) -> matrix();
-	    (A::scalar(), B::matrix()) -> matrix().
+	    (A::matrix(), B::constant()) -> matrix();
+	    (A::constant(), B::matrix()) -> matrix().
 
 divide(_A,_B) ->
     ?nif_stub().
 
 -spec divide(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	    (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	    (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	    (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	    (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 
 divide(_X,_Y,_Dst) ->
     ?nif_stub().
 
 %% Remainder two matrices element wise
 -spec remainder(A::matrix(), B::matrix()) -> matrix();
-	       (A::matrix(), B::scalar()) -> matrix();
-	       (A::scalar(), B::matrix()) -> matrix().
+	       (A::matrix(), B::constant()) -> matrix();
+	       (A::constant(), B::matrix()) -> matrix().
 
 remainder(_A,_B) ->
     ?nif_stub().
 
 -spec remainder(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	       (A::matrix(), B::scalar(), Dst::matrix()) -> matrix();
-	       (A::scalar(), B::matrix(), Dst::matrix()) -> matrix().
+	       (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
+	       (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
 
 remainder(_X,_Y,_Dst) ->
     ?nif_stub().
@@ -743,16 +767,80 @@ reciprocal(_A) ->
 reciprocal(_A, _Dst) ->
     ?nif_stub().
 
+
+%%
+%% squre root a matrix element wise
+%%
+-spec sqrt(A::matrix()) -> matrix().
+sqrt(_A) ->
+    ?nif_stub().
+
+-spec sqrt(A::matrix(),Dst::matrix()) -> matrix().
+sqrt(_A, _Dst) ->
+    ?nif_stub().
+
+
+%% validate matrix kernel
+-spec validate(Prog::[matrix_kernel:inst()]) -> matrix_type().
+validate(Prog) ->
+    matrix_kernel:validate(Prog).
+
+-spec validate(Prog::[matrix_kernel:inst()], 
+	       VarList::[term()]) -> matrix_type().
+validate(Prog, VarList) ->
+    matrix_kernel:validate(Prog, VarList).
+    
+%%
+%% element updates
+%%
+-spec eval(Prog::[matrix_kernel:inst()],[matrix()]) -> matrix().
+eval(Prog,As) ->
+    case {matrix_kernel:validate(Prog),As} of
+	{{ok, P},[A]} ->
+	    eval1(P, A);
+	{{ok, P},[A,B]} ->
+	    eval1(P, A, B);
+	{{error,Err},_} ->
+	    {error,Err}
+    end.
+-spec eval(Prog::[matrix_kernel:inst()],[matrix()], Dst::matrix()) -> matrix().
+eval(Prog,As,Dst) ->
+    case {matrix_kernel:validate(Prog),As} of
+	{{ok, P},[A]} ->
+	    eval1(P, A, Dst);
+	{{ok, P},[A,B]} ->
+	    eval2(P, A, B, Dst);
+	{{error,Err},_} ->
+	    {error,Err}
+    end.
+
+-spec eval1(Prog::[matrix_kernel:inst()],A::matrix()) -> matrix().
+eval1(_Prog,_A) ->
+    ?nif_stub().
+
+-spec eval1(Prog::[matrix_kernel:inst()],A::matrix(),Dst::matrix()) -> matrix().
+eval1(_Prog,_A, _Dst) ->
+    ?nif_stub().
+
+-spec eval2(Prog::[matrix_kernel:inst()],A::matrix(), B::matrix()) -> matrix().
+eval2(_Prog,_A,_B) ->
+    ?nif_stub().
+
+-spec eval2(Prog::[matrix_kernel:inst()],A::matrix(),B::matrix(),
+	    Dst::matrix()) -> matrix().
+eval2(_Prog,_A, _B, _Dst) ->
+    ?nif_stub().
+
 %%
 %% Scale a matrix by a scalar number
 %%
--spec scale(F::scalar(), X::matrix()) -> matrix().
+-spec scale(F::constant(), X::matrix()) -> matrix().
 
-scale(F, X) when ?is_scalar(F) ->
+scale(F, X) when ?is_constant(F) ->
     times(F, X).
 
--spec scale(F::number(), X::matrix(), Dst::matrix()) -> matrix().
-scale(F, X, Dst) when ?is_scalar(F) ->
+-spec scale(F::constant(), X::matrix(), Dst::matrix()) -> matrix().
+scale(F, X, Dst) when ?is_constant(F) ->
     times(F, X, Dst).
 
 %% expontiation of all elements
@@ -818,7 +906,7 @@ pow_(A,B,P) ->
 multiply(_A, _B) ->
     ?nif_stub().
 
--spec multiply(X::matrix(), Y::matrix(), RowMajor::boolean) ->  matrix() ;
+-spec multiply(X::matrix(), Y::matrix(), RowMajor::boolean()) ->  matrix() ;
 	      (X::matrix(), Y::matrix(), Dst::matrix()) -> matrix().
 
 multiply(_A, _B, _Arg) ->
@@ -1084,7 +1172,7 @@ argmin(A,I) ->
 argmin(_A,_I,_Opts) ->
     ?nif_stub().
 
--spec max(A::matrix()) -> scalar().
+-spec max(A::matrix()) -> constant().
 max(A) ->
     max(A,0,[]).
 
@@ -1096,7 +1184,7 @@ max(A, Axis) ->
 max(_A, _Axis, _Opts) ->
     ?nif_stub().
 
--spec min(A::matrix()) -> scalar().
+-spec min(A::matrix()) -> constant().
 min(A) ->
     min(A, 0, []).
 
@@ -1209,9 +1297,7 @@ invert_l_row(_I,0,_Xii,_A,X) ->
 invert_l_row(I,J,Xii,A,X) ->
     K = I-1,
     Aik = row(I,J,K,A),     %% A[I][J]..A[I][K]
-    %% print(Aik),
     Xkj = column(J,J,K,X),  %% X[J][J]..X[K][J]
-    %% print(Xkj),
     S = mulsum(Aik,transpose(Xkj)),
     %% S = sum_l(I, J, I-1, A, X, element_zero(A)),
     Sneg = element_negate(S),
@@ -1227,7 +1313,7 @@ sum_l(I,J,K,A,X,Sum) ->
     sum_l(I,J,K-1,A,X,element_add(element_multiply(Aik,Xkj),Sum)).
 -endif
     
--spec det(A::matrix()) -> scalar().
+-spec det(A::matrix()) -> constant().
 
 -define(pow_sign(N), ((((N)+1) band 1)*2 - 1)).
 
@@ -1279,83 +1365,223 @@ column_width(Rows) ->
     Column = [length(hd(Row)) || Row <- Rows],
     [ lists:max(Column) | column_width([tl(Row) || Row <- Rows]) ].
 
-
-format_element({R,I},Prec) when is_float(R),is_float(I) ->
-    if I == 0 ->
-	    format_element(R,Prec)++" ";
-       I < 0 ->
-	    format_element(R,Prec)++"-"++format_element(-I,Prec)++"i";
-       true ->
-	    format_element(R,Prec)++"+"++format_element(I,Prec)++"i"
-    end;
 format_element(X,_) when is_integer(X) ->
     integer_to_list(X);
 format_element(X,0) when is_float(X) ->
     lists:flatten(io_lib_format:fwrite_g(X));
 format_element(X,Prec) when is_float(X) ->
-    lists:flatten(io_lib:format("~.*f", [Prec,X])).
+    lists:flatten(io_lib:format("~.*f", [Prec,X]));
+format_element(X,Prec) when is_tuple(X) ->
+    ["{",lists:join(",",[format_element(Xi,Prec)||Xi <-tuple_to_list(X)]),"}"].
+
 
 %% get argument type
-arg_type(X) ->
-    if is_integer(X) ->
-	    if X >= -16#80, X < 16#80 -> ?int8_t;
-	       X >= -16#8000, X < 16#8000 -> ?int16_t;
-	       X >= -16#80000000, X < 16#80000000 -> ?int32_t;
-	       X >= -16#8000000000000000, X < 16#8000000000000000 -> ?int64_t;
-	       true -> ?int128_t
-	    end;
-       is_float(X) -> ?float32_t;  %% fixme check range
-       ?is_complex(X) -> ?complex64_t  %% fixme check range
-    end.
+scalar_type(X) when is_integer(X) ->
+    if X >= -16#80, X < 16#80 -> ?int8_t;
+       X >= -16#8000, X < 16#8000 -> ?int16_t;
+       X >= -16#80000000, X < 16#80000000 -> ?int32_t;
+       X >= -16#8000000000000000, X < 16#8000000000000000 -> ?int64_t;
+       true -> ?int128_t
+    end;
+scalar_type(X) when is_float(X) ->
+    ?float32_t.  %% fixme check range? float01 float16... float64..
+
+arg_type(X) when not is_tuple(X) -> scalar_type(X);
+arg_type(X) when tuple_size(X) > 0, tuple_size(X) =< 16 ->
+    type_combine_list(tuple_to_list(X), tuple_size(X)).
 
 %% combine types to the more general one
-type_combine(T1,T2) -> erlang:max(T1,T2).
+type_combine_list(Xs,N) when is_list(Xs), is_integer(N), N>0 ->
+    T = lists:max([arg_type(X) || X <- Xs]),
+    ?make_vector_type2(N, T).
 
-elem_to_bin(?complex128_t, {R,I}) -> <<?complex128(R,I)>>;
-elem_to_bin(?complex128_t, R) when is_number(R) -> <<?complex128(R,0.0)>>;
-elem_to_bin(?complex64_t, {R,I}) -> <<?complex64(R,I)>>;
-elem_to_bin(?complex64_t, R) -> <<?complex64(R,0.0)>>;
+elem_to_bin(Type, X) when is_number(X), ?get_vector_size(Type) > 1 ->
+    elem_to_bin(Type, erlang:make_tuple(?get_vector_size(Type), X));
+elem_to_bin(?uint8_t, X)   -> <<?uint8(X)>>;
+elem_to_bin(?uint16_t, X)  -> <<?uint16(X)>>;
+elem_to_bin(?uint32_t, X)  -> <<?uint32(X)>>;
+elem_to_bin(?uint64_t, X)  -> <<?uint64(X)>>;
+elem_to_bin(?uint128_t, X) -> <<?uint128(X)>>;
+elem_to_bin(?int8_t, X)    -> <<?int8(X)>>;
+elem_to_bin(?int16_t, X)   -> <<?int16(X)>>;
+elem_to_bin(?int32_t, X)   -> <<?int32(X)>>;
+elem_to_bin(?int64_t, X)   -> <<?int64(X)>>;
+elem_to_bin(?int128_t, X)  -> <<?int128(X)>>;
+elem_to_bin(?float16_t, X) -> <<?float16(X)>>;
 elem_to_bin(?float32_t, X) -> <<?float32(X)>>;
 elem_to_bin(?float64_t, X) -> <<?float64(X)>>;
-elem_to_bin(?float128_t, X) -> float128_to_binary(X);
-elem_to_bin(?int128_t, X) -> <<?int128(X)>>;
-elem_to_bin(?int64_t, X) -> <<?int64(X)>>;
-elem_to_bin(?int32_t, X) -> <<?int32(X)>>;
-elem_to_bin(?int16_t, X) -> <<?int16(X)>>;
-elem_to_bin(?int8_t, X) -> <<?int8(X)>>.
+elem_to_bin(Type, X) when is_tuple(X), 
+			  ?get_vector_size(Type) =:= tuple_size(X) ->
+    elems_to_bin(Type band ?COMP_TYPE_MASK, tuple_size(X), X, []).
+
+elems_to_bin(_Type, 0, _X, Acc) ->
+    list_to_binary(Acc);
+elems_to_bin(Type, I, X, Acc) ->
+    elems_to_bin(Type, I-1, X, [elem_to_bin(Type,erlang:element(I, X))|Acc]).
+
+%% util 
+-define(FLOAT16_EXP_BITS, 5).
+-define(FLOAT16_EXP_BIAS, 15).
+-define(FLOAT16_FRAC_BITS, 10).
+
+-define(FLOAT32_EXP_BITS, 8).
+-define(FLOAT32_EXP_BIAS, 127).
+-define(FLOAT32_FRAC_BITS, 23).
+
+-define(FLOAT64_EXP_BITS, 11).
+-define(FLOAT64_EXP_BIAS, 1023).
+-define(FLOAT64_FRAC_BITS, 52).
 
 %% simulate float128 binary
-float128_to_binary(X) ->
-    <<S:1,E:11,F:52>> = <<(float(X)):64/float>>, %% first 64 bit
-    E1 = E-1023,
-    <<Xi:128>> = <<S:1,(E1+16383):15,F:52,0:60>>,  %% endian
-    <<Xi:128/native>>.
+%%float128_to_binary(X) ->
+%%    <<S:1,E:11,F:52>> = <<(float(X)):64/float>>, %% first 64 bit
+%%    E1 = E-1023,
+%%    <<Xi:128>> = <<S:1,(E1+16383):15,F:52,0:60>>,  %% endian
+%%    <<Xi:128/native>>.
 
-encode_type(int8) -> ?int8_t;
-encode_type(int16) -> ?int16_t;
+encode_type(uint8)   -> ?uint8_t;
+encode_type(uint8x2) -> ?uint8x2_t;
+encode_type(uint8x3) -> ?uint8x3_t;
+encode_type(uint8x4) -> ?uint8x4_t;
+encode_type(uint8x8) -> ?uint8x8_t;
+encode_type(uint8x16) -> ?uint8x16_t;
+
+encode_type(uint16)   -> ?uint16_t;
+encode_type(uint16x2) -> ?uint16x2_t;
+encode_type(uint16x3) -> ?uint16x3_t;
+encode_type(uint16x4) -> ?uint16x4_t;
+encode_type(uint16x8) -> ?uint16x8_t;
+encode_type(uint16x16) -> ?uint16x16_t;
+
+encode_type(uint32) -> ?uint32_t;
+encode_type(uint32x2) -> ?uint32x2_t;
+encode_type(uint32x3) -> ?uint32x3_t;
+encode_type(uint32x4) -> ?uint32x4_t;
+encode_type(uint32x8) -> ?uint32x8_t;
+encode_type(uint32x16) -> ?uint32x16_t;
+
+encode_type(uint64) -> ?uint64_t;
+encode_type(uint64x2) -> ?uint64x2_t;
+encode_type(uint64x3) -> ?uint64x3_t;
+encode_type(uint64x4) -> ?uint64x4_t;
+encode_type(uint64x8) -> ?uint64x8_t;
+encode_type(uint64x16) -> ?uint64x16_t;
+
+encode_type(uint128) -> ?uint128_t;
+
+encode_type(int8)   -> ?int8_t;
+encode_type(int8x2) -> ?int8x2_t;
+encode_type(int8x3) -> ?int8x3_t;
+encode_type(int8x4) -> ?int8x4_t;
+encode_type(int8x8) -> ?int8x8_t;
+encode_type(int8x16) -> ?int8x16_t;
+
+encode_type(int16)   -> ?int16_t;
+encode_type(int16x2) -> ?int16x2_t;
+encode_type(int16x3) -> ?int16x3_t;
+encode_type(int16x4) -> ?int16x4_t;
+encode_type(int16x8) -> ?int16x8_t;
+encode_type(int16x16) -> ?int16x16_t;
+
 encode_type(int32) -> ?int32_t;
+encode_type(int32x2) -> ?int32x2_t;
+encode_type(int32x3) -> ?int32x3_t;
+encode_type(int32x4) -> ?int32x4_t;
+encode_type(int32x8) -> ?int32x8_t;
+encode_type(int32x16) -> ?int32x16_t;
+
 encode_type(int64) -> ?int64_t;
+encode_type(int64x2) -> ?int64x2_t;
+encode_type(int64x3) -> ?int64x3_t;
+encode_type(int64x4) -> ?int64x4_t;
+encode_type(int64x8) -> ?int64x8_t;
+encode_type(int64x16) -> ?int64x16_t;
+
 encode_type(int128) -> ?int128_t;
+
+encode_type(float16) -> ?float16_t;
+encode_type(float16x2) -> ?float16x2_t;
+encode_type(float16x3) -> ?float16x3_t;
+encode_type(float16x4) -> ?float16x4_t;
+encode_type(float16x8) -> ?float16x8_t;
+encode_type(float16x16) -> ?float16x16_t;
+
 encode_type(float32) -> ?float32_t;
+encode_type(float32x2) -> ?float32x2_t;
+encode_type(float32x3) -> ?float32x3_t;
+encode_type(float32x4) -> ?float32x4_t;
+encode_type(float32x8) -> ?float32x8_t;
+encode_type(float32x16) -> ?float32x16_t;
+
 encode_type(float64) -> ?float64_t;
-encode_type(float128) -> ?float128_t;
-encode_type(complex64) -> ?complex64_t;
-encode_type(complex128) -> ?complex128_t.
+encode_type(float64x2) -> ?float64x2_t;
+encode_type(float64x3) -> ?float64x3_t;
+encode_type(float64x4) -> ?float64x3_t;
+encode_type(float64x8) -> ?float64x8_t;
+encode_type(float64x16) -> ?float64x16_t.
 
 decode_type(T) ->
     case T of
+	?uint8_t -> uint8;
+	?uint8x2_t -> uint8x2;
+	?uint8x3_t -> uint8x3;
+	?uint8x4_t -> uint8x4;
+	?uint8x8_t -> uint8x8;
+	?uint8x16_t -> uint8x16;
+
+	?uint16_t -> uint16;
+	?uint32_t -> uint32;
+	?uint64_t -> uint64;
+	?uint128_t -> uint128;
+
 	?int8_t -> int8;
+	?int8x2_t -> int8x2;
+	?int8x3_t -> int8x3;
+	?int8x4_t -> int8x4;
+	?int8x8_t -> int8x8;
+	?int8x16_t -> int8x16;
+
 	?int16_t -> int16;
+	?int16x2_t -> int16x2;
+	?int16x3_t -> int16x3;
+	?int16x4_t -> int16x4;
+	?int16x8_t -> int16x8;
+	?int16x16_t -> int16x16;
+
 	?int32_t -> int32;
+	?int32x2_t -> int32x2;
+	?int32x3_t -> int32x3;
+	?int32x4_t -> int32x4;
+	?int32x8_t -> int32x8;
+	?int32x16_t -> int32x16;
+
 	?int64_t -> int64;
 	?int128_t -> int128;
-	?float32_t -> float32;
-	?float64_t -> float64;
-	?float128_t -> float128;
-	?complex64_t -> complex64;
-	?complex128_t -> complex128
-    end.    
 
+	?float16_t -> float16;
+	?float16x2_t -> float16x2;
+	?float16x3_t -> float16x3;
+	?float16x4_t -> float16x4;
+	?float16x8_t -> float16x8;
+	?float16x16_t -> float16x16;
+
+	?float32_t -> float32;
+	?float32x2_t -> float32x2;
+	?float32x3_t -> float32x3;
+	?float32x4_t -> float32x4;
+	?float32x8_t -> float32x8;
+	?float32x16_t -> float32x16;
+
+	?float64_t -> float64;
+	?float64x2_t -> float64x2;
+	?float64x3_t -> float64x3;
+	?float64x4_t -> float64x4;
+	VT when VT > ?COMP_TYPE_MASK ->
+	    CompType = decode_type(VT band ?COMP_TYPE_MASK),
+	    VecSize = (VT bsr 5)+1,
+	    list_to_atom(atom_to_list(CompType) ++
+			     [$x|integer_to_list(VecSize)])
+    end.    
 
 element_divide(A,B) when is_integer(A), is_integer(B), A rem B =:= 0 ->
     A div B;
@@ -1408,28 +1634,171 @@ element_one(#matrix{type=T}) -> elem_one(T).
 
 elem_zero(T) ->
     case T of
+	?uint8_t -> 0;
+	?uint16_t -> 0;
+	?uint32_t -> 0;
+	?uint64_t -> 0;
+	?uint128_t -> 0;
+
+	?uint8x2_t -> {0,0};
+	?uint8x3_t -> {0,0,0};
+	?uint8x4_t -> {0,0,0,0};
+	?uint8x8_t -> {0,0,0,0,0,0,0,0};
+	?uint8x16_t -> {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+	?uint16x2_t -> {0,0};
+	?uint16x3_t -> {0,0,0};
+	?uint16x4_t -> {0,0,0,0};
+	?uint16x8_t -> {0,0,0,0,0,0,0,0};
+	?uint16x16_t -> {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+	?uint32x2_t -> {0,0};
+	?uint32x3_t -> {0,0,0};
+	?uint32x4_t -> {0,0,0,0};
+	?uint32x8_t -> {0,0,0,0,0,0,0,0};
+	?uint32x16_t -> {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+	?uint64x2_t -> {0,0};
+	?uint64x3_t -> {0,0,0};
+	?uint64x4_t -> {0,0,0,0};
+	?uint64x8_t -> {0,0,0,0,0,0,0,0};
+	?uint64x16_t -> {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+
 	?int8_t -> 0;
 	?int16_t -> 0;
 	?int32_t -> 0;
 	?int64_t -> 0;
 	?int128_t -> 0;
+	?float16_t -> 0.0;
 	?float32_t -> 0.0;
 	?float64_t -> 0.0;
-	?float128_t -> 0.0;
-	?complex64_t -> {0.0, 0.0};
-	?complex128_t -> {0.0, 0.0}
+
+	?int8x2_t -> {0,0};
+	?int8x3_t -> {0,0,0};
+	?int8x4_t -> {0,0,0,0};
+	?int8x8_t -> {0,0,0,0,0,0,0,0};
+	?int8x16_t -> {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+	?int16x2_t -> {0,0};
+	?int16x3_t -> {0,0,0};
+	?int16x4_t -> {0,0,0,0};
+	?int16x8_t -> {0,0,0,0,0,0,0,0};
+	?int16x16_t -> {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+	?int32x2_t -> {0,0};
+	?int32x3_t -> {0,0,0};
+	?int32x4_t -> {0,0,0,0};
+	?int32x8_t -> {0,0,0,0,0,0,0,0};
+	?int32x16_t -> {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+	?int64x2_t -> {0,0};
+	?int64x3_t -> {0,0,0};
+	?int64x4_t -> {0,0,0,0};
+	?int64x8_t -> {0,0,0,0,0,0,0,0};
+	?int64x16_t -> {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+	?float16x2_t -> {0.0,0.0};
+	?float16x3_t -> {0.0,0.0,0.0};
+	?float16x4_t -> {0.0,0.0,0.0,0.0};
+	?float16x8_t -> {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+	?float16x16_t -> {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,
+			  0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+	?float32x2_t -> {0.0,0.0};
+	?float32x3_t -> {0.0,0.0,0.0};
+	?float32x4_t -> {0.0,0.0,0.0,0.0};
+	?float32x8_t -> {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+	?float32x16_t -> {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,
+			  0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+	?float64x2_t -> {0.0,0.0};
+	?float64x3_t -> {0.0,0.0,0.0};
+	?float64x4_t -> {0.0,0.0,0.0,0.0};
+	?float64x8_t -> {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+	?float64x16_t -> {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,
+			  0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0}
     end.
 
 elem_one(T) ->
     case T of
+	?uint8_t -> 1;
+	?uint16_t -> 1;
+	?uint32_t -> 1;
+	?uint64_t -> 1;
+	?uint128_t -> 1;
+
+	?uint8x2_t -> {1,1};
+	?uint8x3_t -> {1,1,1};
+	?uint8x4_t -> {1,1,1,1};
+	?uint8x8_t -> {1,1,1,1,1,1,1,1};
+	?uint8x16_t -> {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
+	?uint16x2_t -> {1,1};
+	?uint16x3_t -> {1,1,1};
+	?uint16x4_t -> {1,1,1,1};
+	?uint16x8_t -> {1,1,1,1,1,1,1,1};
+	?uint16x16_t -> {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
+	?uint32x2_t -> {1,1};
+	?uint32x3_t -> {1,1,1};
+	?uint32x4_t -> {1,1,1,1};
+	?uint32x8_t -> {1,1,1,1,1,1,1,1};
+	?uint32x16_t -> {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
+	?uint64x2_t -> {1,1};
+	?uint64x3_t -> {1,1,1};
+	?uint64x4_t -> {1,1,1,1};
+	?uint64x8_t -> {1,1,1,1,1,1,1,1};
+	?uint64x16_t -> {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
 	?int8_t -> 1;
 	?int16_t -> 1;
 	?int32_t -> 1;
 	?int64_t -> 1;
 	?int128_t -> 1;
+	?float16_t -> 1.0;
 	?float32_t -> 1.0;
 	?float64_t -> 1.0;
-	?float128_t -> 1.0;
-	?complex64_t -> {1.0, 0.0};
-	?complex128_t -> {1.0, 0.0}
+
+	?int8x2_t -> {1,1};
+	?int8x3_t -> {1,1,1};
+	?int8x4_t -> {1,1,1,1};
+	?int8x8_t -> {1,1,1,1,1,1,1,1};
+	?int8x16_t -> {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
+	?int16x2_t -> {1,1};
+	?int16x3_t -> {1,1,1};
+	?int16x4_t -> {1,1,1,1};
+	?int16x8_t -> {1,1,1,1,1,1,1,1};
+	?int16x16_t -> {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
+	?int32x2_t -> {1,1};
+	?int32x3_t -> {1,1,1};
+	?int32x4_t -> {1,1,1,1};
+	?int32x8_t -> {1,1,1,1,1,1,1,1};
+	?int32x16_t -> {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
+	?int64x2_t -> {1,1};
+	?int64x3_t -> {1,1,1};
+	?int64x4_t -> {1,1,1,1};
+	?int64x8_t -> {1,1,1,1,1,1,1,1};
+	?int64x16_t -> {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
+	?float16x2_t -> {1.0,1.0};
+	?float16x3_t -> {1.0,1.0,1.0};
+	?float16x4_t -> {1.0,1.0,1.0,1.0};
+	?float16x8_t -> {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
+	?float16x16_t -> {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,
+			  1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
+	?float32x2_t -> {1.0,1.0};
+	?float32x3_t -> {1.0,1.0,1.0};
+	?float32x4_t -> {1.0,1.0,1.0,1.0};
+	?float32x8_t -> {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
+	?float32x16_t -> {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,
+			  1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
+	?float64x2_t -> {1.0,1.0};
+	?float64x3_t -> {1.0,1.0,1.0};
+	?float64x4_t -> {1.0,1.0,1.0,1.0};
+	?float64x8_t -> {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
+	?float64x16_t -> {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,
+			  1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0}
     end.

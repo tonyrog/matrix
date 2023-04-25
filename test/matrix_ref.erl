@@ -40,25 +40,10 @@
 -export([topk/2]).
 -export([decode_element_at/3]).
 
-%% complex
--export([complex/1]).
--export([complex_add/2]).
--export([complex_subtract/2]).
--export([complex_multiply/2]).
--export([complex_divide/2]).
--export([complex_negate/1]).
--export([complex_conjugate/1]).
--export([complex_abs/1]).
--export([complex_exp/1]).
--export([complex_sinh/1]).
--export([complex_cosh/1]).
--export([complex_tanh/1]).
-
--import(matrix, [elem_to_bin/2, type_combine/2]).
 -compile({no_auto_import,[max/2]}).
 -compile({no_auto_import,[min/2]}).
 
--include("matrix.hrl").
+-include("../include/matrix.hrl").
 
 -define(badargif(Cond),
 	case Cond of
@@ -66,38 +51,49 @@
 	    false -> ok
 	end).
 
+type_combine(T1, T2) ->
+    erlang:max(T1, T2).
+
 create(N,M,Type,RowMajor,Data) when is_atom(Type) ->
     create(N,M,matrix:encode_type(Type),RowMajor,Data);
 create(N,M,T,RowMajor,Data) ->
-    #matrix { type=T, n=N, m=M, nstep=M, mstep=1, rowmajor=RowMajor,
+    #matrix { type=T, n=N, m=M, 
+	      n_stride=M*?get_element_size(T),
+	      m_stride=?get_element_size(T),
+	      k_stride=?get_comp_size(T),
+	      rowmajor=RowMajor,
 	      resource=iolist_to_binary(Data)}.
 
 
 -spec element(I::unsigned(),J::unsigned(),X::matrix()) -> number().
 %% element I,J in row/column order (i.e rowmajor)
-element(I,J,#matrix{rowmajor=true,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
+element(I,J,#matrix{rowmajor=true,n=N,m=M,offset=O,
+		    n_stride=Sn,
+		    m_stride=Sm,
 		    type=T,resource=D})
   when
       is_integer(I), I > 0, I =< N, 
       is_integer(J), J > 0, J =< M ->
     P = if Sn =:= 0, Sm =:= 0 -> O;
-	   true -> O + (I-1)*Sn+(J-1)
+	   true -> O + (I-1)*Sn+(J-1)*Sm
 	end,
     decode_element_at(P, T, D);
-element(I,J,#matrix{rowmajor=false,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
+element(I,J,#matrix{rowmajor=false,n=N,m=M,offset=O,
+		    n_stride=Sn,
+		    m_stride=Sm,
 		    type=T,resource=D})
   when
       is_integer(I), I > 0, I =< M, 
       is_integer(J), J > 0, J =< N ->
     P = if Sn =:= 0, Sm =:= 0 -> O;
-	   true -> O + (J-1)*Sn+(I-1)
+	   true -> O + Sn*(J-1)+Sm*(I-1)
 	end,
     decode_element_at(P, T, D).
 
 
 element(I,A=#matrix{rowmajor=true}) when is_integer(I) -> matrix:row(I,A);
 element(I,A=#matrix{rowmajor=false}) when is_integer(I)  -> matrix:column(I,A);
-element(K=#matrix{type=?int32},A=#matrix{}) ->
+element(K=#matrix{type=?int32_t},A=#matrix{}) ->
     {N,M} = matrix:size(K),
     if N =:= 1 ->  %% single row select in each column from A
 	    [Is] = matrix:to_list(K),
@@ -114,81 +110,67 @@ element(K=#matrix{type=?int32},A=#matrix{}) ->
 	    matrix:from_list(Es,matrix:type(A))
     end.
 
-%% P is element position not byte position
+%% P is byte position not element position
 decode_element_at(P, T, Bin) ->
     case T of
-	?complex128 ->
-	    <<_:P/binary-unit:128,R:64/native-float,I:64/native-float,
-	      _/binary>> = Bin, {R,I};
-	?complex64 ->
-	    <<_:P/binary-unit:64,R:32/native-float,I:32/native-float,
-	      _/binary>> = Bin, {R,I};
-	?float64 -> 
-	    <<_:P/binary-unit:64,X:64/native-float,_/binary>> = Bin, X;
-	?float32 -> 
-	    <<_:P/binary-unit:32,X:32/native-float,_/binary>> = Bin, X;
-	?int64 ->
-	    <<_:P/binary-unit:64,X:64/native-signed-integer,_/binary>> = Bin, X;
-	?int32 ->
-	    <<_:P/binary-unit:32,X:32/native-signed-integer,_/binary>> = Bin, X;
-	?int16 ->
-	    <<_:P/binary-unit:16,X:16/native-signed-integer,_/binary>> = Bin, X;
-	?int8 ->
-	    <<_:P/binary-unit:8,X:8/native-signed-integer,_/binary>> = Bin, X
+	?float64_t -> 
+	    <<_:P/binary,X:64/native-float,_/binary>> = Bin, X;
+	?float32_t -> 
+	    <<_:P/binary,X:32/native-float,_/binary>> = Bin, X;
+	?int64_t ->
+	    <<_:P/binary,X:64/native-signed-integer,_/binary>> = Bin, X;
+	?int32_t ->
+	    <<_:P/binary,X:32/native-signed-integer,_/binary>> = Bin, X;
+	?int16_t ->
+	    <<_:P/binary,X:16/native-signed-integer,_/binary>> = Bin, X;
+	?int8_t ->
+	    <<_:P/binary,X:8/native-signed-integer,_/binary>> = Bin, X
     end.
 
 -spec setelement(I::unsigned(),J::unsigned(),X::matrix(),V::scalar()) ->
-			matrix().
+	  matrix().
 %% element I,J in row/column order (i.e rowmajor)
-setelement(I,J,X=#matrix{rowmajor=true,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
-		       type=T,resource=D}, V)
+setelement(I,J,X=#matrix{rowmajor=true,n=N,m=M,offset=O,
+			 n_stride=Sn,m_stride=Sm,
+			 type=T,resource=D}, V)
   when
       is_integer(I), I > 0, I =< N, 
       is_integer(J), J > 0, J =< M ->
     P = if Sn =:= 0, Sm =:= 0 -> O;
-	   true -> O + (I-1)*Sn+(J-1)
+	   true -> O + Sn*(I-1)+Sm*(J-1)
 	end,
     X#matrix{resource=set_element_at(P, T, D, V)};
-setelement(I,J,X=#matrix{rowmajor=false,n=N,m=M,offset=O,nstep=Sn,mstep=Sm,
+setelement(I,J,X=#matrix{rowmajor=false,n=N,m=M,offset=O,
+			 n_stride=Sn,m_stride=Sm,
 			 type=T,resource=D}, V)
   when
       is_integer(I), I > 0, I =< M, 
       is_integer(J), J > 0, J =< N ->
     P = if Sn =:= 0, Sm =:= 0 -> O;
-	   true -> O + (J-1)*Sn+(I-1)
+	   true -> O + Sn*(J-1)+Sm*(I-1)
 	end,
     X#matrix{resource=set_element_at(P, T, D, V)}.
 
 %% P is element position not byte position
 set_element_at(P, T, Bin, V) ->
     case T of
-	?complex128 ->
-	    {R,I} = V,
-	    <<B1:P/binary-unit:128,_:64/native-float,_:64/native-float,
-	      B2/binary>> = Bin,
-	    <<B1/binary, R:64/native-float, I:64/native-float, B2/binary>>;
-	?complex64 ->
-	    {R,I} = V,
-	    <<B1:P/binary-unit:64,_:32/native-float,_:32/native-float,
-	      B2/binary>> = Bin,
-	    <<B1/binary, R:32/native-float, I:32/native-float, B2/binary>>;
-	?float64 ->
-	    <<B1:P/binary-unit:64,_:64/native-float,B2/binary>> = Bin,
+	?float64_t ->
+	    <<B1:P/binary,_:64/native-float,B2/binary>> = Bin,
 	    <<B1/binary,V:64/native-float,B2/binary>>;
-	?float32 ->
-	    <<B1:P/binary-unit:32,_:32/native-float,B2/binary>> = Bin,
+	?float32_t ->
+	    <<B1:P/binary,_:32/native-float,B2/binary>> = Bin,
 	    <<B1/binary,V:32/native-float,B2/binary>>;
-	?int64 ->
-	    <<B1:P/binary-unit:64,_:64/native-signed-integer,B2/binary>> = Bin,
+	?int64_t ->
+	    <<B1:P/binary,_:64/native-signed-integer,B2/binary>> = Bin,
 	    <<B1/binary,V:64/native-signed-integer,B2/binary>>;
-	?int32 ->
-	    <<B1:P/binary-unit:32,_:32/native-signed-integer,B2/binary>> = Bin,
+	?int32_t ->
+	    <<B1:P/binary,_:32/native-signed-integer,B2/binary>> = Bin,
 	    <<B1/binary,V:32/native-signed-integer,B2/binary>>;	    
-	?int16 ->
-	    <<B1:P/binary-unit:16,_:16/native-signed-integer,B2/binary>> = Bin,
+	?int16_t ->
+	    <<B1:P/binary,_:16/native-signed-integer,B2/binary>> = Bin,
 	    <<B1/binary,V:16/native-signed-integer,B2/binary>>;	    
-	?int8 ->
-	    <<B1:P/binary-unit:8,_:8/native-signed-integer,B2/binary>> = Bin,
+	?int8_t ->
+	    <<B1:P/binary,_:8/native-signed-integer,B2/binary>> = Bin,
 	    <<B1/binary,V:8/native-signed-integer,B2/binary>>
     end.
 
@@ -233,12 +215,12 @@ add(X=#matrix{}, Yc) when ?is_scalar(Yc) ->
 add(Xc, Y=#matrix{}) when ?is_scalar(Xc) ->
     X = matrix:constant(matrix:size(Y), matrix:type(Y), Xc),
     add_(X, Y).
-    
+
 add_(X,Y) ->
     T = type_combine(X#matrix.type,Y#matrix.type),
     {N,M} = matrix:size(X),
     Data = map_elems(fun(Xij,Yij) ->
-			     elem_to_bin(T,scalar_add(Xij,Yij))
+			     matrix:elem_to_bin(T,scalar_add(Xij,Yij))
 		     end, X, Y),
     matrix:create(N,M,T,true,Data).
 
@@ -254,12 +236,12 @@ subtract(X=#matrix{},Yc) when ?is_scalar(Yc) ->
 subtract(Xc, Y=#matrix{}) when ?is_scalar(Xc) ->
     X = matrix:constant(matrix:size(Y), matrix:type(Y), Xc),
     subtract_(X, Y).
-    
+
 subtract_(X,Y) ->
     T = type_combine(X#matrix.type,Y#matrix.type),
     {N,M} = matrix:size(X),
     Data = map_elems(fun(Xij,Yij) ->
-			     elem_to_bin(T,scalar_subtract(Xij,Yij))
+			     matrix:elem_to_bin(T,scalar_subtract(Xij,Yij))
 		     end, X, Y),
     matrix:create(N,M,T,true,Data).
 
@@ -275,12 +257,12 @@ times(X=#matrix{}, Yc) when ?is_scalar(Yc) ->
 times(Xc, Y=#matrix{}) when ?is_scalar(Xc) ->
     X = matrix:constant(matrix:size(Y), matrix:type(Y), Xc),
     times_(X, Y).
-    
+
 times_(X,Y) ->
     T = type_combine(X#matrix.type,Y#matrix.type),
     {N,M} = matrix:size(X),
     Data = map_elems(fun(Xij,Yij) ->
-			     elem_to_bin(T,scalar_multiply(Xij,Yij))
+			     matrix:elem_to_bin(T,scalar_multiply(Xij,Yij))
 		     end, X, Y),
     matrix:create(N,M,T,true,Data).
 
@@ -288,7 +270,7 @@ times_(X,Y) ->
 negate(X) ->
     {N,M} = matrix:size(X),
     T = X#matrix.type,
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_negate(Xij)) end, X),
+    Es = map_elems(fun(Xij) -> matrix:elem_to_bin(T,scalar_negate(Xij)) end, X),
     matrix:create(N,M,T,true,Es).
 
 %% scale (alias for times/2)
@@ -302,19 +284,19 @@ scale(F, X=#matrix{}) when ?is_scalar(F) ->
 multiply(X, Y) ->
     multiply(X, Y, true).
 
-multiply(X=#matrix{type=Tx},Y=#matrix{type=Ty},RowMajor) when
+multiply(X=#matrix_t{type=Tx},Y=#matrix_t{type=Ty},RowMajor) when
       is_boolean(RowMajor) ->
-    {Nx,_Mx} = matrix:size(X),
-    {_Ny,My} = matrix:size(Y),
+    {Nx,NM} = matrix:size(X),
+    {NM,My} = matrix:size(Y),
     Xs = matrix:to_list(X),
     Zs = [ [dot(Xi,Yt) || Xi <- Xs] ||
 	     Yt <- matrix:to_list(matrix:transpose(Y))],
     T = type_combine(Tx,Ty),
     if RowMajor ->
-	    Es = [[elem_to_bin(T,Zij)||Zij<-Zr] || Zr <- transpose_list(Zs)],
+	    Es = [[matrix:elem_to_bin(T,Zij)||Zij<-Zr] || Zr <- transpose_list(Zs)],
 	    matrix:create(Nx,My,T,RowMajor,Es);
        true ->
-	    Es = [[elem_to_bin(T,Zij)||Zij<-Zr] || Zr <- Zs],
+	    Es = [[matrix:elem_to_bin(T,Zij)||Zij<-Zr] || Zr <- Zs],
 	    matrix:create(My,Nx,T,RowMajor,Es)
     end.
 
@@ -455,14 +437,14 @@ exp(X) ->
     {N,M} = matrix:size(X),
     T = X#matrix.type,
     Type = matrix:type(X),
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_exp(Xij)) end, X),
+    Es = map_elems(fun(Xij) -> matrix:elem_to_bin(T,scalar_exp(Xij)) end, X),
     matrix:create(N,M,Type,true,Es).
 
 -spec transpose_data(Src::matrix()) -> matrix().
 
 transpose_data(X=#matrix{n=N,m=M,type=T,rowmajor=RowMajor}) ->
     Zs = matrix:to_list(X),
-    Es = [[elem_to_bin(T,Zij)||Zij<-Zr] || Zr <- transpose_list(Zs)],
+    Es = [[matrix:elem_to_bin(T,Zij)||Zij<-Zr] || Zr <- transpose_list(Zs)],
     matrix:create(M,N,T,RowMajor,Es).
 
 
@@ -516,7 +498,7 @@ min(A,0) ->
 
 -spec sigmoid(A::matrix()) -> matrix().
 sigmoid(X=#matrix{n=N,m=M,type=T}) ->
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,sigmoid__(Xij)) end, X),
+    Es = map_elems(fun(Xij) -> matrix:elem_to_bin(T,sigmoid__(Xij)) end, X),
     matrix:create(N,M,T,true,Es).
 
 -spec sigmoid_prime(A::matrix(),_Out::matrix()) -> matrix().
@@ -525,7 +507,7 @@ sigmoid(X=#matrix{n=N,m=M,type=T}) ->
 sigmoid_prime(_A,Out=#matrix{n=N,m=M,type=T}) ->
     Es = map_elems(fun(Yij) -> 
 			   E = scalar_subtract(Yij,scalar_multiply(Yij,Yij)),
-			   elem_to_bin(T,E)
+			   matrix:elem_to_bin(T,E)
 		   end, Out),
     matrix:create(N,M,T,true,Es).
 
@@ -533,21 +515,21 @@ sigmoid_prime(_A,Out=#matrix{n=N,m=M,type=T}) ->
 relu(X) ->
     {N,M} = matrix:size(X),
     T = X#matrix.type,
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_relu(Xij)) end, X),
+    Es = map_elems(fun(Xij) -> matrix:elem_to_bin(T,scalar_relu(Xij)) end, X),
     matrix:create(N,M,T,true,Es).
 
 -spec relu_prime(A::matrix(),Out::matrix()) -> matrix().
 relu_prime(X,_Out) ->
     {N,M} = matrix:size(X),
     T = X#matrix.type,
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_relu_prime(Xij)) end, X),
+    Es = map_elems(fun(Xij) -> matrix:elem_to_bin(T,scalar_relu_prime(Xij)) end, X),
     matrix:create(N,M,T,true,Es).
 
 -spec softplus(A::matrix()) -> matrix().
 softplus(X) ->
     {N,M} = matrix:size(X),
     T = X#matrix.type,
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,softplus__(Xij)) end, X),
+    Es = map_elems(fun(Xij) -> matrix:elem_to_bin(T,softplus__(Xij)) end, X),
     matrix:create(N,M,T,true,Es).
 
 -spec softplus_prime(A::matrix(),Out::matrix()) -> matrix().
@@ -570,7 +552,7 @@ softmax_prime(_X,Out) ->
 tanh(A) ->
     {N,M} = matrix:size(A),
     T = A#matrix.type,
-    Es = map_elems(fun(Xij) -> elem_to_bin(T,scalar_tanh(Xij)) end, A),
+    Es = map_elems(fun(Xij) -> matrix:elem_to_bin(T,scalar_tanh(Xij)) end, A),
     matrix:create(N,M,T,true,Es).
 
 -spec tanh_prime(A::matrix(),Out::matrix()) -> matrix().
@@ -590,7 +572,7 @@ l2pool(N,M,Sn,Sm,A=#matrix{n=Nx,m=Mx,type=T})
 	   fun(I, J) ->
 		   B = matrix:submatrix(I,J,N,M,A),
 		   S = matrix:mulsum(B,B),
-		   elem_to_bin(T,math:sqrt(S))
+		   matrix:elem_to_bin(T,math:sqrt(S))
 	   end, N, M, Sn, Sm, A),
     matrix:create(((Nx-N) div Sn)+1, ((Mx-M) div Sm)+1, T, true, Es).
 
@@ -603,7 +585,7 @@ maxpool(N,M,Sn,Sm,A=#matrix{n=Nx,m=Mx,type=T})
 	   fun(I, J) ->
 		   B = matrix:submatrix(I,J,N,M,A),
 		   S = s_max([s_max(R) || R <- matrix:to_list(B)]),
-		   elem_to_bin(T,S)
+		   matrix:elem_to_bin(T,S)
 	   end, N, M, Sn, Sm, A),
     matrix:create(((Nx-N) div Sn)+1, ((Mx-M) div Sm)+1, T, true, Es).
 
@@ -626,7 +608,7 @@ filter(W=#matrix{n=Wn,m=Wm}, Sn, Sm, X=#matrix{n=Xn,m=Xm,type=T})
     Es = matrix:convolve(
 	   fun(I, J) ->
 		   A = matrix:submatrix(I,J,Wn,Wm,X),
-		   elem_to_bin(T,matrix:mulsum(W,A))
+		   matrix:elem_to_bin(T,matrix:mulsum(W,A))
 	   end, Wn, Wm, Sn, Sm, X),
     matrix:create(((Xn-Wn) div Sn)+1, ((Xm-Wm) div Sm)+1, T, true, Es).
 
@@ -681,111 +663,33 @@ topk(A, K) ->
 	   [I || {_,I} <- lists:sublist(Vi,K)]
        end || J <- [1]], int32).
 
-scalar_zero(?complex128) -> {0.0,0.0};
-scalar_zero(?complex64) -> {0.0,0.0};
-scalar_zero(?float64) -> 0.0;
-scalar_zero(?float32) -> 0.0;
-scalar_zero(?int64) -> 0;
-scalar_zero(?int32) -> 0;
-scalar_zero(?int16) -> 0;
-scalar_zero(?int8) -> 0.
+scalar_zero(?float64_t) -> 0.0;
+scalar_zero(?float32_t) -> 0.0;
+scalar_zero(?int64_t) -> 0;
+scalar_zero(?int32_t) -> 0;
+scalar_zero(?int16_t) -> 0;
+scalar_zero(?int8_t) -> 0.
 
-scalar_add(A,B) when is_number(A), is_number(B) -> A + B;
-scalar_add(A,B) when is_number(A), is_tuple(B) -> complex_add({A,0},B);
-scalar_add(A,B) when is_tuple(A), is_number(B) -> complex_add(A,{B,0});
-scalar_add(A,B) when is_tuple(A), is_tuple(B) -> complex_add(A,B).
-
-scalar_subtract(A,B) when is_number(A), is_number(B) -> A - B;
-scalar_subtract(A,B) when is_number(A), is_tuple(B) -> 
-    complex_subtract({A,0},B);
-scalar_subtract(A,B) when is_tuple(A), is_number(B) -> 
-    complex_subtract(A,{B,0});
-scalar_subtract(A,B) when is_tuple(A), is_tuple(B) -> 
-    complex_subtract(A,B).
-
-scalar_multiply(A,B) when is_number(A), is_number(B) -> A * B;
-scalar_multiply(A,B) when is_number(A), is_tuple(B) -> 
-    complex_multiply({A,0},B);
-scalar_multiply(A,B) when is_tuple(A), is_number(B) -> 
-    complex_multiply(A,{B,0});
-scalar_multiply(A,B) when is_tuple(A), is_tuple(B) -> 
-    complex_multiply(A,B).
-
-scalar_negate(A) when is_number(A) -> -A;
-scalar_negate(A) when is_tuple(A)  -> complex_negate(A).
-
+scalar_add(A,B) when is_number(A), is_number(B) -> A + B.
+scalar_subtract(A,B) when is_number(A), is_number(B) -> A - B.
+scalar_multiply(A,B) when is_number(A), is_number(B) -> A * B.
+scalar_negate(A) when is_number(A) -> -A.
 scalar_exp(X) when is_float(X) -> math:exp(X);
-scalar_exp(X) when ?is_complex(X) -> complex_exp(X);
 scalar_exp(X) when is_integer(X) -> trunc(math:exp(X)).
-    
-
-scalar_relu({X,_}) -> {erlang:max(X,0.0), 0.0};
 scalar_relu(X) when is_integer(X) -> erlang:max(X,0);
 scalar_relu(X) -> erlang:max(X,0.0).
 
 scalar_relu_prime(X) when is_integer(X), X > 0 -> 1;
 scalar_relu_prime(X) when is_float(X), X > 0 -> 1.0;
 scalar_relu_prime(X) when is_integer(X) -> 0;
-scalar_relu_prime(X) when is_float(X) -> 0.0;
-scalar_relu_prime({X,_}) when is_number(X), X > 0 -> {1.0, 0.0};
-scalar_relu_prime({X,_}) when is_number(X) -> {1.0, 0.0}.
+scalar_relu_prime(X) when is_float(X) -> 0.0.
 
-scalar_tanh(X) when is_number(X) -> math:tanh(X);
-scalar_tanh(X) when ?is_complex(X) -> complex_tanh(X).
+scalar_tanh(X) when is_number(X) -> math:tanh(X).
      
 scalar_max(A,B) when is_number(A), is_number(B) ->
-    erlang:max(A,B);
-scalar_max(A,B) ->
-    Ax = complex_abs(complex(A)),
-    Bx = complex_abs(complex(B)),
-    if Ax > Bx -> A;
-       true -> B
-    end.
+    erlang:max(A,B).
 
-scalar_abs(A) when is_number(A) -> abs(A);
-scalar_abs(A) when ?is_complex(A) -> complex_abs(A).
-    
-
-complex(R) when is_number(R) -> {float(R),0.0};
-complex(A={_R,_I}) -> A.
-
-complex_conjugate({R,I}) -> {R,-I}.
-
-complex_add({A,B},{E,F}) -> {A+E,B+F}.
-
-complex_subtract({A,B},{E,F}) -> {A-E,B-F}.
-
-complex_negate({A,B}) -> {-A,-B}.
-
-complex_multiply({A,B},{E,F}) -> {A*E-B*F, B*E+A*F}.
-
-complex_divide({A1,B1},{A2,B2}) ->
-    D = A2*A2 + B2*B2,
-    {(A1*A2 + B1*B2) / D, -((A1*B2 + A2*B1) / D)}.
-
-complex_abs({A,B}) -> math:sqrt(A*A+B*B).
-%% complex_arg({A,B}) -> math:atan2(B,A).
-
-complex_exp({X,Y}) -> Ex = math:exp(X), {Ex*math:cos(Y),Ex*math:sin(Y)}.
-
-complex_sinh(Z) -> 
-    {A,B} = complex_subtract(complex_exp(Z),complex_exp(-Z)),
-    {A/2, B/2}.
-
-complex_cosh(Z) ->
-    {A,B} = complex_add(complex_exp(Z),complex_exp(-Z)),
-    {A/2, B/2}.
-
-%%  sinh(z) = (e^z - e^-z)/2, cosh(z) = (e^z + e^-z)/2
-%%  e^z = e^(x+iy) = e^x(cos(y)+isin(y))
-
-complex_tanh(Z) ->
-    %% = complex_divide(complex_sinh(Z), complex_cosh(Z)).
-    E1 = complex_exp(Z),
-    E2 = complex_exp(-Z),
-    {A1,B1} = complex_subtract(E1, E2),
-    {A2,B2} = complex_add(E1, E2),
-    complex_divide({A1/2,B1/2},{A2/2,B2/2}).
+scalar_abs(A) when is_number(A) -> abs(A).
 
 %% transpose a list of list matrix representation
 -spec transpose_list(As::[[scalar()]]) -> [[scalar()]].

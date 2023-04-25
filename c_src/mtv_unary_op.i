@@ -15,33 +15,44 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, int au,
-		      TYPE_R* cp, int cu,
-		      size_t n, size_t m
-		      PARAMS_DECL)
+#ifdef VPROC
+static void VPROC(TYPE* ap, int au,
+		  TYPE_R* cp, int cu,
+		  size_t n, size_t m
+		  PARAMS_DECL)
 {
     LOCALS_DECL
     while(n--) {
-	TYPE* ap1 = ap;
-	TYPE_R* cp1 = cp;
+	byte_t* ap1 = ap;
+	byte_t* cp1 = cp;	
 	size_t m1 = m;
 	while(m1 >= VELEMS(TYPE)) {
 	    VTYPE a = *(VTYPE*)ap1;
-	    ap1 += VELEMS(TYPE);
-	    *(VTYPE_R*)cp1 = VOPERATION(a);
-	    cp1 += VELEMS(TYPE);
+	    ap1 += sizeof(vector_t);
+	    *((VTYPE_R*)cp1) = VOPERATION(a,b);
+	    cp1 += sizeof(vector_t);	    
 	    m1  -= VELEMS(TYPE);
 	}
 	while(m1--) {
-	    TYPE a = *ap1++;
-	    *cp1++ = OPERATION(a);
+	    TYPE a = *((TYPE*)ap1);
+	    *((TYPE_R*)cp1) = OPERATION(a);	    
+	    ap1 += sizeof(TYPE);
+	    cp1 += sizeof(TYPE_R);
 	}
         ap += au;
         cp += cu;
     }
 }
+#endif
 
-#undef PROCEDURE
+static void VFUN(vector_t* ap, vector_t* cp)
+{
+    VTYPE a = *(VTYPE*)ap;
+    *cp = (vector_t) VOPERATION(a);
+}
+
+#undef VPROC
+#undef VFUN
 #undef TYPE
 #undef TYPE_R
 #undef PARAMS_DECL

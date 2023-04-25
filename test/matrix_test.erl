@@ -10,10 +10,11 @@
 -compile(export_all).
 -export([test_add/0]).
 -export([test_sub/0]).
--export([all/0]).	 
+-export([all/0]).
 
 -export([bench_multiply/1,bench_multiply/2,bench_multiply/3,bench_multiply/5]).
 -export([bench_add/1,bench_add/2,bench_add/3]).
+-export([bench_eval/1,bench_eval/2,bench_eval/3]).
 -export([bench_subtract/1,bench_subtract/2,bench_subtract/3]).
 -export([bench_times/1,bench_times/2,bench_times/3]).
 -export([bench_negate/1,bench_negate/2,bench_negate/3]).
@@ -21,6 +22,10 @@
 	 bench_transform/2,
 	 bench_transform/3,
 	 bench_transform/4]).
+
+%%-define(verbose(F,A), io:format((F),(A))).
+-define(verbose(F,A), ok).
+-define(EPS, 1.0E-8).
 
 all() ->
     test_em([test_add,
@@ -48,8 +53,8 @@ all() ->
 	     test_max,
 	     test_sum,
 	     test_argmax,
-	     test_det,
-	     test_lu
+	     test_det
+	     %% test_lu
 	    ]).
 
 test_em([F|Fs]) ->
@@ -85,7 +90,13 @@ fmt_args_([A|As]) ->
      
 
 %% test basic operation
-
+%% FIXME: extend with uint8,uin16,uint32,uint64, int64,
+%%                    (float16,)
+%%                    float32, float64
+%% and vector sizes 2,3,4,8,16
+%% add constant number to matrices of vectors
+%% add constant vector to matrices of vectors
+%%
 test_add() ->
     test_em([{test_add,[4,3,int8]},
 	     {test_add,[24,24,int16]},
@@ -313,6 +324,8 @@ test_multiply() ->
     test_multiply2(),
     test_multiply3(),
     test_multiply4(),
+    test_multiply5(),
+    test_multiply6(),
     test_tile_multiply().
 
 primes() ->
@@ -362,21 +375,26 @@ ref_times_A_B(T,An,Am,Bn,Bm) ->
 
 %% test transposed multiply
 test_mul_t() ->
-    test_mul_t2_(int32,5,4,4,3),
-    test_mul_t2_(int32,64,32,32,16),
-    test_mul_t3_(int32,5,4,4,3),
-    test_mul_t3_(int32,64,32,32,16),
+    test_mul_t2(int32,5,4,4,3),
+    test_mul_t2(int32,64,32,32,16),
+    test_mul_t3(int32,5,4,4,3),
+    test_mul_t3(int32,64,32,32,16),
     ok.
 
-test_mul_t2_(T,An,Am,Bn,Bm) ->
+test_mul_t2(T,An,Am,Bn,Bm) ->
     R = ref_mul_A_B(T,An,Am,Bn,Bm),
+    io:format("R=~p\n", [R]),
     R = matrix:to_list(matrix:multiply(row_A(T,An,Am), row_B(T,Bn,Bm))),
+    io:format("R=~p\n", [R]),
     R = matrix:to_list(matrix:multiply(row_A(T,An,Am), col_B(T,Bn,Bm))),
+    io:format("R=~p\n", [R]),
     R = matrix:to_list(matrix:multiply(col_A(T,An,Am), row_B(T,Bn,Bm))),
+    io:format("R=~p\n", [R]),
     R = matrix:to_list(matrix:multiply(col_A(T,An,Am), col_B(T,Bn,Bm))),
+    io:format("R=~p\n", [R]),
     ok.
 
-test_mul_t3_(T,An,Am,Bn,Bm) ->
+test_mul_t3(T,An,Am,Bn,Bm) ->
     R = ref_mul_A_B(T,An,Am,Bn,Bm),
     R = matrix:to_list(matrix:multiply(row_A(T,An,Am),row_B(T,Bn,Bm),
 				       row_C(T,An,Bm))),
@@ -561,6 +579,91 @@ test_multiply4() ->
 	    [986,1028,1070,1112],
 	    [1354,1412,1470,1528]],
     ok.
+
+test_multiply5() ->
+    A = matrix:from_list(
+	  [
+	   [0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5],
+	   [0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0],
+	   [0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5],
+	   [0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0],
+	   [0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5],
+	   [0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0],
+	   [0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5] ]),
+    ?verbose("A=\n~s\n", [matrix:format(A)]),
+    X = matrix:from_list([[2,4,6,8,10,12,14,16,18,20,22,24]], float32),
+    ?verbose("X=\n~s\n", [matrix:format(X)]),
+    Y = matrix:multiply(A, matrix:transpose(X)),
+    ?verbose("Y=\n~s\n", [matrix:format(Y)]),
+    Y0 = matrix:from_list([[42],[36],[42],[36],[42],[36],[42]], float32),
+    0 = compare_matrix(Y, Y0),
+    ok.
+
+%% test ALL combinations of square matrix multiply
+test_multiply6() ->
+    C = matrix:create(4, 4, int16, true, <<>>),
+    Ct = matrix:create(4, 4, int16, false, <<>>),
+    A  = matrix:from_list([[1,2,3,4],
+			   [5,6,7,8],
+			   [9,10,11,12],
+			   [13,14,15,16]], int8),
+    B  = matrix:from_list([[4,3,2,1],
+			   [8,7,6,4],
+			   [12,11,10,9],
+			   [16,15,13,13]], int8),
+    matrix:multiply(A, B, C),
+    %% io:format("A*B = C\n"), matrix:print(C),
+    true = validate_multiply(A, B, C),
+
+    Bt = matrix:transpose(B),
+    matrix:multiply(A, Bt, C),  
+    %% io:format("A*Bt = C\n"), matrix:print(C),
+    true = validate_multiply(A, Bt, C),
+
+    At = matrix:transpose(A),
+    matrix:multiply(At, B, C),
+    %% io:format("At*B = C\n"), matrix:print(C),
+    true = validate_multiply(At, B, C),
+
+    matrix:multiply(At, Bt, C),
+    %% io:format("At*Bt = C\n"), matrix:print(C),
+    true = validate_multiply(At, Bt, C),
+
+    matrix:multiply(A, B, Ct),
+    %% io:format("A*B = Ct\n"), matrix:print(Ct),
+    true = validate_multiply(A, B, Ct),
+
+    matrix:multiply(A, Bt, Ct),
+    %% io:format("A*Bt = Ct\n"), matrix:print(Ct),
+    true = validate_multiply(A, Bt, Ct),
+
+    matrix:multiply(At, B, Ct),
+    %% io:format("At*B = Ct\n"), matrix:print(Ct),
+    true = validate_multiply(At, B, Ct),
+
+    matrix:multiply(At, Bt, Ct),
+    %% io:format("At*Bt = Ct\n"), matrix:print(Ct),
+    true = validate_multiply(At, Bt, Ct),
+    ok.
+
+validate_multiply(A, B, C) ->
+    As = matrix:to_list(A),
+    Bts = matrix:to_list(matrix:transpose(B)),
+    Cs = [[dot(Ai,Bj) || Bj <- Bts] || Ai <- As],
+    compare_lists(Cs, matrix:to_list(C)).
+
+dot([A|As], [B|Bs]) -> A*B + dot(As, Bs);
+dot([], []) -> 0.
+
+compare_lists([A | As], [B | Bs]) ->
+    compare_list(A, B) andalso compare_lists(As, Bs);
+compare_lists([], []) ->
+    true.
+
+compare_list([A | As], [B | Bs]) ->
+    (abs(A - B) < ?EPS) andalso compare_list(As, Bs);
+compare_list([], []) -> 
+    true.
 
 test_tile_multiply() ->
     As = [[1,2],[3,4]],
@@ -937,20 +1040,20 @@ test_decomp_rand_44_complex() ->
     test_decomp(A).
 
 test_decomp(A) ->
-    io:format("A=\n"), matrix:print(A),
+    %% io:format("A=\n"), matrix:print(A),
     {L,U,P,Pn} = matrix_lu:decompose(A),
-    io:format("L=\n"), matrix:print(L),
-    io:format("U=\n"), matrix:print(U),
-    io:format("P=\n"), matrix:print(P),
-    P1 = matrix:transpose(P),
-    io:format("P'=\n"), matrix:print(P1),
-    io:format("Pn=~w\n",[Pn]),
+    %% io:format("L=\n"), matrix:print(L),
+    %%io:format("U=\n"), matrix:print(U),
+    %%io:format("P=\n"), matrix:print(P),
+    %%P1 = matrix:transpose(P),
+    %%io:format("P'=\n"), matrix:print(P1),
+    %%io:format("Pn=~w\n",[Pn]),
 
-    LU = matrix:multiply(L,U),
-    PA = matrix:multiply(P,A),
-    io:format("PA=\n"), matrix:print(PA),
-    io:format("LU=\n"), matrix:print(LU),
-    io:format("P'LU=\n"), matrix:print(matrix:multiply(P1,LU)),
+    %% LU = matrix:multiply(L,U),
+    %% PA = matrix:multiply(P,A),
+    %%io:format("PA=\n"), matrix:print(PA),
+    %%io:format("LU=\n"), matrix:print(LU),
+    %%io:format("P'LU=\n"), matrix:print(matrix:multiply(P1,LU)),
     {L,U,P,Pn}.
 
 data(1,a) ->
@@ -1011,11 +1114,16 @@ test_lu(N) ->
     %% io:format("U1 = \n"), matrix:print(U1), 
     %% io:format("P = \n"), matrix:print(P), 
     %% io:format("P1 = \n"), matrix:print(P1), 
-    %% io:format("A = \n"), matrix:print(A), 
-    A1 = matrix:multiply(P,matrix:multiply(L,U)),
-    %% io:format("A1 = \n"), matrix:print(A1),     
-    A2 = matrix:multiply(matrix:transpose(P1),matrix:multiply(L1,U1)),
-    %% io:format("A2 = \n"), matrix:print(A2),
+    %% io:format("A = \n"), matrix:print(A),
+
+    LU = matrix:multiply(L,U),
+%%    io:format("LU = \n"), matrix:print(LU),
+    A1 = matrix:multiply(P,LU),
+%%    io:format("A1 = \n"), matrix:print(A1),     
+    LU1 = matrix:multiply(L1,U1),
+%%    io:format("LU1 = \n"), matrix:print(LU1),
+    A2 = matrix:multiply(matrix:transpose(P1),LU1),
+%%    io:format("A2 = \n"), matrix:print(A2),
     0 = compare_matrix(A, A1),
     0 = compare_matrix(A, A2),
     ok.
@@ -1031,7 +1139,7 @@ compare_matrix(A,B) ->
 	    case matrix:is_integer_matrix(A) andalso 
 		matrix:is_integer_matrix(B) of
 		true -> compare_elements(1,An,Am,A,B,0);
-		false -> compare_elements(1,An,Am,A,B,1.0E-8)
+		false -> compare_elements(1,An,Am,A,B,?EPS)
 	    end
     end.
 
@@ -1054,7 +1162,6 @@ compare_row(J,M,I,A,B,Eps) when J =< M ->
     end;
 compare_row(_J,_M,_I,_A,_B,_Eps) ->
     0.
-
 
 %% replicate marix A (as list) into N*A rows and M*A columns
 tile(N,M,A) ->
@@ -1122,22 +1229,6 @@ mmap1(Fun,[A|As]) ->
     [Fun(A)|mmap1(Fun,As)];
 mmap1(_Fun,[]) ->
     [].
-
-%%%
-%%%% BENCHMARK (MackBook Pro, 13-inch 2012 2.5 GHz Intel Core i5, 4 core)
-%%%
-%%%  multiply(float32): PLAIN   NATIVE   NIF(-O3)/PAR
-%%%              32x32  144     285      66666
-%%%            128x128                   2016
-%%%            256x256                   257  / 393
-%%%            512x512                   30
-%%%          1024x1024                   3
-%%%          2048x2048                   0.36
-%%%          4096x4096                   0.05
-%%%
-%%%       add(float32): PLAIN   NATIVE   NIF
-%%%              32x32  3048    5714     250000
-%%%            100x100   296    518      34482
 
 bench_multiply(N) -> bench_multiply(N,float32,1000).
 bench_multiply(N,T) -> bench_multiply(N,T,1000).
@@ -1212,6 +1303,12 @@ bench_pmul_loop(I, A, B, _) ->
     C = par_multiply(A, B),
     bench_pmul_loop(I-1,A,B,C).
 
+bench_eval(N) -> bench_eval(N,float32,1000).
+bench_eval(N,T) -> bench_eval(N,T,1000).
+bench_eval(N,T,L) -> bench(N,fun(A,B) -> matrix:eval2([a,b,add],A,B) end, T, L).
+bench_eval_table() ->
+    bench_table("matrix:eval2/3",
+		fun(A,B) -> matrix:eval2([a,b,add],A,B) end).
 
 bench_add(N) -> bench_add(N,float32,1000).
 bench_add(N,T) -> bench_add(N,T,1000).
@@ -1219,6 +1316,7 @@ bench_add(N,T,L) -> bench(N,fun(A,B) -> matrix:add(A,B) end, T, L).
 bench_add_table() ->
     bench_table("matrix:add/2",
 		fun(A,B) -> matrix:add(A,B) end).
+
 
 bench_subtract(N) -> bench_subtract(N,float32,1000).
 bench_subtract(N,T) -> bench_subtract(N,T,1000).

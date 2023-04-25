@@ -16,20 +16,22 @@
  ***************************************************************************/
 
 // Load n elements from b into vector array cp
-static inline void CAT2(PROCEDURE,_loadv_mulop)(VTYPE* cp,TYPE* bp,int bu,size_t n)
+static inline void CAT2(PROC,_loadv_mulop)(byte_t* cp,byte_t* bp,int bu,size_t n)
 {
-    TYPE* cp1 = (TYPE*) cp;
+    byte_t* cp1 = cp;
     while(n--) {
-	*cp1++ = *bp;
+	TYPE b = *((TYPE*)bp);
+	*((TYPE*)cp1) = b;
+	cp1 += sizeof(TYPE);
 	bp += bu;
     }
 }
 
-static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
-		      TYPE* bp, int bu, size_t bn, size_t bm,
-		      int32_t* kp, int kv, size_t km,
-		      TYPE* cp, int cu, int cv
-		      PARAMS_DECL)
+static void PROC(byte_t* ap, int au, size_t an, size_t am,
+		 byte_t* bp, int bu, size_t bn, size_t bm,
+		 int32_t* kp, int kv, size_t km,
+		 byte_t* cp, int cu, int cv
+		 PARAMS_DECL)
 {
     LOCALS_DECL
     UNUSED(an);
@@ -39,16 +41,16 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
 	int32_t* kp1 = kp;
 	size_t n = km;
 
-	CAT2(PROCEDURE,_loadv_mulop)(col,bp,bu,bn);
-	bp++;     // advance to next column
+	CAT2(PROC,_loadv_mulop)((byte_t*)col,bp,bu,bn);
+	bp += bm;     // advance to next column
 	
 	while(n--) {
 	    int32_t i = *kp1 - 1;
 	    if ((i >= 0) && (i < (int)an)) {
-		TYPE* ap1 = ap + i*au;
-		TYPE* cp1 = cp + i*cu;
-		TYPE* tp = (TYPE*) &col[0];
-		*cp1 += CAT2(mtv_dot_,TYPE)(tp, ap1, am);
+		byte_t* ap1 = ap + i*au;
+		byte_t* cp1 = cp + i*cu;
+		byte_t* tp = (byte_t*) &col[0];
+		*((TYPE*)cp1) += CAT2(vproc_dot_,TYPE)(tp, ap1, am);
 	    }
 	    kp1 += kv;
 	}
@@ -56,7 +58,7 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
     }
 }
 
-#undef PROCEDURE
+#undef PROC
 #undef TYPE
 #undef PARAMS_DECL
 #undef LOCALS_DECL

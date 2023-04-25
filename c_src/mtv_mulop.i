@@ -16,34 +16,35 @@
  ***************************************************************************/
 
 // Load n elements from b into vector array cp
-static inline void CAT2(PROCEDURE,_loadv_mulop)(VTYPE* cp,TYPE* bp,int bu,size_t n)
+static inline void CAT2(VPROC,_loadv_mulop)(byte_t* cp,byte_t* bp,int bu,size_t n)
 {
-    TYPE* cp1 = (TYPE*) cp;
+    byte_t* cp1 = cp;
     while(n--) {
-	*cp1++ = *bp;
+	*((TYPE*)cp1) = *((TYPE*)bp);
+	cp1 += sizeof(TYPE);
 	bp += bu;
     }
 }
 
-static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
-		      TYPE* bp, int bu, size_t bn, size_t bm,
-		      TYPE* cp, int cu, int cv
-		      PARAMS_DECL)
+static void VPROC(byte_t* ap, int au, size_t an, size_t am,
+		  byte_t* bp, int bu, size_t bn, size_t bm,
+		  byte_t* cp, int cu, int cv
+		  PARAMS_DECL)
 {
     LOCALS_DECL
+    VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
+	
     while (bm--) {
-	VTYPE col[(bn+VELEMS(TYPE)-1)/VELEMS(TYPE)];
-	TYPE* ap1 = ap;
-	TYPE* cp1 = cp;
+	byte_t* ap1 = ap;
+	byte_t* cp1 = cp;
 	size_t n;
+	CAT2(VPROC,_loadv_mulop)((byte_t*)col,bp,bu,bn);
 
-	CAT2(PROCEDURE,_loadv_mulop)(col,bp,bu,bn);
-
-	bp++;     // advance to next column
-	n = an;   // multiply with all rows in A
+	bp += sizeof(TYPE);  // advance to next column
+	n = an;              // multiply with all rows in A
 	while(n--) {
-	    TYPE* tp = (TYPE*) &col[0];
-	    *cp1 = CAT2(mtv_dot_,TYPE)(tp, ap1, am);
+	    TYPE d = CAT2(vproc_dot_,TYPE)((byte_t*)col, ap1, am);
+	    *((TYPE*)cp1) = d;
 	    cp1 += cu;
 	    ap1 += au;
 	}
@@ -51,7 +52,7 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
     }
 }
 
-#undef PROCEDURE
+#undef VPROC
 #undef TYPE
 #undef PARAMS_DECL
 #undef LOCALS_DECL

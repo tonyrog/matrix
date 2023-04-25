@@ -15,31 +15,35 @@
  *
  ***************************************************************************/
 
-static inline TYPE2 PROCEDURE(TYPE* ap,TYPE* bp,size_t n)
+static inline TYPE2 PROC(byte_t* ap,byte_t* bp,size_t n)
 {
     TYPE2 sum = 0;
     VTYPE vsum = VTYPE_ZERO;
     unsigned int i;
     
     while(n >= VELEMS(TYPE)) {
-	VTYPE r = VOPERATION(*(VTYPE*)ap, *(VTYPE*)bp);
+	VTYPE a = *(VTYPE*)ap;
+	VTYPE b = *(VTYPE*)bp;
+	VTYPE r = VOPERATION(a, b);
 	vsum = VOPERATION2(vsum, r);
-	ap += VELEMS(TYPE);
-	bp += VELEMS(TYPE);		
+	ap += sizeof(vector_t);
+	bp += sizeof(vector_t);
 	n -= VELEMS(TYPE);
     }
     for (i = 0; i < VELEMS(TYPE); i++)
 	sum += VELEMENT(vsum,i);
     while(n--) {
-	TYPE p = OPERATION(*ap,*bp);
+	TYPE a = *(TYPE*)ap;
+	TYPE b = *(TYPE*)bp;		
+	TYPE p = OPERATION(a,b);
 	sum = OPERATION2(sum, p);
-	ap++;
-	bp++;
+	ap += sizeof(TYPE);
+	bp += sizeof(TYPE);
     }
     return sum;
 }
 
-#undef PROCEDURE
+#undef PROC
 #undef TYPE
 #undef TYPE2
 #undef OPERATION

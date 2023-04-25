@@ -15,11 +15,11 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
-		      TYPE* bp, int bu, size_t bn, size_t bm,
-		      int32_t* kp, int kv, size_t km,
-		      TYPE* cp, int cu, int cv
-		      PARAMS_DECL)
+static void PROC(byte_t* ap, int au, size_t an, size_t am,
+		 byte_t* bp, int bu, size_t bn, size_t bm,
+		 int32_t* kp, int kv, size_t km,
+		 byte_t* cp, int cu, int cv
+		 PARAMS_DECL)
 {
     LOCALS_DECL
     UNUSED(am);
@@ -28,12 +28,13 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
     while (km--) {
 	int32_t i = *kp - 1;
 	if ((i >= 0) && (i < (int)an)) {
-	    TYPE* cp1 = cp + i*cu;
-	    TYPE* ap1 = ap + i*au;  // select row
-	    size_t n = bn;
-	    TYPE* bp1 = bp;
+	    byte_t* cp1 = cp + i*cu;
+	    byte_t* ap1 = ap + i*au;  // select row
+	    size_t n    = bn;
+	    byte_t* bp1 = bp;
 	    while(n--) {
-		*cp1 += CAT2(mtv_dot_,TYPE)(ap1, bp1, bm);
+		TYPE d = CAT2(vproc_dot_,TYPE)(ap1, bp1, bm);
+		*((TYPE*)cp1) = d;  // += ?
 		cp1  += cv;
 		bp1  += bu;
 	    }
@@ -42,7 +43,7 @@ static void PROCEDURE(TYPE* ap, int au, size_t an, size_t am,
     }
 }
 
-#undef PROCEDURE
+#undef PROC
 #undef TYPE
 #undef PARAMS_DECL
 #undef LOCALS_DECL

@@ -6,8 +6,8 @@ CFLAGS=-MMD -MP -MF .$<.d -I$(ERL_TOP)/usr/include
 #@END-C_SRC-DEFAULT-RULES@
 
 APP=matrix
-CFLAGS+=-Wall -Wextra -Wswitch-enum -Wswitch-default -fno-common -O3
-CFLAGS+=-msse3 -mavx2
+CFLAGS+=-Wall -Wextra -Wswitch-enum -Wswitch-default -fno-common -O2 # --std=gnu11
+CFLAGS+= -msse3 # -mavx2  # -msse3
 # raspberry pi
 # CFLAGS+=-mfloat-abi=softfp -mfpu=neon -flax-vector-conversions
 # CFLAGS+=-mfpu=neon -flax-vector-conversions

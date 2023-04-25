@@ -15,21 +15,21 @@
  *
  ***************************************************************************/
 
-static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
-		      TYPE* bp, int bu, int bv, size_t bn, size_t bm,
-		      TYPE* cp, int cu, int cv
-		      PARAMS_DECL)
+static void PROC(byte_t* ap, int au, int av, size_t an, size_t am,
+		 byte_t* bp, int bu, int bv, size_t bn, size_t bm,
+		 byte_t* cp, int cu, int cv
+		 PARAMS_DECL)
 {
     LOCALS_DECL
     (void) am;
-    TYPE* bp0 = bp;
+    byte_t* bp0 = bp;
 
     while(an--) {
-	TYPE* cp1 = cp;
+	byte_t* cp1 = cp;
 	size_t n = bn;
 	bp = bp0;
 	while(n--) {
-	    *cp1 = CAT2(mt_dot_,TYPE)(ap,av,bp,bv,bm);
+	    *((TYPE*)cp1) = CAT2(proc_dot_,TYPE)(ap,av,bp,bv,bm);
 	    cp1 += cv;
 	    bp += bu;
 	}
@@ -38,7 +38,7 @@ static void PROCEDURE(TYPE* ap, int au, int av, size_t an, size_t am,
     }
 }
 
-#undef PROCEDURE
+#undef PROC
 #undef TYPE
 #undef PARAMS_DECL
 #undef LOCALS_DECL

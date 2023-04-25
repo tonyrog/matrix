@@ -14,23 +14,23 @@
  * KIND, either express or implied.
  *
  ***************************************************************************/
-
-static void PROCEDURE(TYPE* ap, int au, int av,
-		      TYPE* bp, int bu, int bv,
-		      TYPE_R* cp, int cu, int cv,
-		      size_t n, size_t m
-		      PARAMS_DECL)
+#ifdef PROC
+static void PROC(byte_t* ap, int au, int av,
+		 byte_t* bp, int bu, int bv,
+		 byte_t* cp, int cu, int cv,
+		 size_t n, size_t m
+		 PARAMS_DECL)
 {
     LOCALS_DECL
     while(n--) {
-	TYPE* ap1 = ap;
-	TYPE* bp1 = bp;
-	TYPE_R* cp1 = cp;
+	byte_t* ap1 = ap;
+	byte_t* bp1 = bp;
+	byte_t* cp1 = cp;
 	size_t m1 = m;
 	while(m1--) {
-	    TYPE a = *ap1;
-	    TYPE b = *bp1;
-	    *cp1 = OPERATION(a,b);
+	    TYPE a = *((TYPE*)ap1);
+	    TYPE b = *((TYPE*)bp1);
+	    *((TYPE_R*)cp1) = OPERATION(a,b);
 	    ap1 += av;
 	    bp1 += bv;
 	    cp1 += cv;
@@ -40,8 +40,17 @@ static void PROCEDURE(TYPE* ap, int au, int av,
 	cp += cu;
     }
 }
+#endif
 
-#undef PROCEDURE
+static void FUN(TYPE* ap, TYPE* bp, TYPE_R* cp)
+{
+    TYPE a = *ap;
+    TYPE b = *bp;
+    *cp = OPERATION(a,b);
+}
+
+#undef PROC
+#undef FUN
 #undef TYPE
 #undef TYPE_R
 #undef PARAMS_DECL

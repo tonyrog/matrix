@@ -15,12 +15,14 @@
  *
  ***************************************************************************/
 
-static TYPE2 PROCEDURE(TYPE* ap,int av,TYPE* bp,int bu,size_t n)
+static TYPE2 PROC(byte_t* ap,int av,byte_t* bp,int bu,size_t n)
 {
     TYPE2 sum = 0;
 
     while(n--) {
-	TYPE2 p = OPERATION(*ap,*bp);
+	TYPE a = *((TYPE*) ap);
+	TYPE b = *((TYPE*) bp);
+	TYPE2 p = OPERATION(a,b);
 	sum = OPERATION2(sum, p);
 	ap += av;
 	bp += bu;
@@ -28,7 +30,7 @@ static TYPE2 PROCEDURE(TYPE* ap,int av,TYPE* bp,int bu,size_t n)
     return sum;
 }
 
-#undef PROCEDURE
+#undef PROC
 #undef TYPE
 #undef TYPE2
 #undef PARAMS_DECL
