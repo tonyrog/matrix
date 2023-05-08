@@ -215,6 +215,7 @@ typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
 #define    FLOAT16 make_scalar_type(ELEM_SIZE16,FLOAT)
 #define    FLOAT32 make_scalar_type(ELEM_SIZE32,FLOAT)
 #define    FLOAT64 make_scalar_type(ELEM_SIZE64,FLOAT)
+#define    VOID    255
 
 typedef uint32_t  matrix_type_t;
 
@@ -260,12 +261,42 @@ typedef uint32_t matrix_type_flags_t;
 #define MAX_COMPONENTS 16
 #define ALLOC_COMPONENTS 32  // works for VSIZE=16,32
 
+// base element types (not vectorized)
 typedef union {
     uint8_t   u8;
     uint16_t  u16;
     uint32_t  u32;
     uint64_t  u64;
-    uint128_t u128;    
+    int8_t    i8;
+    int16_t   i16;
+    int32_t   i32;
+    int64_t   i64;
+    float16_t f16;
+    float32_t f32;
+    float64_t f64;
+} scalar0_t;
+
+// base vector/SIMD types (of scalar0 types)
+typedef union {
+    uint8_t  vu8[VSIZE/sizeof(uint8_t)];
+    uint16_t vu16[VSIZE/sizeof(uint16_t)];
+    uint32_t vu32[VSIZE/sizeof(uint32_t)];
+    uint64_t vu64[VSIZE/sizeof(uint64_t)];
+    int8_t   vi8[VSIZE/sizeof(int8_t)];
+    int16_t  vi16[VSIZE/sizeof(int16_t)];
+    int32_t  vi32[VSIZE/sizeof(int32_t)];
+    int64_t  vi64[VSIZE/sizeof(int64_t)];
+    float16_t vf16[VSIZE/sizeof(float16_t)];
+    float32_t vf32[VSIZE/sizeof(float32_t)];
+    float64_t vf64[VSIZE/sizeof(float64_t)];
+} vscalar0_t;
+
+typedef union {
+    uint8_t   u8;
+    uint16_t  u16;
+    uint32_t  u32;
+    uint64_t  u64;
+    uint128_t u128;
     int8_t    i8;
     int16_t   i16;
     int32_t   i32;
@@ -303,6 +334,7 @@ typedef union {
     vfloat32_t    vf32;
     vfloat64_t    vf64;
 } vscalar_t;
+
 
 typedef vint8_t vector_t;
 typedef void (*unary_op_t)(void* src, void* dst);

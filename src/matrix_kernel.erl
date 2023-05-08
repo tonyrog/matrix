@@ -12,8 +12,26 @@
 
 -compile(export_all).
 
--type op1() :: neg | inv | 'bnot' | mov | ret.
--type op2() :: add | sub | mul | 'band' | 'bor' | 'bxor' | lt | lte | eq.
+-type aop1() :: neg | inv.
+-type bop1() :: 'bnot'.
+-type op1()  :: mov | ret | aop1() | bop1().
+
+-type aop2() :: add | sub | mul.
+-type cop2() :: cmplt | cmple | cmpeq.
+-type bop2() ::  'band' | 'bor' | 'bxor'.
+-type op2()  :: aop2() | bop2() | cop2().
+
+-type vaop1() :: vneg | vinv.
+-type vbop1() :: vbnot.
+-type vop1()  :: vmov | vret | vaop1() | vbop1().
+
+-type vaop2() :: vadd | vsub | vmul.
+-type vcop2() :: vcmplt | vcmple | vcmpeq.
+-type vbop2() :: vband | vbor | vbxor. 
+-type vop2()  :: vaop2() | vbop2() | vcop2().
+
+-type iop1() :: op1() | vop1().
+-type iop2() :: op2() | vop2().
 
 -type int_t()    :: int8|int16|int32|int64|int128.
 -type uint_t()   :: uint8|uint16|uint32|uint64|uint128.
@@ -27,11 +45,11 @@
 -type dreg() :: reg().
 -type creg() :: reg().
 
--type inst1() :: {op1(),ityp(),sreg(),dreg()}.
--type inst2() :: {op2(),ityp(),sreg(),sreg(),dreg()}.
+-type inst1() :: {iop1(),ityp(),dreg(),sreg()}.
+-type inst2() :: {iop2(),ityp(),dreg(),sreg(),sreg()}.
 
--type cinst1() :: {op1(),ityp(),sreg(),dreg(),creg()}.
--type cinst2() :: {op2(),ityp(),sreg(),sreg(),dreg(),creg()}.
+-type cinst1() :: {op1(),ityp(),dreg(),sreg(),creg()}.
+-type cinst2() :: {op2(),ityp(),dreg(),sreg(),sreg(),creg()}.
 
 -type inst() :: inst1() | inst2() | cinst1() | cinst2().
 
@@ -154,20 +172,36 @@ valid_i(Str) when is_list(Str) ->
 	    end
     end.
 
-valid_iname("neg") -> 'neg';
-valid_iname("inv") -> 'inv';
-valid_iname("bnot") -> 'bnot';
-valid_iname("mov") -> 'mov';
-valid_iname("ret") -> 'ret';
-valid_iname("add") -> 'add';
-valid_iname("sub") -> 'sub';
-valid_iname("mul") -> 'mul';
-valid_iname("band") -> 'band';
-valid_iname("bor") -> 'bor';
-valid_iname("bxor") -> 'bxor';
-valid_iname("lt") -> 'lt';
-valid_iname("lte") -> 'lte';
-valid_iname("eq") -> 'eq';
+valid_iname("ret")    -> 'ret';
+valid_iname("mov")    -> 'mov';
+valid_iname("neg")    -> 'neg';
+valid_iname("inv")    -> 'inv';
+valid_iname("bnot")   -> 'bnot';
+valid_iname("add")    -> 'add';
+valid_iname("sub")    -> 'sub';
+valid_iname("mul")    -> 'mul';
+valid_iname("band")   -> 'band';
+valid_iname("bor")    -> 'bor';
+valid_iname("bxor")   -> 'bxor';
+valid_iname("lt")     -> 'lt';
+valid_iname("lte")    -> 'lte';
+valid_iname("eq")     -> 'eq';
+%% vector version
+valid_iname("vret")   -> 'vret';
+valid_iname("vmov")   -> 'vmov';
+valid_iname("vneg")   -> 'vneg';
+valid_iname("vinv")   -> 'vinv';
+valid_iname("vbnot")  -> 'vbnot';
+valid_iname("vadd")   -> 'vadd';
+valid_iname("vsub")   -> 'vsub';
+valid_iname("vmul")   -> 'vmul';
+valid_iname("vband")  -> 'vband';
+valid_iname("vbor")   -> 'vbor';
+valid_iname("vbxor")  -> 'vbxor';
+valid_iname("vcmplt") -> 'vcmplt';
+valid_iname("vcmple") -> 'vcmple';
+valid_iname("vcmpeq") -> 'vcmpeq';
+
 valid_iname(_) -> false.
 
 valid_tname("u8")  -> uint8;
@@ -186,6 +220,7 @@ valid_tname("f64") -> float64;
 valid_tname(_) -> false.
     
 valid_reg({r,I}) when I >= 0, I =< 15 -> true;
+valid_reg({v,I}) when I >= 0, I =< 15 -> true;  %% fixme: only for vop!
 valid_reg(_) -> false.
 
 valid_arg({a,I}) when I >= 0, I =< 15 -> true;
@@ -197,6 +232,3 @@ valid_const(_) -> false.
 
 valid_arg_or_reg(A) -> valid_arg(A) or valid_reg(A).
 valid_const_arg_or_reg(A) -> valid_const(A) or valid_arg(A) or valid_reg(A).
-
-
-    

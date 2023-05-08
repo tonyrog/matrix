@@ -481,10 +481,8 @@ static void matrix_unload(ErlNifEnv* env, void* priv_data);
     NIF("bitwise_xor",   3, matrix_bxor) \
     NIF("bitwise_not",   1, matrix_bnot) \
     NIF("bitwise_not",   2, matrix_bnot) \
-    NIF("eval1",         2, matrix_eval1) \
-    NIF("eval1",         3, matrix_eval1) \
-    NIF("eval2",         3, matrix_eval2) \
-    NIF("eval2",         4, matrix_eval2) \
+    NIF("eval_",         2, matrix_eval) \
+    NIF("eval_",         3, matrix_eval) \
     NIF("info",          2, matrix_info)
 
 
@@ -587,23 +585,40 @@ DECL_ATOM(error);
 DECL_ATOM(notsup);
 DECL_ATOM(badarg);
 // instructions
-DECL_ATOM(ret);
-DECL_ATOM(mov);
+
 DECL_ATOM(r);
+DECL_ATOM(v);
 DECL_ATOM(a);
 DECL_ATOM(c);
+DECL_ATOM(ret);
+DECL_ATOM(mov);
 DECL_ATOM(add);
 DECL_ATOM(sub);
 DECL_ATOM(mul);
 DECL_ATOM(neg);
 DECL_ATOM(inv);
-DECL_ATOM(lt);
-DECL_ATOM(lte);
-DECL_ATOM(eq);
+DECL_ATOM(cmplt);
+DECL_ATOM(cmple);
+DECL_ATOM(cmpeq);
 DECL_ATOM(band);
 DECL_ATOM(bor);
 DECL_ATOM(bxor);
 DECL_ATOM(bnot);
+
+DECL_ATOM(vret);
+DECL_ATOM(vmov);
+DECL_ATOM(vadd);
+DECL_ATOM(vsub);
+DECL_ATOM(vmul);
+DECL_ATOM(vneg);
+DECL_ATOM(vinv);
+DECL_ATOM(vcmplt);
+DECL_ATOM(vcmple);
+DECL_ATOM(vcmpeq);
+DECL_ATOM(vband);
+DECL_ATOM(vbor);
+DECL_ATOM(vbxor);
+DECL_ATOM(vbnot);
 // types
 DECL_ATOM(uint8);
 DECL_ATOM(uint16);
@@ -1399,40 +1414,7 @@ static int64_t (*iunaryop_int64[NUM_IUNARYOP])(int64_t) = {
 
 #define MAX_PROG_SIZE 64   // enough?
 
-#define OP_CND   0x80  // use condition register
-#define OP_BIN   0x40  // binary operation / else unary
-
-// FIXME: make register machine 8 vector regs?
-typedef enum {
-    // unary
-    OP_RET  = 0,     // return top of stack
-    OP_MOVR = 1,     // move register to register    
-    OP_MOVA = 2,     // move argument to register
-    OP_MOVC = 3,     // move constant to register    
-    OP_NEG  = 4,     // negate    
-    OP_BNOT = 5,     // bitwise negate
-    OP_INV  = 6,     // recipocal    
-
-    OP_ADD  = OP_BIN+1,   // add
-    OP_SUB  = OP_BIN+2,   // subtract
-    OP_MUL  = OP_BIN+3,   // mul
-    OP_BAND = OP_BIN+4,   // bitwise and
-    OP_BOR  = OP_BIN+5,   // bitwise or
-    OP_BXOR = OP_BIN+6,   // bitwise xor
-    OP_LT   = OP_BIN+7,   // less
-    OP_LTE  = OP_BIN+8,   // less or equal
-    OP_EQ   = OP_BIN+9,   // equal
-} opcode_t;
-
-// 32bit
-typedef struct {
-    unsigned op:8;   // CND|BIN|<op>
-    unsigned type:8; // element type
-    unsigned ri:4;   // src1
-    unsigned rj:4;   // src2
-    unsigned rd:4;   // dst
-    unsigned rc:4;   // condition mask
-} instr_t;
+#include "matrix_kernel.h"
 
 // run op over all element in array
 static void ev_unary(unary_op_t* opv,matrix_type_t type,
@@ -1516,33 +1498,33 @@ next:
     rc = prog[pc].rc; 
 
     switch(i & 0x7f) {
-    case OP_MOVR: ack = r[ri]; break;
-    case OP_MOVA:
+    case OP_VMOVR: ack = r[ri]; break;
+    case OP_VMOVA:
 	if (ri >= argc) return;  // ERROR
 	ack = argv[ri];
 	break;
-    case OP_MOVC: {
+    case OP_VMOVC: {
 	int len = get_scalar_size(t);  // number of constant bytes
 	set_const(t, (uint8_t*) &prog[pc+1], &ack);
 	pc += ((len+3)/4);
 	break;
     }
-    case OP_NEG:  (*fun_neg_ops[t])(&r[ri],&ack); break;
-    case OP_BNOT: (*fun_bnot_ops[t])(&r[ri],&ack); break;
-    case OP_INV:  (*fun_reciprocal_ops[t])(&r[ri],&ack); break;
-    case OP_RET:  *dst = r[ri]; return;
+    case OP_VNEG:  (*fun_neg_ops[t])(&r[ri],&ack); break;
+    case OP_VBNOT: (*fun_bnot_ops[t])(&r[ri],&ack); break;
+    case OP_VINV:  (*fun_reciprocal_ops[t])(&r[ri],&ack); break;
+    case OP_VRET:  *dst = r[ri]; return;
 	
-    case OP_ADD: (*fun_add_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_SUB: (*fun_sub_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_MUL: (*fun_times_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VADD: (*fun_add_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VSUB: (*fun_sub_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VMUL: (*fun_times_ops[t])(&r[ri],&r[rj],&ack); break;
 
-    case OP_LT:  (*fun_lt_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_LTE: (*fun_lte_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_EQ:  (*fun_eq_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VCMPLT:  (*fun_lt_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VCMPLE: (*fun_lte_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VCMPEQ:  (*fun_eq_ops[t])(&r[ri],&r[rj],&ack); break;
 
-    case OP_BAND: (*fun_band_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_BOR:  (*fun_bor_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_BXOR: (*fun_bxor_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VBAND: (*fun_band_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VBOR:  (*fun_bor_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VBXOR: (*fun_bxor_ops[t])(&r[ri],&r[rj],&ack); break;
     default: break;
     }
     if (i & OP_CND) {  // conditional update preserve elements not masked
@@ -1561,20 +1543,6 @@ next:
 }
 
 #ifdef USE_VECTOR
-
-#if 0
-// if element access is allowed (sometime)
-static void fetch_vector_element(matrix_type_t type, scalar_t* ep, int i)
-{
-    switch(component_size(type)) {
-    case 1: ep->u8  = ep->vu8[i]; break;
-    case 2: ep->u16 = ep->vu16[i]; break;
-    case 4: ep->u32 = ep->vu32[i]; break;
-    case 8: ep->u64 = ep->vu64[i]; break;
-    default: break;
-    }
-}
-#endif
 
 // splat data into dst vector
 static void set_vconst(matrix_type_t t, uint8_t* data, vscalar_t* dst)
@@ -1690,22 +1658,22 @@ next:
 	pc += ((len+3)/4);
 	break;
     }
-    case OP_NEG:  (*vfun_neg_ops[t])(&r[ri],&ack); break;
-    case OP_BNOT: (*vfun_bnot_ops[t])(&r[ri],&ack); break;
-    case OP_INV:  (*vfun_reciprocal_ops[t])(&r[ri],&ack); break;
-    case OP_RET:  *dst = r[ri].vi8; return;
+    case OP_VNEG:  (*vfun_neg_ops[t])(&r[ri],&ack); break;
+    case OP_VBNOT: (*vfun_bnot_ops[t])(&r[ri],&ack); break;
+    case OP_VINV:  (*vfun_reciprocal_ops[t])(&r[ri],&ack); break;
+    case OP_VRET:  *dst = r[ri].vi8; return;
 	
-    case OP_ADD: (*vfun_add_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_SUB: (*vfun_sub_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_MUL: (*vfun_times_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VADD: (*vfun_add_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VSUB: (*vfun_sub_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VMUL: (*vfun_times_ops[t])(&r[ri],&r[rj],&ack); break;
 
-    case OP_LT:  (*vfun_lt_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_LTE: (*vfun_lte_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_EQ:  (*vfun_eq_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VCMPLT:  (*vfun_lt_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VCMPLE: (*vfun_lte_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VCMPEQ:  (*vfun_eq_ops[t])(&r[ri],&r[rj],&ack); break;
 
-    case OP_BAND: (*vfun_band_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_BOR:  (*vfun_bor_ops[t])(&r[ri],&r[rj],&ack); break;
-    case OP_BXOR: (*vfun_bxor_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VBAND: (*vfun_band_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VBOR:  (*vfun_bor_ops[t])(&r[ri],&r[rj],&ack); break;
+    case OP_VBXOR: (*vfun_bxor_ops[t])(&r[ri],&r[rj],&ack); break;
     default: break;
     }
     if (i & OP_CND) {  // conditional update preserve elements not masked
@@ -5882,7 +5850,7 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	const ERL_NIF_TERM* ie;
 	int ia;
 	int pos = 0;
-	opcode_t op;
+	uint8_t op;
 	matrix_type_t type;
 	int ilen = 0;  // extra instruction len MOVC!
 
@@ -5895,7 +5863,23 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	    return -1;
 
 	// first decode the instruction name!
-	if      (ie[0] == ATOM(ret))  op = OP_RET;
+	if      (ie[0] == ATOM(vret))  op = OP_VRET;
+	else if (ie[0] == ATOM(vmov))  op = OP_VMOVR; // updated!
+	else if (ie[0] == ATOM(vneg))  op = OP_VNEG;
+	else if (ie[0] == ATOM(vbnot)) op = OP_VBNOT;
+	else if (ie[0] == ATOM(vinv))  op = OP_VINV;
+	else if (ie[0] == ATOM(vband)) op = OP_VBAND;
+	else if (ie[0] == ATOM(vbor))  op = OP_VBOR;
+	else if (ie[0] == ATOM(vbxor)) op = OP_VBXOR;	
+	
+	else if (ie[0] == ATOM(vadd))  op = OP_VADD;
+	else if (ie[0] == ATOM(vsub))  op = OP_VSUB;
+	else if (ie[0] == ATOM(vmul))  op = OP_VMUL;
+	else if (ie[0] == ATOM(vcmplt))   op = OP_VCMPLT;
+	else if (ie[0] == ATOM(vcmple))  op = OP_VCMPLE;
+	else if (ie[0] == ATOM(vcmpeq))   op = OP_VCMPEQ;
+
+	else if (ie[0] == ATOM(ret))  op = OP_RET;
 	else if (ie[0] == ATOM(mov))  op = OP_MOVR; // updated!
 	else if (ie[0] == ATOM(neg))  op = OP_NEG;
 	else if (ie[0] == ATOM(bnot)) op = OP_BNOT;
@@ -5907,9 +5891,10 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	else if (ie[0] == ATOM(add))  op = OP_ADD;
 	else if (ie[0] == ATOM(sub))  op = OP_SUB;
 	else if (ie[0] == ATOM(mul))  op = OP_MUL;
-	else if (ie[0] == ATOM(lt))   op = OP_LT;
-	else if (ie[0] == ATOM(lte))  op = OP_LTE;
-	else if (ie[0] == ATOM(eq))   op = OP_EQ;
+	else if (ie[0] == ATOM(cmplt)) op = OP_CMPLT;
+	else if (ie[0] == ATOM(cmple)) op = OP_CMPLE;
+	else if (ie[0] == ATOM(cmpeq)) op = OP_CMPEQ;
+	
 	else return -1;
 
 	if (ie[1] == ATOM(true)) op |= OP_CND;
@@ -5930,9 +5915,33 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	else if (ie[2] == ATOM(float64)) type = FLOAT64;
 	else return -1;
 	prog[pc].type = type;
-
+	
 	pos++;
-	// Ri  pos=1
+
+	// pos = 1
+	// Rd is present except for RET|VRET
+	if ((op != OP_RET) && (op != OP_VRET)) {
+	    const ERL_NIF_TERM* rs;
+	    int ri;
+	    if (pos >= arity) return -1;  // missing rd register
+	    if (!enif_get_tuple(env, elems[pos], &ri, &rs) || (ri != 2))
+		return -1;
+	    if (rs[0] == ATOM(r)) {
+		int d;
+		if (!enif_get_int(env,rs[1], &d) || (d < 0) || (d > 15))
+		return -1;
+		prog[pc].rd = d;
+	    }
+	    else if (rs[0] == ATOM(r)) {
+		int d;
+		if (!enif_get_int(env,rs[1], &d) || (d < 0) || (d > 15))
+		return -1;
+		prog[pc].rd = d;
+	    }
+	    pos++;
+	}
+	
+	// Ri  pos=2
 	{
 	    const ERL_NIF_TERM* rs;
 	    int ri;
@@ -5945,27 +5954,42 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 		    return -1;
 		prog[pc].ri = i;
 	    }
+	    else if (rs[0] == ATOM(v)) {
+		int i;
+		if (!enif_get_int(env, rs[1], &i) || (i < 0) || (i > 15))
+		    return -1;
+		prog[pc].ri = i;
+	    }	    
 	    else if (rs[0] == ATOM(a)) {
 		int i;
 		if (!enif_get_int(env, rs[1], &i) || (i < 0) || (i > 15))
 		    return -1;
 		if (i >= nargs) // FIXME?
 		    return -1;
-		if ((op & ~OP_CND) != OP_MOVR)
+		if ((op & ~OP_CND) == OP_MOVR) {
+		    prog[pc].op = OP_MOVA | (op & OP_CND);
+		    prog[pc].ri = i;  // interpreted as argument i
+		}
+		else if ((op & ~OP_CND) == OP_VMOVR) {
+		    prog[pc].op = OP_VMOVA | (op & OP_CND);
+		    prog[pc].ri = i;  // interpreted as argument i
+		}
+		else
 		    return -1;  // {a,i} only supported for MOV!
-		prog[pc].op = OP_MOVA | (op & OP_CND);
-		prog[pc].ri = i;  // interpreted as argument i
 	    }
 	    else if (rs[0] == ATOM(c)) {
 		int64_t   ival;
 		float64_t fval;
 		uint8_t* ptr = (uint8_t*) &prog[pc+1];
-		
-		if ((op & ~OP_CND) != OP_MOVR)
-		    return -1;  // {c,int|float} only supported for MOV!
-		prog[pc].op = OP_MOVC | (op & OP_CND);
-		// fixme use type to store constants
 
+		if ((op & ~OP_CND) == OP_MOVR)
+		    prog[pc].op = OP_MOVC | (op & OP_CND);
+		else if ((op & ~OP_CND) == OP_VMOVR)
+		    prog[pc].op = OP_VMOVC | (op & OP_CND);
+		else
+		    return -1;
+
+		// fixme: store constants! vector values?
 		if (enif_get_int64(env, rs[1], &ival)) {
 		    switch(type) {
 		    case UINT8: {
@@ -6147,7 +6171,7 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	}
 
 	// Rj (second source) is present if binary op OP_BIN
-	if ((op & OP_BIN) && (op != OP_RET)) {
+	if ((op & OP_BIN) && (op != OP_RET) && (op != OP_VRET)) {
 	    const ERL_NIF_TERM* rs;
 	    int ri;
 	    if (pos >= arity) return -1;  // missing rj register
@@ -6159,27 +6183,15 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 		    return -1;
 		prog[pc].rj = j;
 	    }
-	    pos++;
-	}
-
-	// pos = 2 | 3
-	// Rd is present except for RET
-	if (op != OP_RET) {
-	    const ERL_NIF_TERM* rs;
-	    int ri;
-	    if (pos >= arity) return -1;  // missing rd register
-	    if (!enif_get_tuple(env, elems[pos], &ri, &rs) || (ri != 2))
-		return -1;
-	    if (rs[0] == ATOM(r)) {
-		int d;
-		if (!enif_get_int(env,rs[1], &d) || (d < 0) || (d > 15))
-		return -1;
-		prog[pc].rd = d;
+	    else if (rs[0] == ATOM(v)) {
+		int j;
+		if (!enif_get_int(env, rs[1], &j) || (j < 0) || (j > 15))
+		    return -1;
+		prog[pc].rj = j;
 	    }
 	    pos++;
 	}
 
-	// pos = 3|4
 	// Rc is if condition code is set
 	if (op & OP_CND) {
 	    const ERL_NIF_TERM* rs;
@@ -6207,28 +6219,54 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
     return -1;
 }
 
-static ERL_NIF_TERM matrix_eval1(ErlNifEnv* env, int argc,
-				 const ERL_NIF_TERM argv[])
+// eval(Prog, [A])
+// eval(Prog, [A,B])
+// eval(Prog, [A], Dst)
+// eval(Prog, [A,B], Dst)
+static ERL_NIF_TERM matrix_eval(ErlNifEnv* env, int argc,
+				const ERL_NIF_TERM argv[])
 {
     instr_t prog[MAX_PROG_SIZE];
-
-    if (load_program(env, argv[0], 1, prog, MAX_PROG_SIZE) < 0) {
+    ERL_NIF_TERM list;
+    unsigned len;
+    
+    list = argv[1];
+    if (!enif_get_list_length(env, list, &len) && (len > 2))
+	return enif_make_badarg(env);
+    if (load_program(env, argv[0], (int)len, prog, MAX_PROG_SIZE) < 0)
 	return EXCP_BADARG_N(env, 1, "invalid program");
+
+    if (argc == 2) {
+	ERL_NIF_TERM av[2];
+
+	enif_get_list_cell(env, list, &av[0], &list);
+	if (len == 1) {
+	    return unary_op(env, 1, av, mop_eval1, prog,
+			    copy_type, ALL_TYPES, ALL_TYPES);
+	}
+	else if (len == 2) {
+	    enif_get_list_cell(env, list, &av[1], &list);
+	    return binary_op(env, 2, av, mop_eval2, prog,
+			     combine_type, ALL_TYPES, ALL_TYPES, ALL_TYPES);
+	}
     }
-    return unary_op(env, argc-1, argv+1, mop_eval1, prog,
-		    copy_type, ALL_TYPES, ALL_TYPES);
-}
+    else if (argc == 3) {  // eval(Prog, [A], D), eval(Prog, [A,B], D)
+	ERL_NIF_TERM av[3];
 
-static ERL_NIF_TERM matrix_eval2(ErlNifEnv* env, int argc,
-				 const ERL_NIF_TERM argv[])
-{
-    instr_t prog[MAX_PROG_SIZE];
-
-    if (load_program(env, argv[0], 2, prog, MAX_PROG_SIZE) < 0) {
-	return EXCP_BADARG_N(env, 1, "invalid program");
-    }    
-    return binary_op(env, argc-1, argv+1, mop_eval2, prog,
-		     combine_type, ALL_TYPES, ALL_TYPES, ALL_TYPES);    
+	enif_get_list_cell(env, list, &av[0], &list);
+	if (len == 1) {
+	    av[1] = argv[2];
+	    return unary_op(env, 2, av, mop_eval1, prog,
+			    copy_type, ALL_TYPES, ALL_TYPES);	    
+	}
+	else if (len ==2) {
+	    enif_get_list_cell(env, list, &av[1], &list);
+	    av[2] = argv[2];
+	    return binary_op(env, 3, av, mop_eval2, prog,
+			     combine_type, ALL_TYPES, ALL_TYPES, ALL_TYPES);
+	}
+    }
+    return enif_make_badarg(env);
 }
 
 // square root of the sum of squares of the activation of
@@ -7954,6 +7992,7 @@ static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     LOAD_ATOM(env,badarg);
     // instructions
     LOAD_ATOM(env,r);
+    LOAD_ATOM(env,v);
     LOAD_ATOM(env,a);
     LOAD_ATOM(env,c);
     LOAD_ATOM(env,ret);
@@ -7963,13 +8002,28 @@ static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     LOAD_ATOM(env,add);
     LOAD_ATOM(env,sub);
     LOAD_ATOM(env,mul);
-    LOAD_ATOM(env,lt);
-    LOAD_ATOM(env,lte);
-    LOAD_ATOM(env,eq);
+    LOAD_ATOM(env,cmplt);
+    LOAD_ATOM(env,cmple);
+    LOAD_ATOM(env,cmpeq);
     LOAD_ATOM(env,band);
     LOAD_ATOM(env,bor);
     LOAD_ATOM(env,bxor);
     LOAD_ATOM(env,bnot);
+
+    LOAD_ATOM(env,vret);
+    LOAD_ATOM(env,vmov);    
+    LOAD_ATOM(env,vneg);
+    LOAD_ATOM(env,vinv);
+    LOAD_ATOM(env,vadd);
+    LOAD_ATOM(env,vsub);
+    LOAD_ATOM(env,vmul);
+    LOAD_ATOM(env,vcmplt);
+    LOAD_ATOM(env,vcmple);
+    LOAD_ATOM(env,vcmpeq);
+    LOAD_ATOM(env,vband);
+    LOAD_ATOM(env,vbor);
+    LOAD_ATOM(env,vbxor);
+    LOAD_ATOM(env,vbnot);    
 
     LOAD_ATOM(env,uint8);
     LOAD_ATOM(env,uint16);

@@ -56,8 +56,6 @@
 -export([sqrt/1, sqrt/2]).
 -export([validate/1, validate/2]).
 -export([eval/2, eval/3]).
--export([eval1/2, eval1/3]).
--export([eval2/3, eval2/4]).
 -export([type/1]).
 -export([signature/1]).
 -export([is_integer_matrix/1]).
@@ -797,9 +795,9 @@ validate(Prog, VarList) ->
 eval(Prog,As) ->
     case {matrix_kernel:validate(Prog),As} of
 	{{ok, P},[A]} ->
-	    eval1(P, A);
+	    eval_(P, [A]);
 	{{ok, P},[A,B]} ->
-	    eval1(P, A, B);
+	    eval_(P, [A,B]);
 	{{error,Err},_} ->
 	    {error,Err}
     end.
@@ -807,28 +805,19 @@ eval(Prog,As) ->
 eval(Prog,As,Dst) ->
     case {matrix_kernel:validate(Prog),As} of
 	{{ok, P},[A]} ->
-	    eval1(P, A, Dst);
+	    eval_(P, [A], Dst);
 	{{ok, P},[A,B]} ->
-	    eval2(P, A, B, Dst);
+	    eval_(P, [A,B], Dst);
 	{{error,Err},_} ->
 	    {error,Err}
     end.
 
--spec eval1(Prog::[matrix_kernel:inst()],A::matrix()) -> matrix().
-eval1(_Prog,_A) ->
+-spec eval_(Prog::[matrix_kernel:inst()],[matrix()]) -> matrix().
+eval_(_Prog,_As) ->
     ?nif_stub().
 
--spec eval1(Prog::[matrix_kernel:inst()],A::matrix(),Dst::matrix()) -> matrix().
-eval1(_Prog,_A, _Dst) ->
-    ?nif_stub().
-
--spec eval2(Prog::[matrix_kernel:inst()],A::matrix(), B::matrix()) -> matrix().
-eval2(_Prog,_A,_B) ->
-    ?nif_stub().
-
--spec eval2(Prog::[matrix_kernel:inst()],A::matrix(),B::matrix(),
-	    Dst::matrix()) -> matrix().
-eval2(_Prog,_A, _B, _Dst) ->
+-spec eval_(Prog::[matrix_kernel:inst()],[matrix()],Dst::matrix()) -> matrix().
+eval_(_Prog, _As, _Dst) ->
     ?nif_stub().
 
 %%
