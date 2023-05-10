@@ -179,7 +179,7 @@ typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
 #define SCALAR_TYPE_MASK (0x01f)
 #define TYPE_MASK        (0x1ff)
 
-#define TYPE_SIZE_BITS 2 
+#define TYPE_SIZE_BITS   2 
 #define VECTOR_SIZE_BITS 4
 #define ELEM_TYPE_BITS   5
 

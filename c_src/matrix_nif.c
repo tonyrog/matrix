@@ -1487,7 +1487,7 @@ static void eval_prog(instr_t* prog, int argc, scalar_t argv[], scalar_t* dst)
     scalar_t ack;
     matrix_type_t t;
     unsigned i;
-    int ri, rj, rd, rc;
+    int ri, rj, rd;
     int pc = 0;
 next:
     i = prog[pc].op;
@@ -1495,7 +1495,6 @@ next:
     ri = prog[pc].ri;
     rj = prog[pc].rj;
     rd = prog[pc].rd;
-    rc = prog[pc].rc; 
 
     switch(i & 0x7f) {
     case OP_VMOVR: ack = r[ri]; break;
@@ -1527,17 +1526,7 @@ next:
     case OP_VBXOR: (*fun_bxor_ops[t])(&r[ri],&r[rj],&ack); break;
     default: break;
     }
-    if (i & OP_CND) {  // conditional update preserve elements not masked
-	scalar_t cond = r[rc];
-	// rd = (rc & a) | (~rc & rd)
-	(*fun_band_ops[t])(&cond,&ack,&ack);
-	(*fun_bnot_ops[t])(&cond,&cond);
-	(*fun_band_ops[t])(&cond,&r[rd],&r[rd]);
-	(*fun_bor_ops[t])(&ack,&r[rd],&r[rd]);
-    }
-    else {
-	r[rd] = ack;
-    }
+    r[rd] = ack;
     pc++;
     goto next;
 }
@@ -1636,7 +1625,7 @@ static void eval_vprog(instr_t* prog, int argc, vector_t* argv[], vector_t* dst)
     vscalar_t ack;
     matrix_type_t t;
     unsigned i;
-    int ri, rj, rd, rc;
+    int ri, rj, rd;
     int pc = 0;
 next:
     i = prog[pc].op;
@@ -1644,7 +1633,6 @@ next:
     ri = prog[pc].ri;
     rj = prog[pc].rj;
     rd = prog[pc].rd;
-    rc = prog[pc].rc; 
 
     switch(i & 0x7f) {
     case OP_MOVR: ack = r[ri]; break;
@@ -1676,17 +1664,7 @@ next:
     case OP_VBXOR: (*vfun_bxor_ops[t])(&r[ri],&r[rj],&ack); break;
     default: break;
     }
-    if (i & OP_CND) {  // conditional update preserve elements not masked
-	vscalar_t cond = r[rc];
-	// rd = (rc & a) | (~rc & rd)
-	(*vfun_band_ops[t])(&cond,&ack,&ack);
-	(*vfun_bnot_ops[t])(&cond,&cond);
-	(*vfun_band_ops[t])(&cond,&r[rd],&r[rd]);
-	(*vfun_bor_ops[t])(&ack,&r[rd],&r[rd]);
-    }
-    else {
-	r[rd] = ack;
-    }
+    r[rd] = ack;
     pc++;
     goto next;
 }
@@ -6188,22 +6166,6 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 		if (!enif_get_int(env, rs[1], &j) || (j < 0) || (j > 15))
 		    return -1;
 		prog[pc].rj = j;
-	    }
-	    pos++;
-	}
-
-	// Rc is if condition code is set
-	if (op & OP_CND) {
-	    const ERL_NIF_TERM* rs;
-	    int ri;
-	    if (pos >= arity) return -1;  // missing rc register
-	    if (!enif_get_tuple(env, elems[pos], &ri, &rs) || (ri != 2))
-		return -1;
-	    if (rs[0] == ATOM(r)) {
-		int c;
-		if (!enif_get_int(env,rs[1], &c) || (c < 0) || (c > 15))
-		return -1;
-		prog[pc].rc = c;
 	    }
 	    pos++;
 	}

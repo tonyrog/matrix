@@ -2,6 +2,7 @@
 // Emulate Matrix kernel languge
 // 
 
+#include <stdio.h>
 #include "matrix_types.h"
 #include "matrix_kernel.h"
 
@@ -19,191 +20,400 @@
 #define op_cmple(x,y) (-((x)<=(y)))
 #define op_cmpeq(x,y)  (-((x)==(y)))
 
-#define EMUid(fld,i,d,op) do {				\
-	unsigned int k;					\
-	for (k=0; k<VSIZE/sizeof(r[0].fld[0]);k++)	\
-	    r[d].fld[k] = op(r[i].fld[k]);		\
-  } while(0)
+#define FRdimm(fld,d,imm,op) r[d].fld = op(imm)
+#define FRdi(fld,d,i,op) r[d].fld = op(r[i].fld)
+#define FRdij(fld,d,i,j,op) r[d].fld = op(r[i].fld,r[j].fld)
+#define FFRdi(ifld,ofld,d,i,op) r[d].ofld = op(r[i].ifld)
+#define FFRdij(ifld,ofld,d,i,j,op) r[d].ofld = op(r[i].ifld,r[j].ifld)
 
-#define EMUijd(fld,i,j,d,op) do {			\
-	unsigned int k;					\
-	for (k=0; k<VSIZE/sizeof(r[0].fld[0]);k++)	\
-	    r[d].fld[k] = op(r[i].fld[k],r[j].fld[k]);	\
-  } while(0)
+#define FVdi(fld,d,i,op)        v[d].fld = op(v[i].fld)
+#define FVdij(fld,d,i,j,op)     v[d].fld = op(v[i].fld,v[j].fld)
+#define FFVdi(ifld,ofld,d,i,op) v[d].ofld = op(v[i].ifld)
+#define FFVdij(ifld,ofld,d,i,j,op) v[d].ofld = op(v[i].ifld,v[j].ifld)
 
-#define IEMUid(ifld,ofld,i,d,op) do {			\
-	unsigned int k;					\
-	for (k=0; k<VSIZE/sizeof(r[0].ofld[0]);k++)	\
-	    r[d].ofld[k] = op(r[i].ifld[k]);		\
-  } while(0)
-
-#define IEMUijd(ifld,ofld,i,j,d,op) do {			\
-	unsigned int k;						\
-	for (k=0; k<VSIZE/sizeof(r[0].ofld[0]);k++)		\
-	    r[d].ofld[k] = op(r[i].ifld[k],r[j].ifld[k]);	\
+#define TFRdi(t,d,i,op) do {					\
+	switch((t)) {						\
+	case UINT8:   FRdi(u8,(d),(i),op); break;		\
+	case UINT16:  FRdi(u16,(d),(i),op); break;		\
+	case UINT32:  FRdi(u32,(d),(i),op); break;		\
+	case UINT64:  FRdi(u64,(d),(i),op); break;		\
+	case INT8:    FRdi(i8,(d),(i),op); break;		\
+	case INT16:   FRdi(i16,(d),(i),op); break;		\
+	case INT32:   FRdi(i32,(d),(i),op); break;		\
+	case INT64:   FRdi(i64,(d),(i),op); break;		\
+	case FLOAT16: FRdi(f16,(d),(i),op); break;		\
+	case FLOAT32: FRdi(f32,(d),(i),op); break;		\
+	case FLOAT64: FRdi(f64,(d),(i),op); break;		\
+	default: break;						\
+	}							\
     } while(0)
 
-#define FMUid(t,i,d,op) do {					\
+#define TFRdimm(t,d,i,op) do {					\
+	switch((t)) {						\
+	case UINT8:   FRdimm(u8,(d),(i),op); break;		\
+	case UINT16:  FRdimm(u16,(d),(i),op); break;		\
+	case UINT32:  FRdimm(u32,(d),(i),op); break;		\
+	case UINT64:  FRdimm(u64,(d),(i),op); break;		\
+	case INT8:    FRdimm(i8,(d),(i),op); break;		\
+	case INT16:   FRdimm(i16,(d),(i),op); break;		\
+	case INT32:   FRdimm(i32,(d),(i),op); break;		\
+	case INT64:   FRdimm(i64,(d),(i),op); break;		\
+	case FLOAT16: FRdimm(f16,(d),(i),op); break;		\
+	case FLOAT32: FRdimm(f32,(d),(i),op); break;		\
+	case FLOAT64: FRdimm(f64,(d),(i),op); break;		\
+	default: break;						\
+	}							\
+    } while(0)
+
+#define TFRdij(t,d,i,j,op) do {					\
+	switch((t)) {						\
+	case UINT8:   FRdij(u8,(d),(i),(j),op); break;		\
+	case UINT16:  FRdij(u16,(d),(i),(j),op); break;		\
+	case UINT32:  FRdij(u32,(d),(i),(j),op); break;		\
+	case UINT64:  FRdij(u64,(d),(i),(j),op); break;		\
+	case INT8:    FRdij(i8,(d),(i),(j),op); break;		\
+	case INT16:   FRdij(i16,(d),(i),(j),op); break;		\
+	case INT32:   FRdij(i32,(d),(i),(j),op); break;		\
+	case INT64:   FRdij(i64,(d),(i),(j),op); break;		\
+	case FLOAT16: FRdij(f16,(d),(i),(j),op); break;		\
+	case FLOAT32: FRdij(f32,(d),(i),(j),op); break;		\
+	case FLOAT64: FRdij(f64,(d),(i),(j),op); break;		\
+	default: break;						\
+	}							\
+    } while(0)
+
+#define TFURdi(t,d,i,op) do {					\
+	switch((t)) {						\
+	case UINT8:   FRdi(u8,(d),(i),op); break;		\
+	case UINT16:  FRdi(u16,(d),(i),op); break;		\
+	case UINT32:  FRdi(u32,(d),(i),op); break;		\
+	case UINT64:  FRdi(u64,(d),(i),op); break;		\
+	case INT8:    FRdi(u8,(d),(i),op); break;		\
+	case INT16:   FRdi(u16,(d),(i),op); break;		\
+	case INT32:   FRdi(u32,(d),(i),op); break;		\
+	case INT64:   FRdi(u64,(d),(i),op); break;		\
+	case FLOAT16: FRdi(u16,(d),(i),op); break;		\
+	case FLOAT32: FRdi(u32,(d),(i),op); break;		\
+	case FLOAT64: FRdi(u64,(d),(i),op); break;		\
+	default: break;						\
+	}							\
+    } while(0)
+
+#define TFURdij(t,d,i,j,op) do {				\
     switch((t)) {						\
-    case UINT8:   EMUid(vu8,(i),(d),op); break;			\
-    case UINT16:  EMUid(vu16,(i),(d),op); break;		\
-    case UINT32:  EMUid(vu32,(i),(d),op); break;		\
-    case UINT64:  EMUid(vu64,(i),(d),op); break;		\
-    case INT8:    EMUid(vi8,(i),(d),op); break;			\
-    case INT16:   EMUid(vi16,(i),(d),op); break;		\
-    case INT32:   EMUid(vi32,(i),(d),op); break;		\
-    case INT64:   EMUid(vi64,(i),(d),op); break;		\
-    case FLOAT16: EMUid(vf16,(i),(d),op); break;		\
-    case FLOAT32: EMUid(vf32,(i),(d),op); break;		\
-    case FLOAT64: EMUid(vf64,(i),(d),op); break;		\
+    case UINT8:   FRdij(u8,(d),(i),(j),op); break;		\
+    case UINT16:  FRdij(u16,(d),(i),(j),op); break;		\
+    case UINT32:  FRdij(u32,(d),(i),(j),op); break;		\
+    case UINT64:  FRdij(u64,(d),(i),(j),op); break;		\
+    case INT8:    FRdij(u8,(d),(i),(j),op); break;		\
+    case INT16:   FRdij(u16,(d),(i),(j),op); break;		\
+    case INT32:   FRdij(u32,(d),(i),(j),op); break;		\
+    case INT64:   FRdij(u64,(d),(i),(j),op); break;		\
+    case FLOAT16: FRdij(u16,(d),(i),(j),op); break;		\
+    case FLOAT32: FRdij(u32,(d),(i),(j),op); break;		\
+    case FLOAT64: FRdij(u64,(d),(i),(j),op); break;		\
     default: break;						\
     }								\
   } while(0)
 
-#define FMUijd(t,i,j,d,op) do {					\
+#define TFIRdij(t,d,i,j,op) do {					\
+	switch((t)) {							\
+	case UINT8:   FFRdij(u8,i8,(d),(i),(j),op); break;		\
+	case UINT16:  FFRdij(u16,i16,(d),(i),(j),op); break;		\
+	case UINT32:  FFRdij(u32,i32,(d),(i),(j),op); break;		\
+	case UINT64:  FFRdij(u64,i64,(d),(i),(j),op); break;		\
+	case INT8:    FFRdij(i8,i8,(d),(i),(j),op); break;		\
+	case INT16:   FFRdij(i16,i16,(d),(i),(j),op); break;		\
+	case INT32:   FFRdij(i32,i32,(d),(i),(j),op); break;		\
+	case INT64:   FFRdij(i64,i32,(d),(i),(j),op); break;		\
+	case FLOAT16: FFRdij(f16,i16,(d),(i),(j),op); break;		\
+	case FLOAT32: FFRdij(f32,i32,(d),(i),(j),op); break;		\
+	case FLOAT64: FFRdij(f64,i64,(d),(i),(j),op); break;		\
+	default: break;							\
+	}								\
+    } while(0)
+
+#define KFVdi(fld,d,i,op) do {				\
+	unsigned int k;					\
+	for (k=0; k<VSIZE/sizeof(v[0].fld[0]);k++)	\
+	    v[d].fld[k] = op(v[i].fld[k]);		\
+    } while(0)
+
+#define KFVdij(fld,d,i,j,op) do {			\
+	unsigned int k;					\
+	for (k=0; k<VSIZE/sizeof(v[0].fld[0]);k++)	\
+	    v[d].fld[k] = op(v[i].fld[k],v[j].fld[k]);	\
+    } while(0)
+
+#define KFFVdi(ifld,ofld,d,i,op) do {			\
+	unsigned int k;					\
+	for (k=0; k<VSIZE/sizeof(v[0].ofld[0]);k++)	\
+	    v[d].ofld[k] = op(v[i].ifld[k]);		\
+  } while(0)
+
+#define KFFVdij(ifld,ofld,d,i,j,op) do {			\
+	unsigned int k;						\
+	for (k=0; k<VSIZE/sizeof(v[0].ofld[0]);k++)		\
+	    v[d].ofld[k] = op(v[i].ifld[k],v[j].ifld[k]);	\
+    } while(0)
+
+#define TKVdi(t,d,i,op) do {					\
     switch((t)) {						\
-    case UINT8:   EMUijd(vu8,(i),(j),(d),op); break;		\
-    case UINT16:  EMUijd(vu16,(i),(j),(d),op); break;		\
-    case UINT32:  EMUijd(vu32,(i),(j),(d),op); break;		\
-    case UINT64:  EMUijd(vu64,(i),(j),(d),op); break;		\
-    case INT8:    EMUijd(vi8,(i),(j),(d),op); break;		\
-    case INT16:   EMUijd(vi16,(i),(j),(d),op); break;		\
-    case INT32:   EMUijd(vi32,(i),(j),(d),op); break;		\
-    case INT64:   EMUijd(vi64,(i),(j),(d),op); break;		\
-    case FLOAT16: EMUijd(vf16,(i),(j),(d),op); break;		\
-    case FLOAT32: EMUijd(vf32,(i),(j),(d),op); break;		\
-    case FLOAT64: EMUijd(vf64,(i),(j),(d),op); break;		\
+    case UINT8:   KFVdi(vu8,(d),(i),op); break;			\
+    case UINT16:  KFVdi(vu16,(d),(i),op); break;		\
+    case UINT32:  KFVdi(vu32,(d),(i),op); break;		\
+    case UINT64:  KFVdi(vu64,(d),(i),op); break;		\
+    case INT8:    KFVdi(vi8,(d),(i),op); break;			\
+    case INT16:   KFVdi(vi16,(d),(i),op); break;		\
+    case INT32:   KFVdi(vi32,(d),(i),op); break;		\
+    case INT64:   KFVdi(vi64,(d),(i),op); break;		\
+    case FLOAT16: KFVdi(vf16,(d),(i),op); break;		\
+    case FLOAT32: KFVdi(vf32,(d),(i),op); break;		\
+    case FLOAT64: KFVdi(vf64,(d),(i),op); break;		\
     default: break;						\
     }								\
   } while(0)
 
-#define IFMUid(t,i,d,op) do {					\
+#define TKVdij(t,d,i,j,op) do {					\
     switch((t)) {						\
-    case UINT8:   EMUid(vu8,vi8,(i),(d),op); break;		\
-    case UINT16:  EMUid(vu16,vi16,(i),(d),op); break;		\
-    case UINT32:  EMUid(vu32,vi32,(i),(d),op); break;		\
-    case UINT64:  EMUid(vu64,vi64,(i),(d),op); break;		\
-    case INT8:    EMUid(vi8,vi8,(i),(d),op); break;		\
-    case INT16:   EMUid(vi16,vi16,(i),(d),op); break;		\
-    case INT32:   EMUid(vi32,vi32,(i),(d),op); break;		\
-    case INT64:   EMUid(vi64,vi64,(i),(d),op); break;		\
-    case FLOAT16: EMUid(vf16,vi16,(i),(d),op); break;		\
-    case FLOAT32: EMUid(vf32,vi32,(i),(d),op); break;		\
-    case FLOAT64: EMUid(vf64,vi64,(i),(d),op); break;		\
+    case UINT8:   KFVdij(vu8,(d),(i),(j),op); break;		\
+    case UINT16:  KFVdij(vu16,(d),(i),(j),op); break;		\
+    case UINT32:  KFVdij(vu32,(d),(i),(j),op); break;		\
+    case UINT64:  KFVdij(vu64,(d),(i),(j),op); break;		\
+    case INT8:    KFVdij(vi8,(d),(i),(j),op); break;		\
+    case INT16:   KFVdij(vi16,(d),(i),(j),op); break;		\
+    case INT32:   KFVdij(vi32,(d),(i),(j),op); break;		\
+    case INT64:   KFVdij(vi64,(d),(i),(j),op); break;		\
+    case FLOAT16: KFVdij(vf16,(d),(i),(j),op); break;		\
+    case FLOAT32: KFVdij(vf32,(d),(i),(j),op); break;		\
+    case FLOAT64: KFVdij(vf64,(d),(i),(j),op); break;		\
     default: break;						\
     }								\
   } while(0)
 
-#define IFMUijd(t,i,j,d,op) do {				\
+#define TKIVdi(t,d,i,op) do {					\
     switch((t)) {						\
-    case UINT8:   IEMUijd(vu8,vi8,(i),(j),(d),op); break;	\
-    case UINT16:  IEMUijd(vu16,vi16,(i),(j),(d),op); break;	\
-    case UINT32:  IEMUijd(vu32,vi32,(i),(j),(d),op); break;	\
-    case UINT64:  IEMUijd(vu64,vi64,(i),(j),(d),op); break;	\
-    case INT8:    IEMUijd(vi8,vi8,(i),(j),(d),op); break;	\
-    case INT16:   IEMUijd(vi16,vi16,(i),(j),(d),op); break;	\
-    case INT32:   IEMUijd(vi32,vi32,(i),(j),(d),op); break;	\
-    case INT64:   IEMUijd(vi64,vi64,(i),(j),(d),op); break;	\
-    case FLOAT16: IEMUijd(vf16,vi16,(i),(j),(d),op); break;	\
-    case FLOAT32: IEMUijd(vf32,vi32,(i),(j),(d),op); break;	\
-    case FLOAT64: IEMUijd(vf64,vi64,(i),(j),(d),op); break;	\
+    case UINT8:   KFFVdi(vu8,vi8,(d),(i),op); break;		\
+    case UINT16:  KFFVdi(vu16,vi16,(d),(i),op); break;		\
+    case UINT32:  KFFVdi(vu32,vi32,(d),(i),op); break;		\
+    case UINT64:  KFFVdi(vu64,vi64,(d),(i),op); break;		\
+    case INT8:    KFFVdi(vi8,vi8,(d),(i),op); break;		\
+    case INT16:   KFFVdi(vi16,vi16,(d),(i),op); break;		\
+    case INT32:   KFFVdi(vi32,vi32,(d),(i),op); break;		\
+    case INT64:   KFFVdi(vi64,vi64,(d),(i),op); break;		\
+    case FLOAT16: KFFVdi(vf16,vi16,(d),(i),op); break;		\
+    case FLOAT32: KFFVdi(vf32,vi32,(d),(i),op); break;		\
+    case FLOAT64: KFFVdi(vf64,vi64,(d),(i),op); break;		\
     default: break;						\
     }								\
   } while(0)
-    
-void emu_vneg(uint8_t type, vscalar0_t r[16], int i, int d)
+
+#define TKIVdij(t,d,i,j,op) do {				\
+    switch((t)) {						\
+    case UINT8:   KFFVdij(vu8,vi8,(d),(i),(j),op); break;	\
+    case UINT16:  KFFVdij(vu16,vi16,(d),(i),(j),op); break;	\
+    case UINT32:  KFFVdij(vu32,vi32,(d),(i),(j),op); break;	\
+    case UINT64:  KFFVdij(vu64,vi64,(d),(i),(j),op); break;	\
+    case INT8:    KFFVdij(vi8,vi8,(d),(i),(j),op); break;	\
+    case INT16:   KFFVdij(vi16,vi16,(d),(i),(j),op); break;	\
+    case INT32:   KFFVdij(vi32,vi32,(d),(i),(j),op); break;	\
+    case INT64:   KFFVdij(vi64,vi64,(d),(i),(j),op); break;	\
+    case FLOAT16: KFFVdij(vf16,vi16,(d),(i),(j),op); break;	\
+    case FLOAT32: KFFVdij(vf32,vi32,(d),(i),(j),op); break;	\
+    case FLOAT64: KFFVdij(vf64,vi64,(d),(i),(j),op); break;	\
+    default: break;						\
+    }								\
+  } while(0)
+
+
+void emu_mov(uint8_t type, scalar0_t r[16], int d, int i)
 {
-    FMUid(type,i,d,op_neg);
+    TFRdi(type,d,i,op_nop);
 }
 
-void emu_vmov(uint8_t type, vscalar0_t r[16], int i, int d)
+void emu_movi(uint8_t type, scalar0_t r[16], int d, int i)
 {
-    FMUid(type,i,d,op_nop);    
+    TFRdimm(type,d,i,op_nop);    
 }
 
-void emu_vinv(uint8_t type, vscalar0_t r[16], int i, int d)
+void emu_neg(uint8_t type, scalar0_t r[16], int d, int i)
+{
+    TFRdi(type,d,i,op_neg);
+}
+
+void emu_inv(uint8_t type, scalar0_t r[16], int i, int d)
 {
     switch(type) {
     case FLOAT16: break;
-    case FLOAT32: EMUid(vf32,i,d,op_inv); break;
-    case FLOAT64: EMUid(vf32,i,d,op_inv); break;
+    case FLOAT32: FRdi(f32,d,i,op_inv); break;
+    case FLOAT64: FRdi(f64,d,i,op_inv); break;
     default: break;
     }
 }
 
-void emu_vadd(uint8_t type, vscalar0_t r[16], int i, int j, int d)
+void emu_add(uint8_t type, scalar0_t r[16], int d, int i, int j)
 {
-    FMUijd(type,i,j,d,op_add); 
+    TFRdij(type,d,i,j,op_add); 
 }
 
-void emu_vsub(uint8_t type, vscalar0_t r[16], int i, int j, int d)
+void emu_sub(uint8_t type, scalar0_t r[16], int d, int i, int j)
 {
-    FMUijd(type,i,j,d,op_sub); 
+    TFRdij(type,d,i,j,op_sub); 
 }
 
-void emu_vmul(uint8_t type, vscalar0_t r[16], int i, int j, int d)
+void emu_mul(uint8_t type, scalar0_t r[16], int d, int i, int j)
 {
-    FMUijd(type,i,j,d,op_mul); 
+    TFRdij(type,d,i,j,op_mul); 
 }
 
-void emu_vbnot(uint8_t type, vscalar0_t r[16], int i, int d)
+void emu_bnot(uint8_t type, scalar0_t r[16], int d, int i)
 {
-    (void) type;    
-    EMUid(vu64,i,d,op_bnot);
+    TFURdi(type,d,i,op_bnot);
 }
 
-void emu_vbor(uint8_t type, vscalar0_t r[16], int i, int j, int d)
+void emu_bor(uint8_t type, scalar0_t r[16], int d, int i, int j)
+{
+    TFURdij(type,d,i,j,op_bor);
+}
+
+void emu_band(uint8_t type, scalar0_t r[16], int d, int i, int j)
+{
+    TFURdij(type,d,i,j,op_band);
+}
+
+void emu_bxor(uint8_t type, scalar0_t r[16], int d, int i, int j)
+{
+    TFURdij(type,d,i,j,op_bxor);
+}
+
+void emu_cmplt(uint8_t type, scalar0_t r[16], int d, int i, int j)
+{
+    TFIRdij(type,d,i,j,op_cmplt); 
+}
+
+void emu_cmple(uint8_t type, scalar0_t r[16], int d, int i, int j)
+{
+    TFIRdij(type,d,i,j,op_cmple); 
+}
+
+void emu_cmpeq(uint8_t type, scalar0_t r[16], int d, int i, int j)
+{
+    TFIRdij(type,d,i,j,op_cmpeq); 
+}
+
+// Vector version
+
+void emu_vneg(uint8_t type, vscalar0_t v[16], int d, int i)
+{
+    TKVdi(type,d,i,op_neg);
+}
+
+void emu_vmov(uint8_t type, vscalar0_t v[16], int d, int i)
+{
+    TKVdi(type,d,i,op_nop);
+}
+
+void emu_vinv(uint8_t type, vscalar0_t v[16], int d, int i)
+{
+    switch(type) {
+    case FLOAT16: break;
+    case FLOAT32: KFVdi(vf32,d,i,op_inv); break;
+    case FLOAT64: KFVdi(vf64,d,i,op_inv); break;
+    default: break;
+    }
+}
+
+void emu_vadd(uint8_t type, vscalar0_t v[16], int d, int i, int j)
+{
+    TKVdij(type,d,i,j,op_add); 
+}
+
+void emu_vsub(uint8_t type, vscalar0_t v[16], int d, int i, int j)
+{
+    TKVdij(type,d,i,j,op_sub); 
+}
+
+void emu_vmul(uint8_t type, vscalar0_t v[16], int d, int i, int j)
+{
+    TKVdij(type,d,i,j,op_mul); 
+}
+
+void emu_vbnot(uint8_t type, vscalar0_t v[16], int d, int i)
 {
     (void) type;
-    EMUijd(vu64,i,j,d,op_bor);  // bit operation !!!
+    KFFVdi(vu64,vu64,d,i,op_bnot);
 }
 
-void emu_vband(uint8_t type, vscalar0_t r[16], int i, int j, int d)
+void emu_vbor(uint8_t type, vscalar0_t v[16], int d, int i, int j)
 {
     (void) type;
-    EMUijd(vu64,i,j,d,op_band);  // bit operation !!!    
+    KFFVdij(vu64,vu64,d,i,j,op_bor);
 }
 
-void emu_vbxor(uint8_t type, vscalar0_t r[16], int i, int j, int d)
+void emu_vband(uint8_t type, vscalar0_t v[16], int d, int i, int j)
 {
-    (void) type;    
-    EMUijd(vu32,i,j,d,op_bxor);  // bit operation !!!        
+    (void) type;
+    KFFVdij(vu64,vu64,d,i,j,op_band);    
 }
 
-void emu_vcmplt(uint8_t type, vscalar0_t r[16], int i, int j, int d)
+void emu_vbxor(uint8_t type, vscalar0_t v[16], int d, int i, int j)
 {
-    IFMUijd(type,i,j,d,op_cmplt); 
+    (void) type;
+    KFFVdij(vu64,vu64,d,i,j,op_bxor);
 }
 
-void emu_vcmple(uint8_t type, vscalar0_t r[16], int i, int j, int d)
+void emu_vcmplt(uint8_t type, vscalar0_t v[16], int d, int i, int j)
+{    
+    TKIVdij(type,d,i,j,op_cmplt); 
+}
+
+void emu_vcmple(uint8_t type, vscalar0_t v[16], int d, int i, int j)
 {
-    IFMUijd(type,i,j,d,op_cmple); 
+    TKIVdij(type,d,i,j,op_cmple); 
 }
 
-void emu_vcmpeq(uint8_t type, vscalar0_t r[16], int i, int j, int d)
+void emu_vcmpeq(uint8_t type, vscalar0_t v[16], int d, int i, int j)
 {
-    IFMUijd(type,i,j,d,op_cmpeq); 
+    TKIVdij(type,d,i,j,op_cmpeq); 
 }
 
-void emulate(vscalar0_t r[16], instr_t* code, size_t n, int* ret)
+void emulate(scalar0_t r[16], vscalar0_t v[16],
+	     instr_t* code, size_t n, int* ret)
 {
     instr_t* pc = code;
 next:
     switch(pc->op) {
+    case OP_RET: *ret = pc->ri; return;
+    case OP_NEG: emu_neg(pc->type, r, pc->rd, pc->ri); break;
+    case OP_BNOT: emu_bnot(pc->type, r, pc->rd, pc->ri); break;
+    case OP_INV: emu_inv(pc->type, r, pc->rd, pc->ri); break;	
+    case OP_MOVR: emu_mov(pc->type, r, pc->rd, pc->ri); break;
+    case OP_MOVI: emu_movi(pc->type, r, pc->rd, pc->imm); break;
+    case OP_ADD: emu_add(pc->type, r, pc->rd, pc->ri, pc->rj); break;
+    case OP_SUB: emu_sub(pc->type, r, pc->rd, pc->ri, pc->rj); break;
+    case OP_MUL: emu_mul(pc->type, r, pc->rd, pc->ri, pc->rj); break;
+    case OP_BOR: emu_bor(pc->type, r, pc->rd, pc->ri, pc->rj); break;
+    case OP_BAND: emu_band(pc->type, r, pc->rd, pc->ri, pc->rj); break;
+    case OP_BXOR: emu_bxor(pc->type, r, pc->rd, pc->ri, pc->rj); break;
+    case OP_CMPEQ: emu_cmpeq(pc->type, r, pc->rd, pc->ri, pc->rj); break;    	
+    case OP_CMPLT: emu_cmplt(pc->type, r, pc->rd, pc->ri, pc->rj); break;
+    case OP_CMPLE: emu_cmple(pc->type, r, pc->rd, pc->ri, pc->rj); break;
+	
     case OP_VRET: *ret = pc->ri; return;
-    case OP_VNEG: emu_vneg(pc->type, r, pc->ri, pc->rd); break;
-    case OP_VBNOT: emu_vbnot(pc->type, r, pc->ri, pc->rd); break;
-    case OP_VINV: emu_vinv(pc->type, r, pc->ri, pc->rd); break;	
-    case OP_VMOVR: emu_vmov(pc->type, r, pc->ri, pc->rd); break;
-    case OP_VADD: emu_vadd(pc->type, r, pc->ri, pc->rj, pc->rd); break;
-    case OP_VSUB: emu_vsub(pc->type, r, pc->ri, pc->rj, pc->rd); break;
-    case OP_VMUL: emu_vmul(pc->type, r, pc->ri, pc->rj, pc->rd); break;
-    case OP_VBOR: emu_vbor(pc->type, r, pc->ri, pc->rj, pc->rd); break;
-    case OP_VBAND: emu_vband(pc->type, r, pc->ri, pc->rj, pc->rd); break;
-    case OP_VBXOR: emu_vbxor(pc->type, r, pc->ri, pc->rj, pc->rd); break;
-    case OP_VCMPEQ: emu_vcmpeq(pc->type, r, pc->ri, pc->rj, pc->rd); break;    	
-    case OP_VCMPLT: emu_vcmplt(pc->type, r, pc->ri, pc->rj, pc->rd); break;
-    case OP_VCMPLE: emu_vcmple(pc->type, r, pc->ri, pc->rj, pc->rd); break;
+    case OP_VNEG: emu_vneg(pc->type, v, pc->rd, pc->ri); break;
+    case OP_VBNOT: emu_vbnot(pc->type, v, pc->rd, pc->ri); break;
+    case OP_VINV: emu_vinv(pc->type, v, pc->rd, pc->ri); break;	
+    case OP_VMOVR: emu_vmov(pc->type, v, pc->rd, pc->ri); break;
+    case OP_VADD: emu_vadd(pc->type, v, pc->rd, pc->ri, pc->rj); break;
+    case OP_VSUB: emu_vsub(pc->type, v, pc->rd, pc->ri, pc->rj); break;
+    case OP_VMUL: emu_vmul(pc->type, v, pc->rd, pc->ri, pc->rj); break;
+    case OP_VBOR: emu_vbor(pc->type, v, pc->rd, pc->ri, pc->rj); break;
+    case OP_VBAND: emu_vband(pc->type, v, pc->rd, pc->ri, pc->rj); break;
+    case OP_VBXOR: emu_vbxor(pc->type, v, pc->rd, pc->ri, pc->rj); break;
+    case OP_VCMPEQ: emu_vcmpeq(pc->type, v, pc->rd, pc->ri, pc->rj); break;    	
+    case OP_VCMPLT: emu_vcmplt(pc->type, v, pc->rd, pc->ri, pc->rj); break;
+    case OP_VCMPLE: emu_vcmple(pc->type, v, pc->rd, pc->ri, pc->rj); break;
+
     default: break;	
     }
     pc++;

@@ -205,6 +205,23 @@ void vprint(uint8_t type, vector_t v)
     }
 }
 
+void sprint(uint8_t type, scalar0_t v)
+{
+    switch(type) {
+    case UINT8: printf("%x", v.u8); break;
+    case UINT16: printf("%x", v.u16); break;
+    case UINT32: printf("%x", v.u32); break;
+    case UINT64: printf("%lx", v.u64); break;
+    case INT8: printf("%d", v.i8); break;
+    case INT16: printf("%d", v.i16); break;
+    case INT32: printf("%d", v.i32); break;
+    case INT64: printf("%ld", v.i64); break;
+    case FLOAT32: printf("%f", v.f32);break;
+    case FLOAT64: printf("%f", v.f64);break;
+    default: break;
+    }
+}
+
 #define VCMP_BODY(v1,v2) do { \
 	unsigned k;				\
 	for (k=0; k<VSIZE/sizeof(v1[0]); k++) {	\
@@ -242,3 +259,24 @@ int vcmp(uint8_t type, vector_t v1, vector_t v2)
     }
     return -1;
 }
+
+#define CMP(a,b) (((a)<(b)) ? -1 : ( ((a)>(b)) ? 1 : 0))
+
+int scmp(uint8_t type, scalar0_t v1, scalar0_t v2)
+{
+    switch(type) {
+    case UINT8:  return CMP(v1.u8, v2.u8);
+    case UINT16: return CMP(v1.u16, v2.u16);
+    case UINT32: return CMP(v1.u32, v2.u32);
+    case UINT64: return CMP(v1.u64, v2.u64); 
+    case INT8:   return CMP(v1.i8, v2.i8);
+    case INT16:  return CMP(v1.i16, v2.i16);
+    case INT32:  return CMP(v1.i32, v2.i32);
+    case INT64:  return CMP(v1.i64, v2.i64); 
+    case FLOAT32: return CMP(v1.f32, v2.f32); 
+    case FLOAT64: return CMP(v1.f64, v2.f64); 
+    default: break;
+    }
+    return -1;
+}
+
