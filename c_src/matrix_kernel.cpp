@@ -14,35 +14,45 @@ extern void assemble(x86::Assembler &a, const Environment &env,
 extern void emulate(scalar0_t r[16], vscalar0_t v[16], instr_t* code,
 		    size_t n, int* ret);
 
-extern void sprint(uint8_t type, scalar0_t v);
+extern void sprint(FILE* f,uint8_t type, scalar0_t v);
 extern int  scmp(uint8_t type, scalar0_t v1, scalar0_t v2);
 
 extern x86::Vec vreg(int i);
 extern x86::Gp reg(int i);
 
 
-extern void vprint(uint8_t type, vector_t v);
+extern void vprint(FILE* f, uint8_t type, vector_t v);
 extern int  vcmp(uint8_t type, vector_t v1, vector_t v2);
-
-
 
 extern void set_element_int64(matrix_type_t type, vector_t &r, int i, int64_t v);
 extern void set_element_float64(matrix_type_t type, vector_t &r, int i, float64_t v);
 
 #define OPdij(o,d,i,j) \
-    {.op = (o),.type=INT64,.ri=(i),.rj=(j),.pad=0,.rd=(d)}
+    {.op = (o),.type=INT64,.rd=(d),.rj=(j),.pad=0,.ri=(i)}
 #define OPdi(o,d,i) \
-    {.op = (o),.type=INT64,.ri=(i),.rj=0,.pad=0,.rd=(d)}
-#define OPi(o,i) \
-    {.op = (o),.type=INT64,.ri=(i),.rj=0,.pad=0,.rd=0}
+    {.op = (o),.type=INT64,.rd=(d),.rj=0,.pad=0,.ri=(i),}
+#define OPd(o,d) \
+    {.op = (o),.type=INT64,.rd=(d),.rj=0,.pad=0,.ri=0,}
+#define OPimm12d(o,d,rel)				\
+    {.op = (o),.type=INT64,.rd=(d),.imm12=(rel)}
+#define OPimm12(o,rel)					\
+    {.op = (o),.type=INT64,.rd=(0),.imm12=(rel)}
 
 static const char* asm_opname(uint8_t op)
 {
     switch(op) {
+    case OP_NOP:  return "nop";
+    case OP_JMP:  return "jmp";
+    case OP_JNZ:  return "jnz";
+    case OP_JZ:   return "jz";		
     case OP_RET:  return "ret";
     case OP_MOVR:  return "mov";
-    case OP_MOVA:  return "mov";
-    case OP_MOVC:  return "mov";
+    case OP_MOVI:  return "mov";
+    case OP_ADDI:  return "addi";
+    case OP_SUBI:  return "subi";
+    case OP_SLLI:  return "slli";
+    case OP_SRLI:  return "srli";
+    case OP_SRAI:  return "srai";		
     case OP_NEG:  return "neg";
     case OP_BNOT:  return "bnot";
     case OP_INV:  return "inv";
@@ -57,10 +67,13 @@ static const char* asm_opname(uint8_t op)
     case OP_CMPEQ:  return "cmpeq";
     case OP_VRET:  return "vret";
     case OP_VMOVR:  return "vmov";
-    case OP_VMOVA:  return "vmov";
-    case OP_VMOVC:  return "vmov";
-    case OP_VNEG:  return "vneg";
+    case OP_VNEG:  return "vneg";	
     case OP_VBNOT:  return "vbnot";
+    case OP_VADDI:  return "vaddi";
+    case OP_VSUBI:  return "vsubi";
+    case OP_VSLLI:  return "vslli";
+    case OP_VSRLI:  return "vsrli";
+    case OP_VSRAI:  return "vsrai";	
     case OP_VINV:  return "vinv";
     case OP_VADD:  return "vadd";
     case OP_VSUB:  return "vsub";
@@ -304,38 +317,81 @@ int setup_input(matrix_type_t type, scalar0_t& a0, scalar0_t& a1, scalar0_t& a2)
 }
 
 
-void print_instr(instr_t* pc)
+void print_instr(FILE* f,instr_t* pc)
 {
-    if (pc->op & OP_BIN) {
-	printf("%s.%s, %s, %s, %s",
-	       asm_opname(pc->op),
-	       asm_typename(pc->type),
-	       asm_regname(pc->op,pc->rd),
-	       asm_regname(pc->op,pc->ri),
-	       asm_regname(pc->op,pc->rj));
-    }
-    else {
-	printf("%s.%s, %s, %s",
-	       asm_opname(pc->op),
-	       asm_typename(pc->type),
-	       asm_regname(pc->op,pc->rd),
-	       asm_regname(pc->op,pc->ri));
+    switch(pc->op) {
+    case OP_JMP:
+	fprintf(f, "%s %d", asm_opname(pc->op), pc->imm12);
+	break;
+    case OP_RET:
+	fprintf(f, "%s.%s %s",
+		asm_opname(pc->op),
+		asm_typename(pc->type),
+		asm_regname(pc->op,pc->rd));
+	break;
+    case OP_ADDI:
+    case OP_SUBI:
+    case OP_SLLI:
+    case OP_SRLI:
+    case OP_SRAI:
+	    fprintf(f, "%s.%s, %s, %s, %d",
+		    asm_opname(pc->op),
+		    asm_typename(pc->type),
+		    asm_regname(pc->op,pc->rd),
+		    asm_regname(pc->op,pc->ri),
+		    pc->imm8);
+	    break;
+    case OP_MOVI:
+    case OP_JNZ:
+    case OP_JZ:
+	fprintf(f, "%s.%s %s, %d",
+		asm_opname(pc->op),
+		asm_typename(pc->type),
+		asm_regname(pc->op,pc->rd), pc->imm12);
+	break;	
+    default:
+	if (pc->op & OP_BIN) {
+	    fprintf(f, "%s.%s, %s, %s, %s",
+		    asm_opname(pc->op),
+		    asm_typename(pc->type),
+		    asm_regname(pc->op,pc->rd),
+		    asm_regname(pc->op,pc->ri),
+		    asm_regname(pc->op,pc->rj));
+	}
+	else {
+	    fprintf(f, "%s.%s, %s, %s",
+		    asm_opname(pc->op),
+		    asm_typename(pc->type),
+		    asm_regname(pc->op,pc->rd),
+		    asm_regname(pc->op,pc->ri));
+	}
+	break;
     }
 }
+
+void print_code(FILE* f, instr_t* code, size_t len)
+{
+    int i;
+
+    for (i = 0; i < (int)len; i++) {
+	print_instr(f, &code[i]);
+	fprintf(f, "\n");
+    }
+}
+
 
 static int verbose = 1;
 static int debug   = 0;
 
-int test_instr(matrix_type_t itype, matrix_type_t otype, instr_t* icode)
+int test_code(matrix_type_t itype, matrix_type_t otype, instr_t* icode, size_t code_len)
 {
     JitRuntime rt;           // Runtime designed for JIT code execution
     CodeHolder code;         // Holds code and relocation information
     int i;
-    size_t n;
-    FileLogger logger(stdout);
-    
+    FileLogger logger(stderr);
+
     // Initialize to the same arch as JIT runtime
-    code.init(rt.environment(), rt.cpuFeatures()); 
+    code.init(rt.environment(), rt.cpuFeatures());
 
     x86::Assembler a(&code);  // Create and attach x86::Assembler to `code`
 
@@ -343,78 +399,94 @@ int test_instr(matrix_type_t itype, matrix_type_t otype, instr_t* icode)
 	a.setLogger(&logger);
     }
 
-    n = code_size(icode);
-    set_type(itype, icode, n);
+    set_type(itype, icode, code_len);
 
-    if (verbose) {
-	printf("TEST ");
-	print_instr(&icode[0]);
-	if (debug) printf("\n");
-    }
-    
     assemble(a, rt.environment(),
 	     reg(2), reg(0), reg(1),
-	     icode, n);
+	     icode, code_len);
 
     fun2_t fn;
     Error err = rt.add(&fn, &code);   // Add the generated code to the runtime.
     if (err) {
-	printf("rt.add ERROR\n");
+	fprintf(stderr, "rt.add ERROR\n");
 	return -1;               // Handle a possible error case.
     }
 
-    // printf("code is added %p\n", fn);
+    // fprintf(stderr, "code is added %p\n", fn);
 
     scalar0_t a0, a1, a2, r0, r1;
-    scalar0_t reg[16];
-    vscalar0_t vreg[16];
+    scalar0_t  rr[16];
+    vscalar0_t vr[16];
 
-    memset(reg, 0, sizeof(reg));
-    memset(vreg, 0, sizeof(vreg));
+    memset(rr, 0, sizeof(rr));
+    memset(vr, 0, sizeof(vr));
 
     setup_input(itype, a0, a1, a2);
     
-    // printf("emulate fn\n");
-    memcpy(&reg[0], &a0, sizeof(scalar0_t));
-    memcpy(&reg[1], &a1, sizeof(scalar0_t));
-    memcpy(&reg[2], &a2, sizeof(scalar0_t));
+    // fprintf(stderr, "\nemulate fn\n");
+    
+    memcpy(&rr[0], &a0, sizeof(scalar0_t));
+    memcpy(&rr[1], &a1, sizeof(scalar0_t));
+    memcpy(&rr[2], &a2, sizeof(scalar0_t));
 
     memcpy(&r0, &a2, sizeof(scalar0_t));
     memcpy(&r1, &a2, sizeof(scalar0_t));
     
-    emulate(reg, vreg, icode, n, &i);
-    memcpy(&r0, &reg[i], sizeof(scalar0_t));
+    emulate(rr, vr, icode, code_len, &i);
+    memcpy(&r0, &rr[i], sizeof(scalar0_t));
 
-    // printf("calling fn\n");
+    if (debug) {
+	fprintf(stderr, "emu:r = "); sprint(stderr,otype, r0); fprintf(stderr,"\n");
+    }
+
+    // fprintf(stderr, "\ncall fn\n");
 
     fn((scalar0_t*)&r1, (scalar0_t*)&a0, (scalar0_t*)&a1);
+
+//    fprintf(stderr, "\ndone fn\n");
+    
     rt.release(fn);
 
     // compare output from emu and exe
     if (scmp(otype, r0, r1) != 0) {
-	if (verbose) printf(" FAIL\n");
-	else print_instr(&icode[0]);
-	printf("a0 = "); sprint(itype, a0); printf("\n");
-	printf("a1 = "); sprint(itype, a1); printf("\n");
-	printf("a2 = "); sprint(itype, a2); printf("\n");    	
-	printf("emu:r = "); sprint(otype, r0); printf("\n");
-	printf("exe:r = "); sprint(otype, r1); printf("\n");
-	return 0;
+	if (verbose)
+	    fprintf(stderr, " FAIL\n");
+	else {
+	    print_code(stderr, icode, code_len);
+	}
+	fprintf(stderr, "a0 = "); sprint(stderr,itype, a0); fprintf(stderr,"\n");
+	fprintf(stderr,"a1 = "); sprint(stderr,itype, a1); fprintf(stderr,"\n");
+	fprintf(stderr,"a2 = "); sprint(stderr,itype, a2); fprintf(stderr,"\n");
+	fprintf(stderr, "emu:r = "); sprint(stderr,otype, r0); fprintf(stderr,"\n");
+	// reassemble with logging
+	CodeHolder code1;         // Holds code and relocation information
+	x86::Assembler a1(&code1); // Create and attach x86::Assembler to `code`
+	a1.setLogger(&logger);
+	
+	assemble(a1, rt.environment(),
+		 reg(2), reg(0), reg(1),
+		 icode, code_len);
+
+	fprintf(stderr, "exe:r = "); sprint(stderr, otype, r1); fprintf(stderr, "\n");
+	return -1;
     }
     else {
-	if (verbose) printf(" OK\n");
+	if (debug) {
+	    fprintf(stderr, "exe:r = "); sprint(stderr, otype, r1); fprintf(stderr, "\n");
+	}
+	if (verbose) fprintf(stderr, " OK\n");
     }
-    return 1;
+    return 0;
 }
 
 
-int test_vinstr(matrix_type_t itype, matrix_type_t otype, instr_t* icode)
+int test_vcode(matrix_type_t itype, matrix_type_t otype,
+	       instr_t* icode, size_t code_len)
 {
     JitRuntime rt;           // Runtime designed for JIT code execution
     CodeHolder code;         // Holds code and relocation information
     int i;
-    size_t n;
-    FileLogger logger(stdout);
+    FileLogger logger(stderr);
     
     // Initialize to the same arch as JIT runtime
     code.init(rt.environment(), rt.cpuFeatures()); 
@@ -424,80 +496,225 @@ int test_vinstr(matrix_type_t itype, matrix_type_t otype, instr_t* icode)
     if (debug)
 	a.setLogger(&logger);
 
-    n = code_size(icode);
-    set_type(itype, icode, n);
+    set_type(itype, icode, code_len);
 
-    if (verbose) {
-	printf("TEST ");
-	print_instr(&icode[0]);
-	if (debug) printf("\n");
-    }
-    
     assemble(a, rt.environment(),
 	     vreg(2), vreg(0), vreg(1),
-	     icode, n);
+	     icode, code_len);
 
     vecfun2_t fn;
     Error err = rt.add(&fn, &code);   // Add the generated code to the runtime.
     if (err) {
-	printf("rt.add ERROR\n");
+	fprintf(stderr, "rt.add ERROR\n");
 	return -1;               // Handle a possible error case.
     }
 
-    // printf("code is added %p\n", fn);
+    // fprintf(stderr, "code is added %p\n", fn);
 
     vector_t a0, a1, a2, r0, r1;
-    scalar0_t reg[16];
-    vscalar0_t vreg[16];
+    scalar0_t rr[16];
+    vscalar0_t vr[16];
 
-    memset(reg, 0, sizeof(reg));
-    memset(vreg, 0, sizeof(vreg));    
+    memset(rr, 0, sizeof(rr));
+    memset(vr, 0, sizeof(vr)); 
 
     setup_vinput(itype, a0, a1, a2);
     
-    // printf("emulate fn\n");
-    memcpy(&vreg[0], &a0, sizeof(vector_t));
-    memcpy(&vreg[1], &a1, sizeof(vector_t));
-    memcpy(&vreg[2], &a2, sizeof(vector_t));
+    // fprintf(stderr, "\nemulate fn\n");
+    memcpy(&vr[0], &a0, sizeof(vector_t));
+    memcpy(&vr[1], &a1, sizeof(vector_t));
+    memcpy(&vr[2], &a2, sizeof(vector_t));
 
     memcpy(&r0, &a2, sizeof(vector_t));
     memcpy(&r1, &a2, sizeof(vector_t));
     
-    emulate(reg, vreg, icode, n, &i);
-    memcpy(&r0, &vreg[i], sizeof(vector_t));
+    emulate(rr, vr, icode, code_len, &i);
+    memcpy(&r0, &vr[i], sizeof(vector_t));
 
-    // printf("calling fn\n");
+    // fprintf(stderr, "\ncalling fn\n");
 
     fn((vector_t*)&r1, (vector_t*)&a0, (vector_t*)&a1);
     rt.release(fn);
 
     // compare output from emu and exe
     if (vcmp(otype, r0, r1) != 0) {
-	if (verbose) printf(" FAIL\n");
-	else print_instr(&icode[0]);
-	printf("a0 = "); vprint(itype, (vector_t)a0); printf("\n");
-	printf("a1 = "); vprint(itype, (vector_t)a1); printf("\n");
-	printf("a2 = "); vprint(itype, (vector_t)a2); printf("\n");    	
-	printf("emu:r = "); vprint(otype, (vector_t)r0); printf("\n");
-	printf("exe:r = "); vprint(otype, (vector_t)r1); printf("\n");
-	return 0;
+	if (verbose)
+	    printf(" FAIL\n");
+	else {
+	    print_code(stderr, icode, code_len);
+	}
+
+	fprintf(stderr, "a0 = "); vprint(stderr, itype, (vector_t)a0); fprintf(stderr,"\n");
+	fprintf(stderr, "a1 = "); vprint(stderr, itype, (vector_t)a1); fprintf(stderr,"\n");
+	fprintf(stderr, "a2 = "); vprint(stderr, itype, (vector_t)a2); fprintf(stderr,"\n");    	
+	fprintf(stderr,"emu:r = "); vprint(stderr,otype, (vector_t)r0); fprintf(stderr,"\n");
+	// reassemble with logging
+	code.reset();
+	x86::Assembler a1(&code);  // Create and attach x86::Assembler to `code`
+	a1.setLogger(&logger);
+
+	assemble(a1, rt.environment(),
+		 vreg(2), vreg(0), vreg(1),
+		 icode, code_len);
+	
+	fprintf(stderr,"exe:r = "); vprint(stderr,otype, (vector_t)r1); fprintf(stderr,"\n");
+	return -1;
     }
     else {
 	if (verbose) printf(" OK\n");
     }
-    return 1;
+    return 0;
 }
 
-// convert float type to integer type with the same size
-static uint8_t integer_type(uint8_t at)
+// convert type to integer type with the same size
+static uint8_t int_type(uint8_t at)
 {
     return ((at & ~BASE_TYPE_MASK) | INT);
 }
 
-// convert float type to integer type with the same size
-static uint8_t unsigned_type(uint8_t at)
+#define CODE_LEN(code) (sizeof((code))/sizeof((code)[0]))
+
+int test_ts_code(uint8_t* ts, int td, instr_t* code, size_t code_len)
 {
-    return ((at & ~BASE_TYPE_MASK) | INT);
+    int failed = 0;
+    
+    while(*ts != VOID) {
+	uint8_t otype;
+	switch(td) {
+	case INT: otype = int_type(*ts); break;
+	default:  otype = *ts; break;
+	}
+	if (verbose) {
+	    fprintf(stderr, "TEST ");
+	    code[0].type = *ts; // otherwise set by test_code!
+	    print_instr(stderr, code);
+	}
+	if (test_code(*ts, otype, code, code_len) < 0)
+	    failed++;
+	ts++;
+    }
+    return failed;
+}
+
+int test_binary_as(uint8_t op, uint8_t* ts, uint8_t otype)
+{
+    instr_t code[2];
+    int i, j;
+    int failed = 0;
+    
+    code[0].op = op;
+    code[1].op = OP_RET;
+    code[1].rd = 2;
+    code[0].rd = 2;
+    
+    for (i = 0; i <= 2; i++) {
+	code[0].ri = i;
+	for (j = 0; j <= 2; j++) {
+	    code[0].rj = j;
+	    failed += test_ts_code(ts, otype, code, 2);
+	}
+    }
+    return failed;
+}
+
+int test_unary_as(uint8_t op, uint8_t* ts, uint8_t otype)
+{
+    instr_t code[2];
+    int i;
+    int failed = 0;
+    
+    code[0].op = op;
+    code[1].op = OP_RET;
+    code[1].rd = 2;
+    code[0].rd = 2;
+    
+    for (i = 0; i <= 2; i++) {
+	code[0].ri = i;
+	failed += test_ts_code(ts, otype, code, 2);
+    }
+    return failed;
+}
+
+int test_imm_as(uint8_t op, uint8_t* ts, uint8_t otype)
+{
+    instr_t code[2];
+    int i, imm;
+    int failed = 0;
+    
+    code[0].op = op;
+    code[1].op = OP_RET;
+    code[1].rd = 2;
+    code[0].rd = 2;
+
+    for (i = 0; i <= 2; i++) {
+	code[0].ri = i;
+	for (imm = -128; imm < 128; imm += 15) {
+	    code[0].imm8 = imm;
+	    failed += test_ts_code(ts, otype, code, 2);
+	}
+    }
+    return failed;
+}
+
+
+int test_ts_vcode(uint8_t* ts, int td, instr_t* code, size_t code_len)
+{
+    int failed = 0;
+    while(*ts != VOID) {
+	uint8_t otype;
+	switch(td) {
+	case INT: otype = int_type(*ts); break;
+	default: otype = *ts; break;
+	}
+	if (verbose) {
+	    fprintf(stderr, "TEST ");
+	    code[0].type = *ts; // otherwise set by test_code!
+	    print_instr(stderr, code);
+	}
+	if (test_vcode(*ts, otype, code, code_len) < 0)
+	    failed++;
+	ts++;
+    }
+    return failed;
+}
+
+int test_vbinary_as(uint8_t op, uint8_t* ts, uint8_t otype)
+{
+    instr_t code[2];
+    int i, j;
+    int failed = 0;
+    
+    code[0].op = op;
+    code[1].op = OP_VRET;
+    code[1].rd = 2;
+    code[0].rd = 2;
+    
+    for (i = 0; i <= 2; i++) {
+	code[0].ri = i;
+	for (j = 0; j <= 2; j++) {
+	    code[0].rj = j;
+	    failed += test_ts_vcode(ts, otype, code, 2);
+	}
+    }
+    return failed;
+}
+
+int test_vunary_as(uint8_t op, uint8_t* ts, uint8_t otype)
+{
+    instr_t code[2];
+    int i;
+    int failed = 0;
+    
+    code[0].op = op;
+    code[1].op = OP_VRET;
+    code[1].rd = 2;
+    code[0].rd = 2;
+    
+    for (i = 0; i <= 2; i++) {
+	code[0].ri = i;
+	failed += test_ts_vcode(ts, otype, code, 2);
+    }
+    return failed;
 }
 
 int main()
@@ -508,302 +725,182 @@ int main()
     printf("sizeof(vscalar0_t) = %ld\n", sizeof(vscalar0_t));
     printf("sizeof(instr_t) = %ld\n", sizeof(instr_t));
 
-    // scalar ops
-    instr_t code_neg_0[]  = { OPdi(OP_NEG,   2, 0), OPi(OP_RET, 2) };
-    instr_t code_neg_2[]  = { OPdi(OP_NEG,   2, 2), OPi(OP_RET, 2) };
-
-    instr_t code_bnot_0[]  = { OPdi(OP_BNOT, 2, 0), OPi(OP_RET, 2) };
-    instr_t code_bnot_2[]  = { OPdi(OP_BNOT, 2, 2), OPi(OP_RET, 2) };    
+    int failed = 0;  // number of failed cases
     
-    instr_t code_add_00[]  = { OPdij(OP_ADD,   2, 0, 0), OPi(OP_RET, 2) };
-    instr_t code_add_01[]  = { OPdij(OP_ADD,   2, 0, 1), OPi(OP_RET, 2) };
-    instr_t code_add_10[]  = { OPdij(OP_ADD,   2, 1, 0), OPi(OP_RET, 2) };
-    instr_t code_add_11[]  = { OPdij(OP_ADD,   2, 1, 1), OPi(OP_RET, 2) };
-    instr_t code_add_02[]  = { OPdij(OP_ADD,   2, 0, 2), OPi(OP_RET, 2) };
-    instr_t code_add_21[]  = { OPdij(OP_ADD,   2, 2, 1), OPi(OP_RET, 2) };
-    instr_t code_add_12[]  = { OPdij(OP_ADD,   2, 1, 2), OPi(OP_RET, 2) };
-    instr_t code_add_22[]  = { OPdij(OP_ADD,   2, 2, 2), OPi(OP_RET, 2) };
+    instr_t code_sum[] = {
+	OPimm12d(OP_MOVI, 0, 0),     // SUM=0 // OPdij(OP_BXOR, 0, 0, 0),
+	OPimm12d(OP_MOVI, 1, 13),    // I=13  OPdij(OP_BXOR, 0, 0, 0),
+	OPdij(OP_ADD, 0, 1, 0),      // SUM += I
+	OPimm12d(OP_SUBI, 1, 1),    // I -= 1
+	OPimm12d(OP_JNZ, 1, -3),
+	OPd(OP_RET, 0)
+    };
     
-    // vector ops    
-    instr_t code_vneg_0[]  = { OPdi(OP_VNEG,   2, 0), OPi(OP_VRET, 2) };
-    instr_t code_vneg_2[]  = { OPdi(OP_VNEG,   2, 2), OPi(OP_VRET, 2) };
-
-    instr_t code_vbnot_0[]  = { OPdi(OP_VBNOT,   2, 0), OPi(OP_VRET, 2) };
-    instr_t code_vbnot_2[]  = { OPdi(OP_VBNOT,   2, 2), OPi(OP_VRET, 2) };    
-    
-    instr_t code_vadd_00[]  = { OPdij(OP_VADD,   2, 0, 0), OPi(OP_VRET, 2) };
-    instr_t code_vadd_01[]  = { OPdij(OP_VADD,   2, 0, 1), OPi(OP_VRET, 2) };
-    instr_t code_vadd_10[]  = { OPdij(OP_VADD,   2, 1, 0), OPi(OP_VRET, 2) };
-    instr_t code_vadd_11[]  = { OPdij(OP_VADD,   2, 1, 1), OPi(OP_VRET, 2) };
-    instr_t code_vadd_02[]  = { OPdij(OP_VADD,   2, 0, 2), OPi(OP_VRET, 2) };
-    instr_t code_vadd_21[]  = { OPdij(OP_VADD,   2, 2, 1), OPi(OP_VRET, 2) };
-    instr_t code_vadd_12[]  = { OPdij(OP_VADD,   2, 1, 2), OPi(OP_VRET, 2) };
-    instr_t code_vadd_22[]  = { OPdij(OP_VADD,   2, 2, 2), OPi(OP_VRET, 2) };
-
-    instr_t code_vsub_00[]  = { OPdij(OP_VSUB,   2, 0, 0), OPi(OP_VRET, 2) };
-    instr_t code_vsub_01[]  = { OPdij(OP_VSUB,   2, 0, 1), OPi(OP_VRET, 2) };
-    instr_t code_vsub_10[]  = { OPdij(OP_VSUB,   2, 1, 0), OPi(OP_VRET, 2) };
-    instr_t code_vsub_11[]  = { OPdij(OP_VSUB,   2, 1, 1), OPi(OP_VRET, 2) };
-    instr_t code_vsub_02[]  = { OPdij(OP_VSUB,   2, 0, 2), OPi(OP_VRET, 2) };
-    instr_t code_vsub_12[]  = { OPdij(OP_VSUB,   2, 1, 2), OPi(OP_VRET, 2) };
-    instr_t code_vsub_21[]  = { OPdij(OP_VSUB,   2, 2, 1), OPi(OP_VRET, 2) };
-    instr_t code_vsub_22[]  = { OPdij(OP_VSUB,   2, 2, 2), OPi(OP_VRET, 2) };
-
-    instr_t code_vmul_00[]  = { OPdij(OP_VMUL,   2, 0, 0), OPi(OP_VRET, 2) };
-    instr_t code_vmul_01[]  = { OPdij(OP_VMUL,   2, 0, 1), OPi(OP_VRET, 2) };
-    instr_t code_vmul_10[]  = { OPdij(OP_VMUL,   2, 1, 0), OPi(OP_VRET, 2) };
-    instr_t code_vmul_02[]  = { OPdij(OP_VMUL,   2, 0, 2), OPi(OP_VRET, 2) };
-    instr_t code_vmul_12[]  = { OPdij(OP_VMUL,   2, 1, 2), OPi(OP_VRET, 2) };
-    instr_t code_vmul_21[]  = { OPdij(OP_VMUL,   2, 2, 1), OPi(OP_VRET, 2) };
-    instr_t code_vmul_22[]  = { OPdij(OP_VMUL,   2, 2, 2), OPi(OP_VRET, 2) };
-
-    instr_t code_vlt_00[]   = { OPdij(OP_VCMPLT, 2, 0, 0), OPi(OP_VRET, 2) }; 
-    instr_t code_vlt_01[]   = { OPdij(OP_VCMPLT, 2, 0, 1), OPi(OP_VRET, 2) };
-    instr_t code_vlt_10[]   = { OPdij(OP_VCMPLT, 2, 1, 0), OPi(OP_VRET, 2) };
-    instr_t code_vlt_21[]   = { OPdij(OP_VCMPLT, 2, 2, 1), OPi(OP_VRET, 2) };
-    instr_t code_vlt_22[]   = { OPdij(OP_VCMPLT, 2, 2, 2), OPi(OP_VRET, 2) };
-
-    instr_t code_vle_00[]   = { OPdij(OP_VCMPLE, 2, 0, 0), OPi(OP_VRET, 2) };   
-    instr_t code_vle_01[]   = { OPdij(OP_VCMPLE, 2, 0, 1), OPi(OP_VRET, 2) };
-    instr_t code_vle_10[]   = { OPdij(OP_VCMPLE, 2, 1, 0), OPi(OP_VRET, 2) };
-    instr_t code_vle_21[]   = { OPdij(OP_VCMPLE, 2, 2, 1), OPi(OP_VRET, 2) };
-    instr_t code_vle_22[]   = { OPdij(OP_VCMPLE, 2, 2, 2), OPi(OP_VRET, 2) };
-
-    instr_t code_veq_00[]   = { OPdij(OP_VCMPEQ, 2, 0, 0), OPi(OP_VRET, 2) };
-    instr_t code_veq_01[]   = { OPdij(OP_VCMPEQ, 2, 0, 1), OPi(OP_VRET, 2) };
-    instr_t code_veq_10[]   = { OPdij(OP_VCMPEQ, 2, 1, 0), OPi(OP_VRET, 2) };
-    instr_t code_veq_21[]   = { OPdij(OP_VCMPEQ, 2, 2, 1), OPi(OP_VRET, 2) };
-    instr_t code_veq_22[]   = { OPdij(OP_VCMPEQ, 2, 2, 2), OPi(OP_VRET, 2) };
-
-    instr_t code_vband_00[]   = { OPdij(OP_VBAND, 2, 0, 0), OPi(OP_VRET, 2) };  
-    instr_t code_vband_01[]   = { OPdij(OP_VBAND, 2, 0, 1), OPi(OP_VRET, 2) };
-    instr_t code_vband_21[]   = { OPdij(OP_VBAND, 2, 2, 1), OPi(OP_VRET, 2) };
-    instr_t code_vband_22[]   = { OPdij(OP_VBAND, 2, 2, 2), OPi(OP_VRET, 2) };
-
-    instr_t code_vbor_01[]   = { OPdij(OP_VBOR, 2, 0, 1), OPi(OP_VRET, 2) };
-    instr_t code_vbor_00[]   = { OPdij(OP_VBOR, 2, 0, 0), OPi(OP_VRET, 2) };
-    instr_t code_vbor_21[]   = { OPdij(OP_VBOR, 2, 2, 1), OPi(OP_VRET, 2) };
-    instr_t code_vbor_22[]   = { OPdij(OP_VBOR, 2, 2, 2), OPi(OP_VRET, 2) };
-
-    instr_t code_vbxor_01[]   = { OPdij(OP_VBXOR, 2, 0, 1), OPi(OP_VRET, 2) };
-    instr_t code_vbxor_00[]   = { OPdij(OP_VBXOR, 2, 0, 0), OPi(OP_VRET, 2) };
-    instr_t code_vbxor_21[]   = { OPdij(OP_VBXOR, 2, 2, 1), OPi(OP_VRET, 2) };
-    instr_t code_vbxor_22[]   = { OPdij(OP_VBXOR, 2, 2, 2), OPi(OP_VRET, 2) };
-    
-    int t;
     uint8_t int_types[] =
 	{ UINT8, UINT16, UINT32, UINT64, INT8, INT16, INT32, INT64, VOID };
-    uint8_t float_types[] =
-	{ FLOAT32, FLOAT64, VOID };
+//    uint8_t float_types[] =
+//	{ FLOAT32, FLOAT64, VOID };
     uint8_t all_types[] =
 	{ UINT8, UINT16, UINT32, UINT64, INT8, INT16, INT32, INT64,
 	  //FLOAT16
 	  FLOAT32, FLOAT64, VOID };
 /*
     debug = 1;
-//    test_vinstr(INT8,    INT8,    code_vmul_01);    
-//    test_vinstr(FLOAT32, FLOAT32, code_vadd_22);
-//    test_vinstr(INT8,    INT8,    code_vneg_0);    
-//    test_vinstr(INT8,    INT8,    code_vsub_02);
-    exit(0);
+    instr_t code1[] = { OPdij(OP_CMPLT,2,0,2), OPd(OP_RET, 2) };
+    code1[0].type = UINT64;
+    code1[1].type = UINT64;
+    test_code(UINT64, INT64, code1, 2);
+     exit(0);
 */
     printf("+------------------------------\n");
     printf("| neg\n");
     printf("+------------------------------\n");
 
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], int_types[t], code_neg_0);
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], int_types[t], code_neg_2);
+    failed += test_unary_as(OP_NEG, int_types, VOID);
 
     printf("+------------------------------\n");
     printf("| bnot\n");
     printf("+------------------------------\n");
 
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], unsigned_type(int_types[t]), code_bnot_0);
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], unsigned_type(int_types[t]), code_bnot_2);
+    failed += test_unary_as(OP_BNOT, int_types, INT);
+
+    printf("+------------------------------\n");
+    printf("| addi\n");
+    printf("+------------------------------\n");
+
+    failed += test_imm_as(OP_ADDI, int_types, INT);
+
+    printf("+------------------------------\n");
+    printf("| subi\n");
+    printf("+------------------------------\n");
+
+    failed += test_imm_as(OP_SUBI, int_types, INT);    
+
 
     printf("+------------------------------\n");
     printf("| add\n");
     printf("+------------------------------\n");
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], int_types[t], code_add_00);    
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], int_types[t], code_add_01);
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], int_types[t], code_add_10);
-    for (t = 0; int_types[t] != VOID; t++) 
-	test_instr(int_types[t], int_types[t], code_add_11);
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], int_types[t], code_add_02);
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], int_types[t], code_add_21);
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], int_types[t], code_add_12);
-    for (t = 0; int_types[t] != VOID; t++)
-	test_instr(int_types[t], int_types[t], code_add_22);	
-    
 
+    failed += test_binary_as(OP_ADD, int_types, VOID);
+
+    printf("+------------------------------\n");
+    printf("| sub\n");
+    printf("+------------------------------\n");
+
+    failed += test_binary_as(OP_SUB, int_types, VOID);    
+
+    printf("+------------------------------\n");
+    printf("| mul\n");
+    printf("+------------------------------\n");
+
+    failed += test_binary_as(OP_MUL, int_types, VOID);
+
+    printf("+------------------------------\n");
+    printf("| band\n");
+    printf("+------------------------------\n");
+
+    failed += test_binary_as(OP_BAND, int_types, INT);    
+    
+    printf("+------------------------------\n");
+    printf("| bor\n");
+    printf("+------------------------------\n");
+
+    failed += test_binary_as(OP_BOR, int_types, INT);        
+    
+    printf("+------------------------------\n");
+    printf("| bxor\n");
+    printf("+------------------------------\n");
+
+    failed += test_binary_as(OP_BXOR, int_types, INT);
+    
+    printf("+------------------------------\n");
+    printf("| cmplt\n");
+    printf("+------------------------------\n");
+
+    failed += test_binary_as(OP_CMPLT, int_types, INT);
+
+    printf("+------------------------------\n");
+    printf("| cmple\n");
+    printf("+------------------------------\n");
+
+    failed += test_binary_as(OP_CMPLE, int_types, INT);    
+
+    printf("+------------------------------\n");
+    printf("| cmpeq\n");
+    printf("+------------------------------\n");
+
+    failed += test_binary_as(OP_CMPEQ, int_types, INT);
+        
     printf("+------------------------------\n");
     printf("| vneg\n");
     printf("+------------------------------\n");
 
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vneg_0);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vneg_2);
-
+    failed += test_vunary_as(OP_VNEG, all_types, VOID);
+        
     printf("+------------------------------\n");
     printf("| vbnot\n");
     printf("+------------------------------\n");
 
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbnot_0);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbnot_2);
+    failed += test_vunary_as(OP_VBNOT, all_types, INT);
 
     printf("+------------------------------\n");
     printf("| vadd\n");
     printf("+------------------------------\n");
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vadd_00);    
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vadd_01);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vadd_10);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], all_types[t], code_vadd_11);    
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vadd_02);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vadd_21);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vadd_12);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vadd_22);	
+
+    failed += test_vbinary_as(OP_VADD, all_types, VOID);
 
     printf("+------------------------------\n");
     printf("| vsub\n");
     printf("+------------------------------\n");
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], all_types[t], code_vsub_00);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], all_types[t], code_vsub_01);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], all_types[t], code_vsub_10);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], all_types[t], code_vsub_11);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], all_types[t], code_vsub_02);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], all_types[t], code_vsub_21);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], all_types[t], code_vsub_12);    
-    for (t = 0; all_types[t] != VOID; t++)	
-	test_vinstr(all_types[t], all_types[t], code_vsub_22);	
+
+    failed += test_vbinary_as(OP_VSUB, all_types, VOID);
     
     printf("+------------------------------\n");
-    printf("| veq\n");
+    printf("| vcmpeq\n");
     printf("+------------------------------\n");
 
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_veq_00);    
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_veq_01);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_veq_10);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_veq_21);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_veq_22);
+    failed += test_vbinary_as(OP_VCMPEQ, all_types, INT);    
 
     printf("+------------------------------\n");
     printf("| vcmplt\n");
     printf("+------------------------------\n");
 
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vlt_00);    
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vlt_01);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vlt_10);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vlt_21);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vlt_22);    
-    
+    failed += test_vbinary_as(OP_VCMPLT, all_types, INT);
+
     printf("+------------------------------\n");
     printf("| vcmple\n");
     printf("+------------------------------\n");
-    
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vle_00);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vle_01);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vle_10);    
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vle_21);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vle_22);        
+
+    failed += test_vbinary_as(OP_VCMPLE, all_types, INT);
+
     printf("+------------------------------\n");
     printf("| vband\n");
     printf("+------------------------------\n");
 
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vband_01);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vband_00);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vband_21);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vband_22);
+    failed += test_vbinary_as(OP_VBAND, all_types, INT);
     
     printf("+------------------------------\n");
     printf("| vbor\n");
     printf("+------------------------------\n");
 
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbor_01);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbor_00);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbor_21);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbor_22);
-    
+    failed += test_vbinary_as(OP_VBOR, all_types, INT);
+
     printf("+------------------------------\n");
     printf("| vbxor\n");
     printf("+------------------------------\n");
-
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbxor_01);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbxor_00);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbxor_21);
-    for (t = 0; all_types[t] != VOID; t++) 
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vbxor_22);
+    
+    failed += test_vbinary_as(OP_VBXOR, all_types, INT);
 
     printf("+------------------------------\n");
     printf("| vmul\n");
     printf("+------------------------------\n");
 
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vmul_00);    
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vmul_01);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vmul_10);    
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vmul_02);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vmul_12);    
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vmul_21);
-    for (t = 0; all_types[t] != VOID; t++)
-	test_vinstr(all_types[t], unsigned_type(all_types[t]), code_vmul_22);
-    return 0;    
+    failed += test_vbinary_as(OP_VMUL, all_types, VOID);
+
+    if (failed) {
+	printf("ERROR: %d cases failed\n", failed);
+	exit(1);
+    }
+    printf("OK\n");
+    exit(0);
 }

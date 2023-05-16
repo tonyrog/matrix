@@ -7,16 +7,21 @@
 
 // FIXME: make register machine 8 vector regs?
 
-#define    OP_RET  0     // return from function
-#define    OP_MOVR 1     // move register to register
-#define    OP_MOVA 2     // move argument to register
-#define    OP_MOVC 3     // move const to register
-#define    OP_MOVI 4     // move imm:16 to register {mov.i8, rd, 17}
-#define    OP_SLLI 4     // shift left logical {slli, rd, rdi, 8}
-#define    OP_SRLI 5     // shift right logical {srli, rd, rdi, 8}
-#define    OP_NEG  5     // negate
-#define    OP_BNOT 6     // bitwise negate
-#define    OP_INV  7     // recipocal
+#define    OP_NOP  0     // return from function
+#define    OP_RET  1     // return from function
+#define    OP_MOVR 2     // move register to register
+#define    OP_MOVI 3     // move imm:12 to register {mov.i8, rd, 17}
+#define    OP_SLLI 4     // shift left logical {slli,rd,ri,imm8}
+#define    OP_SRLI 5     // shift right logical {srli,rd,ri,imm8}
+#define    OP_SRAI 6     // shift right arithmetical {srai, rd, ri, imm8}
+#define    OP_NEG  7     // negate
+#define    OP_BNOT 8    // bitwise negate
+#define    OP_INV  9    // reciprocal
+#define    OP_JMP  10    // unconditional jump
+#define    OP_JNZ  11    // jump if rd!=0
+#define    OP_JZ   12    // jump if rd==0
+#define    OP_ADDI 13    // rd = ri+imm8   {addi,rd,ri,imm8}
+#define    OP_SUBI 14    // rd = ri+imm8   {subi,rd,ri,imm8}
 
 #define    OP_ADD   (OP_BIN|1)   // add
 #define    OP_SUB   (OP_BIN|2)   // subtract
@@ -30,9 +35,12 @@
 // unary
 #define    OP_VRET  (OP_VEC|OP_RET)
 #define    OP_VMOVR (OP_VEC|OP_MOVR)
-#define    OP_VMOVA (OP_VEC|OP_MOVA)
-#define    OP_VMOVC (OP_VEC|OP_MOVC)
 #define    OP_VMOVI (OP_VEC|OP_MOVI)
+#define    OP_VADDI (OP_VEC|OP_ADDI)
+#define    OP_VSUBI (OP_VEC|OP_SUBI)
+#define    OP_VSLLI (OP_VEC|OP_SLLI)
+#define    OP_VSRLI (OP_VEC|OP_SRLI)
+#define    OP_VSRAI (OP_VEC|OP_SRAI)
 #define    OP_VNEG  (OP_VEC|OP_NEG)
 #define    OP_VBNOT (OP_VEC|OP_BNOT)
 #define    OP_VINV  (OP_VEC|OP_INV)
@@ -76,16 +84,20 @@
 typedef struct {
     unsigned op:8;   // CND|BIN|VEC|<op>
     unsigned type:8; // type <<arr_size:3,base_exp_size:3,base_type:2>>
-    unsigned ri:4;   // src1 r<i> | v<i>    
+    unsigned rd:4;   // dst  r<d> | v<d> (return, cond jump)
     union {
 	struct {
-	    unsigned rj:4;   // src2 r<j> | v<j>
-	    unsigned pad:4;
+	    union {
+		struct {
+		    unsigned rj:4;   // src2 r<j> | v<j>
+		    unsigned pad:4;
+		};
+		int imm8:8;    // addi,subi,slli,srli,slai
+	    };
+	    unsigned ri:4;   // src1 r<i> | v<i>
 	};
-	int imm:8;
+	int imm12:12;  // jmp,jnz,jz relative offset
     };
-    unsigned rd:4;   // dst  r<d> | v<d>
-
 } instr_t;
 
 #endif

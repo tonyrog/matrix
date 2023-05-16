@@ -590,6 +590,10 @@ DECL_ATOM(r);
 DECL_ATOM(v);
 DECL_ATOM(a);
 DECL_ATOM(c);
+DECL_ATOM(nop);
+DECL_ATOM(jmp);
+DECL_ATOM(jz);
+DECL_ATOM(jnz);
 DECL_ATOM(ret);
 DECL_ATOM(mov);
 DECL_ATOM(add);
@@ -1483,6 +1487,7 @@ static void set_const(matrix_type_t t, uint8_t* data, scalar_t* dst)
 
 static void eval_prog(instr_t* prog, int argc, scalar_t argv[], scalar_t* dst)
 {
+    UNUSED(argc);
     scalar_t r[16];
     scalar_t ack;
     matrix_type_t t;
@@ -1497,17 +1502,8 @@ next:
     rd = prog[pc].rd;
 
     switch(i & 0x7f) {
+    case OP_NOP: break;
     case OP_VMOVR: ack = r[ri]; break;
-    case OP_VMOVA:
-	if (ri >= argc) return;  // ERROR
-	ack = argv[ri];
-	break;
-    case OP_VMOVC: {
-	int len = get_scalar_size(t);  // number of constant bytes
-	set_const(t, (uint8_t*) &prog[pc+1], &ack);
-	pc += ((len+3)/4);
-	break;
-    }
     case OP_VNEG:  (*fun_neg_ops[t])(&r[ri],&ack); break;
     case OP_VBNOT: (*fun_bnot_ops[t])(&r[ri],&ack); break;
     case OP_VINV:  (*fun_reciprocal_ops[t])(&r[ri],&ack); break;
@@ -1636,16 +1632,6 @@ next:
 
     switch(i & 0x7f) {
     case OP_MOVR: ack = r[ri]; break;
-    case OP_MOVA:
-	if (ri >= argc) return;  // ERROR
-	ack.vi8 = *argv[ri];
-	break;
-    case OP_MOVC: {
-	int len = get_scalar_size(t);  // number of constant bytes
-	set_vconst(t, (uint8_t*) &prog[pc+1], &ack);
-	pc += ((len+3)/4);
-	break;
-    }
     case OP_VNEG:  (*vfun_neg_ops[t])(&r[ri],&ack); break;
     case OP_VBNOT: (*vfun_bnot_ops[t])(&r[ri],&ack); break;
     case OP_VINV:  (*vfun_reciprocal_ops[t])(&r[ri],&ack); break;
@@ -5807,11 +5793,11 @@ static ERL_NIF_TERM matrix_bnot(ErlNifEnv* env, int argc, const ERL_NIF_TERM arg
 }
 
 //
-// {{ret,false,type},Ri}
-// {{instr,false,type},Ri,Rd}
-// {{instr,false,type},Ri,Rj,Rd}
-// {{instr,true,type},Ri,Rd,Rc}
-// {{instr,true,type},Ri,Rj,Rd,Rc}
+// {{ret,type},Rd}
+// {{instr,type},Rd,Imm12}
+// {{instr,type},Rd,Ri}
+// {{instr,type},Rd,Ri,imm8}
+// {{instr,type},Rd,Ri,Rj}
 //
 
 static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
@@ -5832,31 +5818,16 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	matrix_type_t type;
 	int ilen = 0;  // extra instruction len MOVC!
 
-	// {inst, ri[, rj], rd[, rc]}
 	if (!enif_get_tuple(env, head, &arity, &elems) || (arity < 2))
 	    return -1;
 
-	// {instruction,cond,type}
-	if (!enif_get_tuple(env, elems[pos], &ia, &ie) || (ia != 3))
+	// {instruction,type}
+	if (!enif_get_tuple(env, elems[pos], &ia, &ie) || (ia != 2))
 	    return -1;
 
 	// first decode the instruction name!
-	if      (ie[0] == ATOM(vret))  op = OP_VRET;
-	else if (ie[0] == ATOM(vmov))  op = OP_VMOVR; // updated!
-	else if (ie[0] == ATOM(vneg))  op = OP_VNEG;
-	else if (ie[0] == ATOM(vbnot)) op = OP_VBNOT;
-	else if (ie[0] == ATOM(vinv))  op = OP_VINV;
-	else if (ie[0] == ATOM(vband)) op = OP_VBAND;
-	else if (ie[0] == ATOM(vbor))  op = OP_VBOR;
-	else if (ie[0] == ATOM(vbxor)) op = OP_VBXOR;	
+	if (ie[0] == ATOM(nop))  op = OP_NOP;
 	
-	else if (ie[0] == ATOM(vadd))  op = OP_VADD;
-	else if (ie[0] == ATOM(vsub))  op = OP_VSUB;
-	else if (ie[0] == ATOM(vmul))  op = OP_VMUL;
-	else if (ie[0] == ATOM(vcmplt))   op = OP_VCMPLT;
-	else if (ie[0] == ATOM(vcmple))  op = OP_VCMPLE;
-	else if (ie[0] == ATOM(vcmpeq))   op = OP_VCMPEQ;
-
 	else if (ie[0] == ATOM(ret))  op = OP_RET;
 	else if (ie[0] == ATOM(mov))  op = OP_MOVR; // updated!
 	else if (ie[0] == ATOM(neg))  op = OP_NEG;
@@ -5873,24 +5844,38 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	else if (ie[0] == ATOM(cmple)) op = OP_CMPLE;
 	else if (ie[0] == ATOM(cmpeq)) op = OP_CMPEQ;
 	
+	else if (ie[0] == ATOM(vret))  op = OP_VRET;
+	else if (ie[0] == ATOM(vmov))  op = OP_VMOVR; // updated!
+	else if (ie[0] == ATOM(vneg))  op = OP_VNEG;
+	else if (ie[0] == ATOM(vbnot)) op = OP_VBNOT;
+	else if (ie[0] == ATOM(vinv))  op = OP_VINV;
+	else if (ie[0] == ATOM(vband)) op = OP_VBAND;
+	else if (ie[0] == ATOM(vbor))  op = OP_VBOR;
+	else if (ie[0] == ATOM(vbxor)) op = OP_VBXOR;	
+	
+	else if (ie[0] == ATOM(vadd))  op = OP_VADD;
+	else if (ie[0] == ATOM(vsub))  op = OP_VSUB;
+	else if (ie[0] == ATOM(vmul))  op = OP_VMUL;
+	else if (ie[0] == ATOM(vcmplt))   op = OP_VCMPLT;
+	else if (ie[0] == ATOM(vcmple))  op = OP_VCMPLE;
+	else if (ie[0] == ATOM(vcmpeq))   op = OP_VCMPEQ;
 	else return -1;
 
-	if (ie[1] == ATOM(true)) op |= OP_CND;
 	prog[pc].op = op;
 
-	if (ie[2] == ATOM(uint8))       type = UINT8;
-	else if (ie[2] == ATOM(uint16)) type = UINT16;
-	else if (ie[2] == ATOM(uint32)) type = UINT32;
-	else if (ie[2] == ATOM(uint64)) type = UINT64;
-	else if (ie[2] == ATOM(uint128)) type = UINT128;
-	else if (ie[2] == ATOM(int8))   type = INT8;
-	else if (ie[2] == ATOM(int16))  type = INT16;
-	else if (ie[2] == ATOM(int32))  type = INT32;
-	else if (ie[2] == ATOM(int64))  type = INT64;
-	else if (ie[2] == ATOM(int128)) type = INT128;
-	else if (ie[2] == ATOM(float16)) type = FLOAT16;
-	else if (ie[2] == ATOM(float32)) type = FLOAT32;
-	else if (ie[2] == ATOM(float64)) type = FLOAT64;
+	if (ie[1] == ATOM(uint8))       type = UINT8;
+	else if (ie[1] == ATOM(uint16)) type = UINT16;
+	else if (ie[1] == ATOM(uint32)) type = UINT32;
+	else if (ie[1] == ATOM(uint64)) type = UINT64;
+	else if (ie[1] == ATOM(uint128)) type = UINT128;
+	else if (ie[1] == ATOM(int8))   type = INT8;
+	else if (ie[1] == ATOM(int16))  type = INT16;
+	else if (ie[1] == ATOM(int32))  type = INT32;
+	else if (ie[1] == ATOM(int64))  type = INT64;
+	else if (ie[1] == ATOM(int128)) type = INT128;
+	else if (ie[1] == ATOM(float16)) type = FLOAT16;
+	else if (ie[1] == ATOM(float32)) type = FLOAT32;
+	else if (ie[1] == ATOM(float64)) type = FLOAT64;
 	else return -1;
 	prog[pc].type = type;
 	
@@ -5919,11 +5904,11 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	    pos++;
 	}
 	
-	// Ri  pos=2
+	// Ri pos=2 / imm12
 	{
 	    const ERL_NIF_TERM* rs;
-	    int ri;
-	    // {r,i} | {a,i} | {c,<int>|<float>>}
+	    int ri, imm12;
+	    // {r,i} | {v,i} | <int>
 	    if (!enif_get_tuple(env, elems[pos], &ri, &rs) || (ri != 2))
 		return -1;
 	    if (rs[0] == ATOM(r)) {
@@ -5937,221 +5922,19 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 		if (!enif_get_int(env, rs[1], &i) || (i < 0) || (i > 15))
 		    return -1;
 		prog[pc].ri = i;
-	    }	    
-	    else if (rs[0] == ATOM(a)) {
-		int i;
-		if (!enif_get_int(env, rs[1], &i) || (i < 0) || (i > 15))
-		    return -1;
-		if (i >= nargs) // FIXME?
-		    return -1;
-		if ((op & ~OP_CND) == OP_MOVR) {
-		    prog[pc].op = OP_MOVA | (op & OP_CND);
-		    prog[pc].ri = i;  // interpreted as argument i
-		}
-		else if ((op & ~OP_CND) == OP_VMOVR) {
-		    prog[pc].op = OP_VMOVA | (op & OP_CND);
-		    prog[pc].ri = i;  // interpreted as argument i
-		}
-		else
-		    return -1;  // {a,i} only supported for MOV!
 	    }
-	    else if (rs[0] == ATOM(c)) {
-		int64_t   ival;
-		float64_t fval;
-		uint8_t* ptr = (uint8_t*) &prog[pc+1];
-
-		if ((op & ~OP_CND) == OP_MOVR)
-		    prog[pc].op = OP_MOVC | (op & OP_CND);
-		else if ((op & ~OP_CND) == OP_VMOVR)
-		    prog[pc].op = OP_VMOVC | (op & OP_CND);
-		else
-		    return -1;
-
-		// fixme: store constants! vector values?
-		if (enif_get_int64(env, rs[1], &ival)) {
-		    switch(type) {
-		    case UINT8: {
-			uint8_t uv = ival;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 1;
-			break;
-		    }
-		    case UINT16: {
-			uint16_t uv = ival;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 1;
-			break;
-		    }
-		    case UINT32: {
-			uint32_t uv = ival;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 1;
-			break;
-		    }
-		    case UINT64: {
-			uint64_t uv = ival;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 2;
-			break;
-		    }
-		    case UINT128: {
-			uint128_t uv;
-			uv.lo = ival;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 4;
-			break;			
-		    }
-		    case INT8: {
-			int8_t iv = ival;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;
-			break;
-		    }
-		    case INT16: {
-			int16_t iv = ival;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;
-			break;
-		    }
-		    case INT32: {
-			int32_t iv = ival;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;
-			break;
-		    }
-		    case INT64: {
-			int64_t iv = ival;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 2;
-			break;
-		    }
-		    case INT128: {
-			int128_t iv;
-			iv.lo = ival;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 4;
-			break;
-		    }
-		    case FLOAT16:{
-			float16_t iv = (float16_t) ival;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;
-			break;
-		    }
-		    case FLOAT32: {
-			float32_t iv = (float32_t) ival;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;
-			break;
-		    }
-		    case FLOAT64: {
-			float64_t iv = (float64_t) ival;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 2;
-			break;
-		    }
-		    default:
-			return -1;
-		    }
-		}
-		else if (enif_get_double(env, rs[1], &fval)) {
-		    switch(type) {
-		    case UINT8: {
-			uint8_t uv = fval;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 1;
-			break;
-		    }
-		    case UINT16: {
-			uint16_t uv = fval;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 1;
-			break;
-		    }
-		    case UINT32: {
-			uint32_t uv = fval;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 1;
-			break;
-		    }
-		    case UINT64: {
-			uint64_t uv = fval;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 2;
-			break;
-		    }
-		    case UINT128: {
-			uint128_t uv;
-			uv.lo = fval;
-			memcpy(ptr, &uv, sizeof(uv));
-			ilen = 4;
-			break;			
-		    }
-		    case INT8: {
-			int8_t iv = fval;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;
-			break;
-		    }
-		    case INT16: {
-			int16_t iv = fval;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;
-			break;
-		    }
-		    case INT32: {
-			int32_t iv = fval;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;
-			break;
-		    }
-		    case INT64: {
-			int64_t iv = fval;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 2;
-			break;
-		    }
-		    case INT128: {
-			int128_t iv;
-			iv.lo = fval;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 4;
-			break;
-		    }
-		    case FLOAT16:{
-			float16_t iv = (float16_t) fval;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;			
-			break;
-		    }
-		    case FLOAT32: {
-			float32_t iv = (float32_t) fval;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 1;
-			break;
-		    }
-		    case FLOAT64: {
-			float64_t iv = (float64_t) fval;
-			memcpy(ptr, &iv, sizeof(iv));
-			ilen = 2;
-			break;
-		    }
-		    default:
-			return -1;
-		    }
-		}
-		else
-		    return -1;
+	    else if (enif_get_int(env, rs[0], &imm12)) {
+		prog[pc].imm12 = imm12;
 	    }
 	    else
 		return -1;
 	    pos++;
 	}
 
-	// Rj (second source) is present if binary op OP_BIN
+	// Rj (second source) is present if binary op OP_BIN / imm8
 	if ((op & OP_BIN) && (op != OP_RET) && (op != OP_VRET)) {
 	    const ERL_NIF_TERM* rs;
-	    int ri;
+	    int ri, imm8;
 	    if (pos >= arity) return -1;  // missing rj register
 	    if (!enif_get_tuple(env, elems[pos], &ri, &rs) || (ri != 2))
 		return -1;
@@ -6167,6 +5950,9 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 		    return -1;
 		prog[pc].rj = j;
 	    }
+	    else if (enif_get_int(env, rs[0], &imm8)) {
+		prog[pc].imm8 = imm8;
+	    }	    
 	    pos++;
 	}
 	pc++;         // next instruction
@@ -7957,6 +7743,10 @@ static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     LOAD_ATOM(env,v);
     LOAD_ATOM(env,a);
     LOAD_ATOM(env,c);
+    LOAD_ATOM(env,nop);
+    LOAD_ATOM(env,jmp);
+    LOAD_ATOM(env,jz);
+    LOAD_ATOM(env,jnz);
     LOAD_ATOM(env,ret);
     LOAD_ATOM(env,mov);    
     LOAD_ATOM(env,neg);
