@@ -52,8 +52,9 @@ struct Assembly
     }
 };
 
+#define TMPREG   3   // currently r11
 #define TMPVREG0 14
-#define TMPVREG  15
+#define TMPVREG1 15
 
 static void emit_vbxor(x86::Assembler &a, uint8_t type,
 		       int dst, int src1, int src2);
@@ -336,6 +337,8 @@ static void emit_movr(x86::Assembler &a, uint8_t type, int dst, int src)
     case INT32:   a.mov(reg(dst).r32(), reg(src).r32()); break;
     case UINT64:
     case INT64:   a.mov(reg(dst).r64(), reg(src).r64()); break;
+    case FLOAT32:
+    case FLOAT64:
     default: break;
     }    
 }
@@ -763,6 +766,10 @@ static void emit_cmple(x86::Assembler &a, uint8_t type,
     emit_cmpge(a, type, dst, src2, src1);
 }
 
+#define DST vreg(dst).xmm()
+#define SRC vreg(src).xmm()
+#define T0  vreg(TMPVREG0).xmm()
+#define T1  vreg(TMPVREG1).xmm()
 
 // dst = -src  = 0 - src
 static void emit_vneg(x86::Assembler &a, uint8_t type, int dst, int src)
@@ -774,15 +781,15 @@ static void emit_vneg(x86::Assembler &a, uint8_t type, int dst, int src)
     emit_vzero(a, dst);    
     switch(type) {  // dst = src - dst
     case INT8:
-    case UINT8:   a.psubb(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT8:   a.psubb(DST, SRC); break;
     case INT16:	    
-    case UINT16:  a.psubw(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT16:  a.psubw(DST, SRC); break;
     case INT32:
-    case UINT32:  a.psubd(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT32:  a.psubd(DST, SRC); break;
     case INT64:
-    case UINT64:  a.psubq(vreg(dst).xmm(), vreg(src).xmm()); break;
-    case FLOAT32: a.subps(vreg(dst).xmm(), vreg(src).xmm()); break;
-    case FLOAT64: a.subpd(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT64:  a.psubq(DST, SRC); break;
+    case FLOAT32: a.subps(DST, SRC); break;
+    case FLOAT64: a.subpd(DST, SRC); break;
     default: break;
     }    
 }
@@ -791,7 +798,41 @@ static void emit_vneg(x86::Assembler &a, uint8_t type, int dst, int src)
 static void emit_vmovi(x86::Assembler &a, uint8_t type,
 		       int dst, int16_t imm12)
 {
-
+    switch(type) {
+    case INT8:
+    case UINT8:
+	a.mov(reg(TMPREG), imm12);
+	a.movd(DST, reg(TMPREG).r32());
+	a.punpcklbw(DST,DST);
+	a.punpcklwd(DST,DST);
+	a.pshufd(DST,DST,0);
+	break;
+    case INT16:
+    case UINT16:
+	a.mov(reg(TMPREG), imm12);
+	a.movd(DST, reg(TMPREG).r32());
+	a.punpcklwd(DST,DST);
+	a.pshufd(DST,DST,0);
+	break;
+    case INT32:
+    case UINT32:
+	a.mov(reg(TMPREG), imm12);
+	a.movd(DST, reg(TMPREG).r32());
+	a.pshufd(DST,DST,0);
+	break;
+    case INT64:
+    case UINT64:
+	a.mov(reg(TMPREG), imm12);
+	a.movq(DST, reg(TMPREG).r64());
+	a.punpcklqdq(DST, DST);
+	break;
+    case FLOAT32:
+    case FLOAT64:
+	// FIXME: convert small integers to float and broadcast
+	break;
+    default:
+	break;
+    }
 }
 
 static void emit_vslli(x86::Assembler &a, uint8_t type,
@@ -801,13 +842,24 @@ static void emit_vslli(x86::Assembler &a, uint8_t type,
 	emit_vmov(a, type, dst, src);
     switch(type) {
     case UINT8:
-    case INT8:    a.psllw(vreg(dst).xmm(), imm); break;  // FIXME!!!
+    case INT8:
+	a.movdqa(T1, DST);
+	// tmp = |FEDCBA98|76543210| imm=3
+	// HIGH
+ 	a.psrlw(T1, 8);     // tmp = |00000000|FEDCBA98|
+	a.psllw(T1, 8+imm); // tmp = |CBA98000|00000000|
+	a.psrlw(T1, 8);     // tmp = |00000000|CBA98000|
+	// LOW
+	a.psllw(DST, 8+imm);      // dst = |43210000|00000000|
+	a.psrlw(DST, 8);          // dst = |00000000|43210000|
+	a.packuswb(DST, T1);
+	break;
     case UINT16:
-    case INT16:   a.psllw(vreg(dst).xmm(), imm); break;
+    case INT16:   a.psllw(DST, imm); break;
     case UINT32:
-    case INT32:   a.pslld(vreg(dst).xmm(), imm); break;
+    case INT32:   a.pslld(DST, imm); break;
     case UINT64:
-    case INT64:   a.psllq(vreg(dst).xmm(), imm); break;
+    case INT64:   a.psllq(DST, imm); break;
     default: break;
     }    
 }
@@ -819,13 +871,22 @@ static void emit_vsrli(x86::Assembler &a, uint8_t type,
 	emit_vmov(a, type, dst, src);
     switch(type) {
     case UINT8:
-    case INT8:    a.psrlw(vreg(dst).xmm(), imm); break;  // FIXME!!!
+    case INT8:
+	a.movdqa(T1, DST);
+	// tmp = |FEDCBA98|76543210| imm=3
+	// HIGH
+ 	a.psrlw(T1, 8+imm); // tmp = |00000000|000FEDCB|
+	// LOW
+	a.psllw(DST, 8);          // dst = |76543210|00000000|
+ 	a.psrlw(DST, 8+imm);      // dst = |00000000|00076543|	
+	a.packuswb(DST, T1);
+	break;	
     case UINT16:
-    case INT16:   a.psrlw(vreg(dst).xmm(), imm); break;
+    case INT16:   a.psrlw(DST, imm); break;
     case UINT32:
-    case INT32:   a.psrld(vreg(dst).xmm(), imm); break;
+    case INT32:   a.psrld(DST, imm); break;
     case UINT64:
-    case INT64:   a.psrlq(vreg(dst).xmm(), imm); break;
+    case INT64:   a.psrlq(DST, imm); break;
     default: break;
     }    
 }
@@ -837,24 +898,46 @@ static void emit_vsrai(x86::Assembler &a, uint8_t type,
 	emit_vmov(a, type, dst, src);
     switch(type) {
     case UINT8:
-    case INT8:    a.psraw(vreg(dst).xmm(), imm); break;  // FIXME!!
+    case INT8:
+	a.movdqa(T1, DST);
+	// tmp = |FEDCBA98|76543210| imm=4
+	// HIGH
+	a.psraw(T1, imm);   // tmp = |FFEDCBA9|87654321|
+	a.psrlw(T1, 8);     // tmp = |00000000|FFEDCBA9|
+	// LOW
+	a.psllw(DST, 8);          // dst = |76543210|00000000|
+	a.psraw(DST, imm);        // dst = |07654321|00000000|
+	a.psrlw(DST, 8);          // tmp = |00000000|07654321|
+	a.packuswb(DST, T1);
+	break;		
     case UINT16:
-    case INT16:   a.psraw(vreg(dst).xmm(), imm); break;
+    case INT16:   a.psraw(DST, imm); break;
     case UINT32:
-    case INT32:   a.psrad(vreg(dst).xmm(), imm); break;
+    case INT32:   a.psrad(DST, imm); break;
     case UINT64:
-    case INT64:   a.psrad(vreg(dst).xmm(), imm); break;  // FIXME!!
+    case INT64:
+	a.movdqa(T1, DST);	
+	// shift low
+	a.movq(reg(TMPREG).r64(), DST);
+	a.sar(reg(TMPREG).r64(), imm);
+	a.movq(DST, reg(TMPREG).r64());
+	// shift high
+	a.movhlps(T1, T1); // swap?
+	a.movq(reg(TMPREG).r64(), T1);
+	a.sar(reg(TMPREG).r64(), imm);
+	a.movq(T1, reg(TMPREG).r64());
+	a.punpcklqdq(DST, vreg(TMPREG).xmm());
+	break;
     default: break;
     }    
 }
-
 
 static void emit_vbnot(x86::Assembler &a, uint8_t type, int dst, int src)
 {
     (void) type;
     if (src == dst) {
-	emit_vone(a, TMPVREG);
-	emit_vbxor(a, type, dst, src, TMPVREG);
+	emit_vone(a, TMPVREG1);
+	emit_vbxor(a, type, dst, src, TMPVREG1);
     }
     else {
 	emit_vmov(a, type, dst, src);  // dst = src
@@ -886,15 +969,15 @@ static void emit_vadd(x86::Assembler &a, uint8_t type,
     }
     switch(type) {
     case INT8:
-    case UINT8:   a.paddb(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT8:   a.paddb(DST, SRC); break;
     case INT16:	    
-    case UINT16:  a.paddw(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT16:  a.paddw(DST, SRC); break;
     case INT32:	    
-    case UINT32:  a.paddd(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT32:  a.paddd(DST, SRC); break;
     case INT64:	    
-    case UINT64:  a.paddq(vreg(dst).xmm(), vreg(src).xmm()); break;
-    case FLOAT32: a.addps(vreg(dst).xmm(), vreg(src).xmm()); break;
-    case FLOAT64: a.addpd(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT64:  a.paddq(DST, SRC); break;
+    case FLOAT32: a.addps(DST, SRC); break;
+    case FLOAT64: a.addpd(DST, SRC); break;
     default: break;
     }
 }
@@ -925,15 +1008,15 @@ static void emit_vsub(x86::Assembler &a, uint8_t type,
     }
     switch(type) {
     case INT8:
-    case UINT8:   a.psubb(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT8:   a.psubb(DST, SRC); break;
     case INT16:	    
-    case UINT16:  a.psubw(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT16:  a.psubw(DST, SRC); break;
     case INT32:
-    case UINT32:  a.psubd(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT32:  a.psubd(DST, SRC); break;
     case INT64:	    
-    case UINT64:  a.psubq(vreg(dst).xmm(), vreg(src).xmm()); break;
-    case FLOAT32: a.subps(vreg(dst).xmm(), vreg(src).xmm()); break;
-    case FLOAT64: a.subpd(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT64:  a.psubq(DST, SRC); break;
+    case FLOAT32: a.subps(DST, SRC); break;
+    case FLOAT64: a.subpd(DST, SRC); break;
     default: break;
     }
 }
@@ -958,56 +1041,60 @@ static void emit_vmul(x86::Assembler &a, uint8_t type,
     switch(type) {
     case INT8:
     case UINT8: {
-	a.movdqa(vreg(TMPVREG).xmm(), vreg(dst).xmm());
-	a.pmullw(vreg(TMPVREG).xmm(), vreg(src).xmm());
-	a.psllw(vreg(TMPVREG).xmm(), 8);
-	a.psrlw(vreg(TMPVREG).xmm(), 8);
+	a.movdqa(T1, DST);
+	a.pmullw(T1, SRC);
+	a.psllw(T1, 8);
+	a.psrlw(T1, 8);
     
-	a.psrlw(vreg(dst).xmm(), 8);
-	a.psrlw(vreg(src).xmm(), 8);
-	a.pmullw(vreg(dst).xmm(), vreg(src).xmm());
-	a.psllw(vreg(dst).xmm(), 8);
-	a.por(vreg(dst).xmm(), vreg(TMPVREG).xmm());
+	a.psrlw(DST, 8);
+	a.psrlw(SRC, 8);
+	a.pmullw(DST, SRC);
+	a.psllw(DST, 8);
+	a.por(DST, T1);
 	break;
     }
     case INT16:
-    case UINT16: a.pmullw(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT16: a.pmullw(DST, SRC); break;
     case INT32:	    
-    case UINT32: a.pmulld(vreg(dst).xmm(), vreg(src).xmm()); break;
-	
-    case UINT64:
-    case INT64: { // temp1 = xmm14, temp2 = xmm15
-	a.movdqa(vreg(TMPVREG0).xmm(),  vreg(src).xmm());
-	a.pmuludq(vreg(TMPVREG0).xmm(), vreg(dst).xmm()); // xmm14=AC = BA*DC
-	a.movdqa(vreg(TMPVREG).xmm(),  vreg(src).xmm()); // B = BA
-	a.psrlq(vreg(TMPVREG).xmm(), 32);    // B = BA >> 32
-	a.pmuludq(vreg(TMPVREG).xmm(), vreg(dst).xmm()); // BC = xmm15 = B * (DC & 0xFFFFFFFF)
-	a.psrlq(vreg(dst).xmm(), 32);           // D = DC >> 32
-	a.pmuludq(vreg(dst).xmm(), vreg(src).xmm());        // DA = (BA & 0xFFFFFFFF) * D;
-	a.paddq(vreg(dst).xmm(), vreg(TMPVREG).xmm());   // H = BC + DA
-	a.psllq(vreg(dst).xmm(), 32);           // H <<= 32
-	a.paddq(vreg(dst).xmm(), vreg(TMPVREG0).xmm());   // H + AC
+    case UINT32: a.pmulld(DST, SRC); break;
+
+    case INT64:
+    case UINT64: // need 2 temporary registers!
+	a.movdqa(T0, DST);     // T0=DST
+	a.pmuludq(T0, SRC);    // T0=L(DST)*L(SRC)
+	a.movdqa(T1, SRC);     // T1=SRC
+	a.psrlq(T1, 32);       // T1=H(SRC)
+	a.pmuludq(T1, DST);    // T1=H(SRC)*L(DST)
+	a.psllq(T1,32);	       // T1=H(SRC)*L(DST)<<32
+	a.paddq(T0, T1);       // T0+=H(SRC)*L(DST)<<32
+
+	a.movdqa(T1, DST);     // T1=DST
+	a.psrlq(T1, 32);       // T1=H(DST)
+	a.pmuludq(T1, SRC);    // T1=H(DST)*L(SRC)
+	a.psllq(T1,32);	       // T1=H(DST)*L(SRC)<<32
+	a.paddq(T0, T1);       // T0+=H(DST)*L(SRC)<<32	
+
+	a.movdqa(DST, T0);     // T0=DST	
 	break;
-    }
-    case FLOAT32: a.mulps(vreg(dst).xmm(), vreg(src).xmm()); break;	    
-    case FLOAT64: a.mulpd(vreg(dst).xmm(), vreg(src).xmm()); break;
+	
+    case FLOAT32: a.mulps(DST, SRC); break;	    
+    case FLOAT64: a.mulpd(DST, SRC); break;
     default: break;
     }
 }
 
-
 static void emit_vaddi(x86::Assembler &a, uint8_t type,
 		       int dst, int src, int8_t imm)
 {
-    emit_vmovi(a, type, TMPVREG, imm);
-    emit_vadd(a, type, dst, src, TMPVREG);
+    emit_vmovi(a, type, TMPVREG1, imm);
+    emit_vadd(a, type, dst, src, TMPVREG1);
 }
 
 static void emit_vsubi(x86::Assembler &a, uint8_t type,
 		       int dst, int src, int8_t imm)
 {
-    emit_vmovi(a, type, TMPVREG, imm);
-    emit_vsub(a, type, dst, src, TMPVREG);
+    emit_vmovi(a, type, TMPVREG1, imm);
+    emit_vsub(a, type, dst, src, TMPVREG1);
 }
 
 
@@ -1028,13 +1115,13 @@ static void emit_vbor(x86::Assembler &a, uint8_t type,
     }
     switch(type) {
     case FLOAT32:
-	a.orps(vreg(dst).xmm(), vreg(src).xmm());
+	a.orps(DST, SRC);
 	break;	
     case FLOAT64:
-	a.orpd(vreg(dst).xmm(), vreg(src).xmm());
+	a.orpd(DST, SRC);
 	break;	
     default:
-	a.por(vreg(dst).xmm(), vreg(src).xmm());
+	a.por(DST, SRC);
 	break;
     }
 }
@@ -1056,13 +1143,13 @@ static void emit_vband(x86::Assembler &a, uint8_t type,
     }
     switch(type) {
     case FLOAT32:
-	a.andps(vreg(dst).xmm(), vreg(src).xmm());
+	a.andps(DST, SRC);
 	break;	
     case FLOAT64:
-	a.andpd(vreg(dst).xmm(), vreg(src).xmm());
+	a.andpd(DST, SRC);
 	break;
     default:
-	a.pand(vreg(dst).xmm(), vreg(src).xmm());
+	a.pand(DST, SRC);
 	break;
     }
 }
@@ -1084,13 +1171,13 @@ static void emit_vbxor(x86::Assembler &a, uint8_t type,
     }
     switch(type) {
     case FLOAT32:
-	a.xorps(vreg(dst).xmm(), vreg(src).xmm());
+	a.xorps(DST, SRC);
 	break;
     case FLOAT64:
-	a.xorpd(vreg(dst).xmm(), vreg(src).xmm());
+	a.xorpd(DST, SRC);
 	break;
     default:
-	a.pxor(vreg(dst).xmm(), vreg(src).xmm());
+	a.pxor(DST, SRC);
 	break;
     }
 }
@@ -1101,15 +1188,15 @@ static void emit_vcmpeq1(x86::Assembler &a, uint8_t type,
 {
     switch(type) {
     case INT8:
-    case UINT8:   a.pcmpeqb(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT8:   a.pcmpeqb(DST, SRC); break;
     case INT16:	    
-    case UINT16:  a.pcmpeqw(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT16:  a.pcmpeqw(DST, SRC); break;
     case INT32:	    
-    case UINT32:  a.pcmpeqd(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT32:  a.pcmpeqd(DST, SRC); break;
     case INT64:	    
-    case UINT64:  a.pcmpeqq(vreg(dst).xmm(), vreg(src).xmm()); break;
-    case FLOAT32: a.cmpps(vreg(dst).xmm(), vreg(src).xmm(), CMP_EQ); break;
-    case FLOAT64: a.cmppd(vreg(dst).xmm(), vreg(src).xmm(), CMP_EQ); break;
+    case UINT64:  a.pcmpeqq(DST, SRC); break;
+    case FLOAT32: a.cmpps(DST, SRC, CMP_EQ); break;
+    case FLOAT64: a.cmppd(DST, SRC, CMP_EQ); break;
     default: break;
     }
 }
@@ -1120,15 +1207,15 @@ static void emit_vcmpgt1(x86::Assembler &a, uint8_t type,
 {
     switch(type) {
     case INT8:
-    case UINT8:   a.pcmpgtb(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT8:   a.pcmpgtb(DST, SRC); break;
     case INT16:
-    case UINT16:  a.pcmpgtw(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT16:  a.pcmpgtw(DST, SRC); break;
     case INT32:	    
-    case UINT32:  a.pcmpgtd(vreg(dst).xmm(), vreg(src).xmm()); break;
+    case UINT32:  a.pcmpgtd(DST, SRC); break;
     case INT64:	    
-    case UINT64:  a.pcmpgtq(vreg(dst).xmm(), vreg(src).xmm()); break;
-    case FLOAT32: a.cmpps(vreg(dst).xmm(), vreg(src).xmm(), CMP_GT); break;
-    case FLOAT64: a.cmppd(vreg(dst).xmm(), vreg(src).xmm(), CMP_GT); break;	
+    case UINT64:  a.pcmpgtq(DST, SRC); break;
+    case FLOAT32: a.cmpps(DST, SRC, CMP_GT); break;
+    case FLOAT64: a.cmppd(DST, SRC, CMP_GT); break;	
     default: break;
     }
 }
@@ -1140,30 +1227,30 @@ static void emit_vcmplt1(x86::Assembler &a, uint8_t type,
     switch(type) {
     case INT8:
     case UINT8:
-	emit_vmov(a, type, TMPVREG, dst);
+	emit_vmov(a, type, TMPVREG1, dst);
 	emit_vmov(a, type, dst, src);
-	a.pcmpgtb(vreg(dst).xmm(), vreg(TMPVREG).xmm());  // SSE2
+	a.pcmpgtb(DST, T1);  // SSE2
 	break;
     case INT16:
     case UINT16:
-	emit_vmov(a, type, TMPVREG, dst);
+	emit_vmov(a, type, TMPVREG1, dst);
 	emit_vmov(a, type, dst, src);	
-	a.pcmpgtw(vreg(dst).xmm(), vreg(TMPVREG).xmm());  // SSE2
+	a.pcmpgtw(DST, T1);  // SSE2
 	break;
     case INT32:	    
     case UINT32:
-	emit_vmov(a, type, TMPVREG, dst);
+	emit_vmov(a, type, TMPVREG1, dst);
 	emit_vmov(a, type, dst, src);	
-	a.pcmpgtd(vreg(dst).xmm(),vreg(TMPVREG).xmm()); // SSE2
+	a.pcmpgtd(DST,T1); // SSE2
 	break;
     case INT64:	    
     case UINT64:
-	emit_vmov(a, type, TMPVREG, dst);
+	emit_vmov(a, type, TMPVREG1, dst);
 	emit_vmov(a, type, dst, src);
-	a.pcmpgtq(vreg(dst).xmm(), vreg(TMPVREG).xmm()); // SSE4.2
+	a.pcmpgtq(DST, T1); // SSE4.2
 	break;
-    case FLOAT32: a.cmpps(vreg(dst).xmm(), vreg(src).xmm(), CMP_LT); return;
-    case FLOAT64: a.cmppd(vreg(dst).xmm(), vreg(src).xmm(), CMP_LT); return;
+    case FLOAT32: a.cmpps(DST, SRC, CMP_LT); return;
+    case FLOAT64: a.cmppd(DST, SRC, CMP_LT); return;
     default: break;
     }
 }
@@ -1172,41 +1259,34 @@ static void emit_vcmplt1(x86::Assembler &a, uint8_t type,
 static void emit_vcmple1(x86::Assembler &a, uint8_t type,
 			 int dst, int src)
 {
+    // assert dst != src
     switch(type) {
     case INT8:
     case UINT8:
-	emit_vmov(a, type, TMPVREG, dst);
-	a.pcmpgtb(vreg(TMPVREG).xmm(), vreg(src).xmm());
-	emit_vmov(a, type, dst, TMPVREG);
-	emit_vone(a, TMPVREG);
-	a.pandn(vreg(dst).xmm(), vreg(TMPVREG).xmm());
+	emit_vmov(a, type, TMPVREG1, dst);
+	a.pcmpgtb(T1, SRC);
+	emit_vbnot(a, type, dst, TMPVREG1);
 	break;
     case INT16:
     case UINT16:
-	emit_vmov(a, type, TMPVREG, dst);
-	a.pcmpgtw(vreg(TMPVREG).xmm(), vreg(src).xmm());
-	emit_vmov(a, type, dst, TMPVREG);
-	emit_vone(a, TMPVREG);
-	a.pandn(vreg(dst).xmm(), vreg(TMPVREG).xmm());
+	emit_vmov(a, type, TMPVREG1, dst);
+	a.pcmpgtw(T1, SRC);
+	emit_vbnot(a, type, dst, TMPVREG1);
 	break;	
     case INT32:	    
     case UINT32:
-	emit_vmov(a, type, TMPVREG, dst);
-	a.pcmpgtd(vreg(TMPVREG).xmm(), vreg(src).xmm());
-	emit_vmov(a, type, dst, TMPVREG);
-	emit_vone(a, TMPVREG);
-	a.pandn(vreg(dst).xmm(), vreg(TMPVREG).xmm());
+	emit_vmov(a, type, TMPVREG1, dst);
+	a.pcmpgtd(T1, SRC);
+	emit_vbnot(a, type, dst, TMPVREG1);	
 	break;		
     case INT64:	    
     case UINT64:
-	emit_vmov(a, type, TMPVREG, dst);
-	a.pcmpgtq(vreg(TMPVREG).xmm(), vreg(src).xmm());
-	emit_vmov(a, type, dst, TMPVREG);
-	emit_vone(a, TMPVREG);
-	a.pandn(vreg(dst).xmm(), vreg(TMPVREG).xmm());
+	emit_vmov(a, type, TMPVREG1, dst);
+	a.pcmpgtq(T1, SRC);
+	emit_vbnot(a, type, dst, TMPVREG1);
 	break;			
-    case FLOAT32: a.cmpps(vreg(dst).xmm(), vreg(src).xmm(), CMP_LE); break;
-    case FLOAT64: a.cmppd(vreg(dst).xmm(), vreg(src).xmm(), CMP_LE); break;	
+    case FLOAT32: a.cmpps(DST, SRC, CMP_LE); break;
+    case FLOAT64: a.cmppd(DST, SRC, CMP_LE); break;	
     default: break;
     }
 }
@@ -1279,9 +1359,9 @@ static void emit_vcmpge(x86::Assembler &a, uint8_t type,
 	    src = src2;
 	}
 	if (type == FLOAT32)
-	    a.cmpps(vreg(dst).xmm(), vreg(src).xmm(), cmp);
+	    a.cmpps(DST, SRC, cmp);
 	else 
-	    a.cmppd(vreg(dst).xmm(), vreg(src).xmm(), cmp);
+	    a.cmppd(DST, SRC, cmp);
     }
     else {
 	if ((dst == src1) && (dst == src2)) {

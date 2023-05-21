@@ -7,16 +7,16 @@
 
 // FIXME: make register machine 8 vector regs?
 
-#define    OP_NOP  0     // return from function
-#define    OP_RET  1     // return from function
-#define    OP_MOVR 2     // move register to register
+#define    OP_NOP  0     // no operation {nop.i32}
+#define    OP_RET  1     // return from function {ret.i32, rd}
+#define    OP_MOVR 2     // move register to register  {mov.i32, rd, ri}
 #define    OP_MOVI 3     // move imm:12 to register {mov.i8, rd, 17}
 #define    OP_SLLI 4     // shift left logical {slli,rd,ri,imm8}
 #define    OP_SRLI 5     // shift right logical {srli,rd,ri,imm8}
 #define    OP_SRAI 6     // shift right arithmetical {srai, rd, ri, imm8}
-#define    OP_NEG  7     // negate
-#define    OP_BNOT 8    // bitwise negate
-#define    OP_INV  9    // reciprocal
+#define    OP_NEG  7     // two complement negate {neg.i8, rd, ri}
+#define    OP_BNOT 8     // bitwise negate {bnot.i32, rd, ri}
+#define    OP_INV  9     // reciprocal  {inv,f32, rd, ri}
 #define    OP_JMP  10    // unconditional jump
 #define    OP_JNZ  11    // jump if rd!=0
 #define    OP_JZ   12    // jump if rd==0

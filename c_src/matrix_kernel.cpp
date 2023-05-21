@@ -33,6 +33,9 @@ extern void set_element_float64(matrix_type_t type, vector_t &r, int i, float64_
     {.op = (o),.type=INT64,.rd=(d),.rj=0,.pad=0,.ri=(i),}
 #define OPd(o,d) \
     {.op = (o),.type=INT64,.rd=(d),.rj=0,.pad=0,.ri=0,}
+#define OPdiimm8(o,d,i,imm)				\
+    {.op = (o),.type=INT64,.rd=(d),.imm8=(imm),.ri=(i)}
+
 #define OPimm12d(o,d,rel)				\
     {.op = (o),.type=INT64,.rd=(d),.imm12=(rel)}
 #define OPimm12(o,rel)					\
@@ -47,7 +50,7 @@ static const char* asm_opname(uint8_t op)
     case OP_JZ:   return "jz";		
     case OP_RET:  return "ret";
     case OP_MOVR:  return "mov";
-    case OP_MOVI:  return "mov";
+    case OP_MOVI:  return "movi";
     case OP_ADDI:  return "addi";
     case OP_SUBI:  return "subi";
     case OP_SLLI:  return "slli";
@@ -67,13 +70,14 @@ static const char* asm_opname(uint8_t op)
     case OP_CMPEQ:  return "cmpeq";
     case OP_VRET:  return "vret";
     case OP_VMOVR:  return "vmov";
+    case OP_VMOVI:  return "vmovi";	
     case OP_VNEG:  return "vneg";	
     case OP_VBNOT:  return "vbnot";
     case OP_VADDI:  return "vaddi";
     case OP_VSUBI:  return "vsubi";
     case OP_VSLLI:  return "vslli";
     case OP_VSRLI:  return "vsrli";
-    case OP_VSRAI:  return "vsrai";	
+    case OP_VSRAI:  return "vsrai";
     case OP_VINV:  return "vinv";
     case OP_VADD:  return "vadd";
     case OP_VSUB:  return "vsub";
@@ -175,143 +179,178 @@ size_t code_size(instr_t* code)
 typedef void (*vecfun2_t)(vector_t* dst, const vector_t* a, const vector_t* b);
 typedef void (*fun2_t)(scalar0_t* dst, const scalar0_t* a, const scalar0_t* b);
 
+
+int64_t value_u8_0[16] =
+{ 0,1,2,5,10,20,50,70,127,128,130,150,180,253,254,255};
+int64_t value_u8_1[16] =
+{ 0,2,2,100,20,30,30,71,8,128,2,255,180,254,20,9};
+int64_t value_u8_2[16] =
+{ 0,3,4,200,10,150,200,2,3,128,170,3,5,8};
+
+int64_t value_i8_0[16] =
+{ 0,1,2,5,10,20,50,70,127,-128,-126,-106,-56,-3,-2,-1};
+int64_t value_i8_1[16] =
+{ 0,2,2,100,20,30,30,71,8,128,2,255,-76,-3,20,9};
+int64_t value_i8_2[16] =
+{ 0,3,4,-56,10,-106,-56,2,3,-128,-86,100,3,5,8};
+
+int64_t value_u16_0[8] =
+{ 0,2,50,32767,1300,180,253,65535};
+int64_t value_u16_1[8] =
+{ 2,1000,71,128,65535,100,20,9};
+int64_t value_u16_2[8] =
+{ 3,200,1500,2,128,100,5, 8};
+
+int64_t value_i16_0[8] =
+{ -32768,-1260,-106,-76,-56,-3,-2,-1};
+int64_t value_i16_1[8] =
+{ 0,2,2,1000,200,30,71,8 };
+int64_t value_i16_2[8] =
+{ 0,4,-56,100,-32768,3,5,8};
+
+int64_t value_u32_0[4] =
+{ 0,500,130,2530 };
+int64_t value_u32_1[4] =
+{ 100,12800,100,9};
+int64_t value_u32_2[4] =
+{ 200,2,1000, 8};
+
+int64_t value_i32_0[4] =
+{ -106,-3,-2,-1};
+int64_t value_i32_1[4] =
+{ 20,30,71,8 };
+int64_t value_i32_2[4] =
+{ 0,-56,10,-32768};
+
+int64_t value_u64_0[2] =
+{ 130,2530 };
+int64_t value_u64_1[2] =
+{ 12800,100};
+int64_t value_u64_2[2] =
+{ 2,1000 };
+
+int64_t value_i64_0[2] =
+{ -106,-56};
+int64_t value_i64_1[2] =
+{ 20,30 };
+int64_t value_i64_2[2] =
+{ -56-32768};
+
+    
 int setup_vinput(matrix_type_t type, vector_t& a0, vector_t& a1, vector_t& a2)
 {
-    switch(VSIZE/get_scalar_size(type)) {
-    case 16:
-	set_element_int64(type, a0, 15,  2);
-	set_element_int64(type, a0, 14, -3);
-	set_element_int64(type, a0, 13,  4);
-	set_element_int64(type, a0, 12, -5);
-	set_element_int64(type, a0, 11,  6);
-	set_element_int64(type, a0, 10, -7);
-	set_element_int64(type, a0, 9,   8);
-	set_element_int64(type, a0, 8,  -9);
-	// fall through
-    case 8:
-	set_element_int64(type, a0, 7,  10);
-	set_element_int64(type, a0, 6, -11);
-	set_element_int64(type, a0, 5,  12);
-	set_element_int64(type, a0, 4, -13);
-        // fall through	
-    case 4:
-	set_element_int64(type, a0, 3,  23);
-	set_element_int64(type, a0, 2, -24);
-	// fall through	
-    case 2:
-	set_element_int64(type, a0, 0,  50);
-	set_element_int64(type, a0, 1, -49);
-	// fall through	
+    int i;    
+    switch(type) {
+    case UINT8:
+	for (i = 0; i < 16; i++) {
+	    set_element_int64(type, a0, i, value_u8_0[i]);
+	    set_element_int64(type, a1, i, value_u8_1[i]);
+	    set_element_int64(type, a2, i, value_u8_2[i]);
+	}
+	break;
+    case INT8:
+	for (i = 0; i < 16; i++) {
+	    set_element_int64(type, a0, i, value_i8_0[i]);
+	    set_element_int64(type, a1, i, value_i8_1[i]);
+	    set_element_int64(type, a2, i, value_i8_2[i]);
+	}
+	break;
+    case UINT16:
+	for (i = 0; i < 8; i++) {
+	    set_element_int64(type, a0, i, value_u16_0[i]);
+	    set_element_int64(type, a1, i, value_u16_1[i]);
+	    set_element_int64(type, a2, i, value_u16_2[i]);
+	}
+	break;
+    case INT16:
+	for (i = 0; i < 8; i++) {
+	    set_element_int64(type, a0, i, value_i16_0[i]);
+	    set_element_int64(type, a1, i, value_i16_1[i]);
+	    set_element_int64(type, a2, i, value_i16_2[i]);	    
+	}
+	break;
+    case UINT32:
+	for (i = 0; i < 4; i++) {
+	    set_element_int64(type, a0, i, value_u32_0[i]);
+	    set_element_int64(type, a1, i, value_u32_1[i]);
+	    set_element_int64(type, a2, i, value_u32_2[i]);	    
+	}
+	break;
+    case FLOAT32:
+    case INT32:
+	for (i = 0; i < 4; i++) {
+	    set_element_int64(type, a0, i, value_i32_0[i]);
+	    set_element_int64(type, a1, i, value_i32_1[i]);
+	    set_element_int64(type, a2, i, value_i32_2[i]);	    	    
+	}
+	break;
+    case UINT64:
+	for (i = 0; i < 2; i++) {
+	    set_element_int64(type, a0, i, value_u64_0[i]);
+	    set_element_int64(type, a1, i, value_u64_1[i]);
+	    set_element_int64(type, a2, i, value_u64_2[i]);	    	    
+	}
+	break;
+    case INT64:
+    case FLOAT64:
+	for (i = 0; i < 2; i++) {
+	    set_element_int64(type, a0, i, value_i64_0[i]);
+	    set_element_int64(type, a1, i, value_i64_1[i]);
+	    set_element_int64(type, a2, i, value_i64_2[i]);
+	}
+	break;
     default:
 	break;
     }
-
-    switch(VSIZE/get_scalar_size(type)) {
-    case 16:
-	set_element_int64(type, a1, 15,  3);
-	set_element_int64(type, a1, 14, -3);
-	set_element_int64(type, a1, 13,  4);
-	set_element_int64(type, a1, 12, -4);
-	set_element_int64(type, a1, 11,  5);
-	set_element_int64(type, a1, 10, -5);
-	set_element_int64(type, a1, 9,   6);
-	set_element_int64(type, a1, 8,  -6);
-	// fall through	
-    case 8:
-	set_element_int64(type, a1, 7,  10);
-	set_element_int64(type, a1, 6, -10);
-	set_element_int64(type, a1, 5,  13);
-	set_element_int64(type, a1, 4, -14);
-	// fall through	
-    case 4:
-	set_element_int64(type, a1, 3,  23);
-	set_element_int64(type, a1, 2, -25);
-	// fall through	
-    case 2:
-	set_element_int64(type, a1, 0,  51);
-	set_element_int64(type, a1, 1, -50);
-	// fall through	
-    default:
-	break;	
-    }
-
-    switch(VSIZE/get_scalar_size(type)) {
-    case 16:
-	set_element_int64(type, a2, 15,  100);
-	set_element_int64(type, a2, 14,  50);
-	set_element_int64(type, a2, 13,  25);
-	set_element_int64(type, a2, 12,  12);
-	set_element_int64(type, a2, 11,  6);
-	set_element_int64(type, a2, 10,  3);
-	set_element_int64(type, a2, 9,   2);
-	set_element_int64(type, a2, 8,   1);
-	// fall through	
-    case 8:
-	set_element_int64(type, a2, 7,  99);
-	set_element_int64(type, a2, 6,  98);
-	set_element_int64(type, a2, 5,  97);
-	set_element_int64(type, a2, 4,  96);
-	// fall through	
-    case 4:
-	set_element_int64(type, a2, 3,  20);
-	set_element_int64(type, a2, 2,  19);
-	// fall through	
-    case 2:
-	set_element_int64(type, a2, 0,  8);
-	set_element_int64(type, a2, 1,  7);
-	// fall through	
-    default:
-	break;
-    }        
     return 0;
 }
 
 
-int setup_input(matrix_type_t type, scalar0_t& a0, scalar0_t& a1, scalar0_t& a2)
+int setup_input(matrix_type_t type, int i, scalar0_t& a0, scalar0_t& a1, scalar0_t& a2)
 {
     switch(type) {
-    case UINT8:  a0.u8 = 15; break;
-    case UINT16: a0.u16 = 14; break;
-    case UINT32: a0.u32 = 13; break;
-    case UINT64: a0.u64 = 12; break;
-    case INT8:   a0.i8 = 2; break;
-    case INT16:  a0.i16 = -3; break;
-    case INT32:  a0.i32 = 4; break;
-    case INT64:  a0.i64 = -5; break;	
-    case FLOAT16: a0.f16 = 7; break;
-    case FLOAT32: a0.f32 = 8.0; break;
-    case FLOAT64: a0.f64 = -9.0; break;
-    default: break;	
-    }
-
-    switch(type) {
-    case UINT8:  a1.u8 = 3; break;
-    case UINT16: a1.u16 = 4; break;
-    case UINT32: a1.u32 = 6; break;
-    case UINT64: a1.u64 = 6; break;
-    case INT8:   a1.i8 = 5; break;
-    case INT16:  a1.i16 = -5; break;
-    case INT32:  a1.i32 = 6; break;
-    case INT64:  a1.i64 = -6; break;	
-    case FLOAT16: a1.f16 = 10; break;
-    case FLOAT32: a1.f32 = -10.0; break;
-    case FLOAT64: a1.f64 = -14.0; break;
-    default: break;	
-    }
-
-    switch(type) {
-    case UINT8: a2.u8 = 100; break;
-    case UINT16: a2.u16 = 50; break;
-    case UINT32: a2.u32 = 25; break;
-    case UINT64: a2.u64 = 12; break;
-    case INT8: a2.i8 = 6; break;
-    case INT16: a2.i16 = 3; break;
-    case INT32: a2.i32 = 2; break;
-    case INT64: a2.i64 = 1; break;	
-    case FLOAT16: a2.f16 = 10; break;
-    case FLOAT32: a2.f32 = 99.0; break;
-    case FLOAT64: a2.f64 = 98.0; break;
-    default: break;
+    case UINT8:
+	a0.u8 = value_u8_0[i & 0xf];
+	a1.u8 = value_u8_1[i & 0xf];
+	a2.u8 = value_u8_2[i & 0xf];
+	break;
+    case INT8:
+	a0.i8 = value_i8_0[i & 0xf];
+	a1.i8 = value_i8_1[i & 0xf];
+	a2.i8 = value_i8_2[i & 0xf];
+	break;
+    case UINT16:
+	a0.u16 = value_u16_0[i & 0x7];
+	a1.u16 = value_u16_1[i & 0x7];
+	a2.u16 = value_u16_2[i & 0x7];
+	break;
+    case INT16:
+	a0.i16 = value_i16_0[i & 0x7];
+	a1.i16 = value_i16_1[i & 0x7];
+	a2.i16 = value_i16_2[i & 0x7];
+	break;
+    case UINT32:
+	a0.u32 = value_u32_0[i & 0x3];
+	a1.u32 = value_u32_1[i & 0x3];
+	a2.u32 = value_u32_2[i & 0x3];
+	break;
+    case INT32:
+	a0.i32 = value_i32_0[i & 0x3];
+	a1.i32 = value_i32_1[i & 0x3];
+	a2.i32 = value_i32_2[i & 0x3];
+	break;
+    case UINT64:
+	a0.u64 = value_u64_0[i & 0x1];
+	a1.u64 = value_u64_1[i & 0x1];
+	a2.u64 = value_u64_2[i & 0x1];
+	break;
+    case INT64:
+	a0.i64 = value_i64_0[i & 0x1];
+	a1.i64 = value_i64_1[i & 0x1];
+	a2.i64 = value_i64_2[i & 0x1];
+	break;
+    default:
+	break;
     }
     return 0;
 }
@@ -329,6 +368,11 @@ void print_instr(FILE* f,instr_t* pc)
 		asm_typename(pc->type),
 		asm_regname(pc->op,pc->rd));
 	break;
+    case OP_VADDI:
+    case OP_VSUBI:
+    case OP_VSLLI:
+    case OP_VSRLI:
+    case OP_VSRAI:
     case OP_ADDI:
     case OP_SUBI:
     case OP_SLLI:
@@ -342,6 +386,7 @@ void print_instr(FILE* f,instr_t* pc)
 		    pc->imm8);
 	    break;
     case OP_MOVI:
+    case OP_VMOVI:	
     case OP_JNZ:
     case OP_JZ:
 	fprintf(f, "%s.%s %s, %d",
@@ -383,17 +428,31 @@ void print_code(FILE* f, instr_t* code, size_t len)
 static int verbose = 1;
 static int debug   = 0;
 
-int test_code(matrix_type_t itype, matrix_type_t otype, instr_t* icode, size_t code_len)
+int test_icode(matrix_type_t itype, matrix_type_t otype, int i, instr_t* icode, size_t code_len)
 {
     JitRuntime rt;           // Runtime designed for JIT code execution
     CodeHolder code;         // Holds code and relocation information
-    int i;
     FileLogger logger(stderr);
-
+    scalar0_t a0, a1, a2;
+    
     // Initialize to the same arch as JIT runtime
     code.init(rt.environment(), rt.cpuFeatures());
 
     x86::Assembler a(&code);  // Create and attach x86::Assembler to `code`
+    
+    setup_input(itype, i, a0, a1, a2);
+
+    if (verbose) {
+	fprintf(stderr, "TEST ");
+	icode[0].type = itype; // otherwise set by test_code!
+	print_instr(stderr, icode);
+	fprintf(stderr, " %s=", "r0");
+	sprint(stderr, itype, a0);
+	fprintf(stderr, " %s=", "r1");
+	sprint(stderr, itype, a1);
+	fprintf(stderr, " %s=", "r2");
+	sprint(stderr, itype, a2);		
+    }
 
     if (debug) {
 	a.setLogger(&logger);
@@ -414,15 +473,13 @@ int test_code(matrix_type_t itype, matrix_type_t otype, instr_t* icode, size_t c
 
     // fprintf(stderr, "code is added %p\n", fn);
 
-    scalar0_t a0, a1, a2, r0, r1;
+    scalar0_t r0, r1;
     scalar0_t  rr[16];
     vscalar0_t vr[16];
 
     memset(rr, 0, sizeof(rr));
     memset(vr, 0, sizeof(vr));
 
-    setup_input(itype, a0, a1, a2);
-    
     // fprintf(stderr, "\nemulate fn\n");
     
     memcpy(&rr[0], &a0, sizeof(scalar0_t));
@@ -466,17 +523,33 @@ int test_code(matrix_type_t itype, matrix_type_t otype, instr_t* icode, size_t c
 	assemble(a1, rt.environment(),
 		 reg(2), reg(0), reg(1),
 		 icode, code_len);
+	
 
 	fprintf(stderr, "exe:r = "); sprint(stderr, otype, r1); fprintf(stderr, "\n");
 	return -1;
     }
     else {
 	if (debug) {
+	    print_code(stderr, icode, code_len);
+	    fprintf(stderr, "a0 = "); sprint(stderr,itype, a0); fprintf(stderr,"\n");
+	    fprintf(stderr,"a1 = "); sprint(stderr,itype, a1); fprintf(stderr,"\n");
+	    fprintf(stderr,"a2 = "); sprint(stderr,itype, a2); fprintf(stderr,"\n");	    
 	    fprintf(stderr, "exe:r = "); sprint(stderr, otype, r1); fprintf(stderr, "\n");
 	}
 	if (verbose) fprintf(stderr, " OK\n");
     }
     return 0;
+}
+
+int test_code(matrix_type_t itype, matrix_type_t otype, instr_t* icode, size_t code_len)
+{
+    int failed = 0;    
+    size_t n = 16/(1 << get_scalar_exp_size(itype)); // 16,8,4,2
+    int i;
+    for (i = 0; i < (int)n; i++) {
+	failed += test_icode(itype, otype, i, icode, code_len);
+    }
+    return failed;
 }
 
 
@@ -492,6 +565,12 @@ int test_vcode(matrix_type_t itype, matrix_type_t otype,
     code.init(rt.environment(), rt.cpuFeatures()); 
 
     x86::Assembler a(&code);  // Create and attach x86::Assembler to `code`
+
+    if (verbose) {
+	fprintf(stderr, "TEST ");
+	icode[0].type = itype; // otherwise set by test_code!
+	print_instr(stderr, icode);
+    }
 
     if (debug)
 	a.setLogger(&logger);
@@ -561,6 +640,13 @@ int test_vcode(matrix_type_t itype, matrix_type_t otype,
 	return -1;
     }
     else {
+	if (debug) {
+	    print_code(stderr, icode, code_len);
+	    fprintf(stderr, "a0 = "); vprint(stderr, itype, (vector_t)a0); fprintf(stderr,"\n");
+	    fprintf(stderr, "a1 = "); vprint(stderr, itype, (vector_t)a1); fprintf(stderr,"\n");
+	    fprintf(stderr, "a2 = "); vprint(stderr, itype, (vector_t)a2); fprintf(stderr,"\n");    		    
+	    fprintf(stderr, "exe:r = "); vprint(stderr, otype, (vector_t) r1); fprintf(stderr, "\n");
+	}
 	if (verbose) printf(" OK\n");
     }
     return 0;
@@ -574,7 +660,7 @@ static uint8_t int_type(uint8_t at)
 
 #define CODE_LEN(code) (sizeof((code))/sizeof((code)[0]))
 
-int test_ts_code(uint8_t* ts, int td, instr_t* code, size_t code_len)
+int test_ts_code(uint8_t* ts, int td, int vec, instr_t* code, size_t code_len)
 {
     int failed = 0;
     
@@ -584,26 +670,33 @@ int test_ts_code(uint8_t* ts, int td, instr_t* code, size_t code_len)
 	case INT: otype = int_type(*ts); break;
 	default:  otype = *ts; break;
 	}
-	if (verbose) {
-	    fprintf(stderr, "TEST ");
-	    code[0].type = *ts; // otherwise set by test_code!
-	    print_instr(stderr, code);
+
+	if (vec) {
+	    if (test_vcode(*ts, otype, code, code_len) < 0)
+		failed++;
 	}
-	if (test_code(*ts, otype, code, code_len) < 0)
-	    failed++;
+	else {
+	    if (test_code(*ts, otype, code, code_len) < 0)
+		failed++;
+	}
 	ts++;
     }
     return failed;
 }
 
-int test_binary_as(uint8_t op, uint8_t* ts, uint8_t otype)
+int test_binary(uint8_t op, uint8_t* ts, uint8_t otype)
 {
     instr_t code[2];
     int i, j;
     int failed = 0;
+    int vec = (op & OP_VEC) != 0;
+
+    printf("+------------------------------\n");
+    printf("| %s\n", asm_opname(op));
+    printf("+------------------------------\n");    
     
     code[0].op = op;
-    code[1].op = OP_RET;
+    code[1].op = vec ? OP_VRET : OP_RET;
     code[1].rd = 2;
     code[0].rd = 2;
     
@@ -611,111 +704,119 @@ int test_binary_as(uint8_t op, uint8_t* ts, uint8_t otype)
 	code[0].ri = i;
 	for (j = 0; j <= 2; j++) {
 	    code[0].rj = j;
-	    failed += test_ts_code(ts, otype, code, 2);
+	    failed += test_ts_code(ts, otype, vec, code, 2);
 	}
     }
     return failed;
 }
 
-int test_unary_as(uint8_t op, uint8_t* ts, uint8_t otype)
+int test_unary(uint8_t op, uint8_t* ts, uint8_t otype)
 {
     instr_t code[2];
     int i;
     int failed = 0;
+    int vec = (op & OP_VEC) != 0;
+
+    printf("+------------------------------\n");
+    printf("| %s\n", asm_opname(op));
+    printf("+------------------------------\n");
     
     code[0].op = op;
-    code[1].op = OP_RET;
+    code[1].op = vec ? OP_VRET : OP_RET;
     code[1].rd = 2;
     code[0].rd = 2;
     
     for (i = 0; i <= 2; i++) {
 	code[0].ri = i;
-	failed += test_ts_code(ts, otype, code, 2);
+	failed += test_ts_code(ts, otype, vec, code, 2);
     }
     return failed;
 }
 
-int test_imm_as(uint8_t op, uint8_t* ts, uint8_t otype)
+int test_imm8(uint8_t op, uint8_t* ts, uint8_t otype)
 {
     instr_t code[2];
     int i, imm;
     int failed = 0;
-    
+    int vec = (op & OP_VEC) != 0;
+
+    printf("+------------------------------\n");
+    printf("| %s\n", asm_opname(op));
+    printf("+------------------------------\n");
+        
     code[0].op = op;
-    code[1].op = OP_RET;
+    code[1].op = vec ? OP_VRET : OP_RET;
     code[1].rd = 2;
     code[0].rd = 2;
 
     for (i = 0; i <= 2; i++) {
 	code[0].ri = i;
-	for (imm = -128; imm < 128; imm += 15) {
+	for (imm = -128; imm < 128; imm += 27) {
 	    code[0].imm8 = imm;
-	    failed += test_ts_code(ts, otype, code, 2);
+	    failed += test_ts_code(ts, otype, vec, code, 2);
 	}
     }
     return failed;
 }
 
-
-int test_ts_vcode(uint8_t* ts, int td, instr_t* code, size_t code_len)
-{
-    int failed = 0;
-    while(*ts != VOID) {
-	uint8_t otype;
-	switch(td) {
-	case INT: otype = int_type(*ts); break;
-	default: otype = *ts; break;
-	}
-	if (verbose) {
-	    fprintf(stderr, "TEST ");
-	    code[0].type = *ts; // otherwise set by test_code!
-	    print_instr(stderr, code);
-	}
-	if (test_vcode(*ts, otype, code, code_len) < 0)
-	    failed++;
-	ts++;
-    }
-    return failed;
-}
-
-int test_vbinary_as(uint8_t op, uint8_t* ts, uint8_t otype)
+int test_imm12(uint8_t op, uint8_t* ts, uint8_t otype)
 {
     instr_t code[2];
-    int i, j;
+    int imm;
     int failed = 0;
+    int vec = (op & OP_VEC) != 0;
+
+    printf("+------------------------------\n");
+    printf("| %s\n", asm_opname(op));
+    printf("+------------------------------\n");
     
     code[0].op = op;
-    code[1].op = OP_VRET;
+    code[1].op = vec ? OP_VRET : OP_RET;
     code[1].rd = 2;
     code[0].rd = 2;
-    
-    for (i = 0; i <= 2; i++) {
-	code[0].ri = i;
-	for (j = 0; j <= 2; j++) {
-	    code[0].rj = j;
-	    failed += test_ts_vcode(ts, otype, code, 2);
-	}
+
+    for (imm = -2048; imm < 2048; imm += 511) {
+	code[0].imm12 = imm;
+	failed += test_ts_code(ts, otype, vec, code, 2);
     }
     return failed;
 }
 
-int test_vunary_as(uint8_t op, uint8_t* ts, uint8_t otype)
+int test_shift(uint8_t op, uint8_t* ts, uint8_t otype)
 {
     instr_t code[2];
     int i;
     int failed = 0;
+    int vec = (op & OP_VEC) != 0;
+
+    printf("+------------------------------\n");
+    printf("| %s\n", asm_opname(op));
+    printf("+------------------------------\n");
+    
     
     code[0].op = op;
-    code[1].op = OP_VRET;
+    code[1].op = vec ? OP_VRET : OP_RET;
     code[1].rd = 2;
     code[0].rd = 2;
-    
+
     for (i = 0; i <= 2; i++) {
+	uint8_t* ts1 = ts;
 	code[0].ri = i;
-	failed += test_ts_vcode(ts, otype, code, 2);
+	while(*ts1 != VOID) {
+	    int imm;
+	    size_t n = (1 << get_scalar_exp_bit_size(*ts1));
+	    for (imm = 0; imm < (int)n; imm++) {
+		uint8_t tv[2];
+		code[0].imm8 = imm;
+		tv[0] = *ts1; tv[1] = VOID;
+		failed += test_ts_code(tv, otype, vec, code, 2);	
+	    }
+	    ts1++;
+	}	    
     }
     return failed;
 }
+
 
 int main()
 {
@@ -744,158 +845,74 @@ int main()
 	{ UINT8, UINT16, UINT32, UINT64, INT8, INT16, INT32, INT64,
 	  //FLOAT16
 	  FLOAT32, FLOAT64, VOID };
-/*
-    debug = 1;
-    instr_t code1[] = { OPdij(OP_CMPLT,2,0,2), OPd(OP_RET, 2) };
-    code1[0].type = UINT64;
-    code1[1].type = UINT64;
-    test_code(UINT64, INT64, code1, 2);
-     exit(0);
-*/
-    printf("+------------------------------\n");
-    printf("| neg\n");
-    printf("+------------------------------\n");
-
-    failed += test_unary_as(OP_NEG, int_types, VOID);
-
-    printf("+------------------------------\n");
-    printf("| bnot\n");
-    printf("+------------------------------\n");
-
-    failed += test_unary_as(OP_BNOT, int_types, INT);
-
-    printf("+------------------------------\n");
-    printf("| addi\n");
-    printf("+------------------------------\n");
-
-    failed += test_imm_as(OP_ADDI, int_types, INT);
-
-    printf("+------------------------------\n");
-    printf("| subi\n");
-    printf("+------------------------------\n");
-
-    failed += test_imm_as(OP_SUBI, int_types, INT);    
-
-
-    printf("+------------------------------\n");
-    printf("| add\n");
-    printf("+------------------------------\n");
-
-    failed += test_binary_as(OP_ADD, int_types, VOID);
-
-    printf("+------------------------------\n");
-    printf("| sub\n");
-    printf("+------------------------------\n");
-
-    failed += test_binary_as(OP_SUB, int_types, VOID);    
-
-    printf("+------------------------------\n");
-    printf("| mul\n");
-    printf("+------------------------------\n");
-
-    failed += test_binary_as(OP_MUL, int_types, VOID);
-
-    printf("+------------------------------\n");
-    printf("| band\n");
-    printf("+------------------------------\n");
-
-    failed += test_binary_as(OP_BAND, int_types, INT);    
     
-    printf("+------------------------------\n");
-    printf("| bor\n");
-    printf("+------------------------------\n");
-
-    failed += test_binary_as(OP_BOR, int_types, INT);        
+    uint8_t int_type[] = { INT8, VOID };
+   
+//    debug = 1;
+//    failed += test_binary(OP_MUL, int_type, VOID);
+//    exit(0);
     
-    printf("+------------------------------\n");
-    printf("| bxor\n");
-    printf("+------------------------------\n");
+//    instr_t code1[] = { OPdij(OP_CMPLT,2,0,2), OPd(OP_RET, 2) };
+//    code1[0].type = UINT64;
+//    code1[1].type = UINT64;
+//    test_code(UINT64, INT64, code1, 2);
+//     instr_t code1[] = { OPdiimm8(OP_SRLI,2,0,7), OPd(OP_RET, 2) };
+//     code1[0].type = INT16;
+//     code1[1].type = INT16;
+//     test_code(INT16, INT16, code1, 2);
 
-    failed += test_binary_as(OP_BXOR, int_types, INT);
+//    instr_t code1[] = { OPdiimm8(OP_VADDI,2,0,7), OPd(OP_VRET, 2) };
+//     code1[0].type = INT16;
+//     code1[1].type = INT16;
+//     test_vcode(INT16, INT16, code1, 2);        
+//     exit(0);
+
+    failed += test_unary(OP_NOP, int_types, VOID);    
+    failed += test_imm12(OP_MOVI, int_types, INT);
+    failed += test_unary(OP_MOVR, int_types, VOID); // fixme: float registers!
+    failed += test_shift(OP_SLLI, int_types, INT);
+    failed += test_shift(OP_SRLI, int_types, INT);
+    failed += test_shift(OP_SRAI, int_types, INT);
+    failed += test_unary(OP_NEG, int_types, VOID);
+    failed += test_unary(OP_BNOT, int_types, INT);
+    // failed += test_unary(OP_INV, int_types, INT);
+    // OP_JMP/OP_JNZ/OP_JZ
+    failed += test_imm8(OP_ADDI, int_types, INT);
+    failed += test_imm8(OP_SUBI, int_types, INT);
+
+    failed += test_binary(OP_ADD, int_types, VOID);
+    failed += test_binary(OP_SUB, int_types, VOID);    
+    failed += test_binary(OP_MUL, int_types, VOID);
+    failed += test_binary(OP_BAND, int_types, INT);    
+    failed += test_binary(OP_BOR, int_types, INT);        
+    failed += test_binary(OP_BXOR, int_types, INT);
     
-    printf("+------------------------------\n");
-    printf("| cmplt\n");
-    printf("+------------------------------\n");
+    failed += test_binary(OP_CMPLT, int_types, INT);
+    failed += test_binary(OP_CMPLE, int_types, INT);    
+    failed += test_binary(OP_CMPEQ, int_types, INT);
 
-    failed += test_binary_as(OP_CMPLT, int_types, INT);
-
-    printf("+------------------------------\n");
-    printf("| cmple\n");
-    printf("+------------------------------\n");
-
-    failed += test_binary_as(OP_CMPLE, int_types, INT);    
-
-    printf("+------------------------------\n");
-    printf("| cmpeq\n");
-    printf("+------------------------------\n");
-
-    failed += test_binary_as(OP_CMPEQ, int_types, INT);
-        
-    printf("+------------------------------\n");
-    printf("| vneg\n");
-    printf("+------------------------------\n");
-
-    failed += test_vunary_as(OP_VNEG, all_types, VOID);
-        
-    printf("+------------------------------\n");
-    printf("| vbnot\n");
-    printf("+------------------------------\n");
-
-    failed += test_vunary_as(OP_VBNOT, all_types, INT);
-
-    printf("+------------------------------\n");
-    printf("| vadd\n");
-    printf("+------------------------------\n");
-
-    failed += test_vbinary_as(OP_VADD, all_types, VOID);
-
-    printf("+------------------------------\n");
-    printf("| vsub\n");
-    printf("+------------------------------\n");
-
-    failed += test_vbinary_as(OP_VSUB, all_types, VOID);
+    // vectors
+    failed += test_unary(OP_VMOVR, all_types, VOID);
+    failed += test_imm12(OP_VMOVI, int_types, INT);
+    failed += test_imm8(OP_VADDI, int_types, INT);
+    failed += test_imm8(OP_VSUBI, int_types, INT);
+    failed += test_shift(OP_VSLLI, int_types, INT);
+    failed += test_shift(OP_VSRLI, int_types, INT);
+    failed += test_shift(OP_VSRAI, int_types, INT);    
+    failed += test_unary(OP_VNEG, all_types, VOID);    
+    failed += test_unary(OP_VBNOT, all_types, INT);
+    //failed += test_unary(OP_VINV, all_types, VOID); float types?
     
-    printf("+------------------------------\n");
-    printf("| vcmpeq\n");
-    printf("+------------------------------\n");
+    failed += test_binary(OP_VADD, all_types, VOID);
+    failed += test_binary(OP_VSUB, all_types, VOID);
+    failed += test_binary(OP_VMUL, all_types, VOID);
+    failed += test_binary(OP_VBAND, all_types, INT);
+    failed += test_binary(OP_VBOR, all_types, INT);
+    failed += test_binary(OP_VBXOR, all_types, INT);
+    failed += test_binary(OP_VCMPEQ, all_types, INT);
+    failed += test_binary(OP_VCMPLT, all_types, INT);
+    failed += test_binary(OP_VCMPLE, all_types, INT);
 
-    failed += test_vbinary_as(OP_VCMPEQ, all_types, INT);    
-
-    printf("+------------------------------\n");
-    printf("| vcmplt\n");
-    printf("+------------------------------\n");
-
-    failed += test_vbinary_as(OP_VCMPLT, all_types, INT);
-
-    printf("+------------------------------\n");
-    printf("| vcmple\n");
-    printf("+------------------------------\n");
-
-    failed += test_vbinary_as(OP_VCMPLE, all_types, INT);
-
-    printf("+------------------------------\n");
-    printf("| vband\n");
-    printf("+------------------------------\n");
-
-    failed += test_vbinary_as(OP_VBAND, all_types, INT);
-    
-    printf("+------------------------------\n");
-    printf("| vbor\n");
-    printf("+------------------------------\n");
-
-    failed += test_vbinary_as(OP_VBOR, all_types, INT);
-
-    printf("+------------------------------\n");
-    printf("| vbxor\n");
-    printf("+------------------------------\n");
-    
-    failed += test_vbinary_as(OP_VBXOR, all_types, INT);
-
-    printf("+------------------------------\n");
-    printf("| vmul\n");
-    printf("+------------------------------\n");
-
-    failed += test_vbinary_as(OP_VMUL, all_types, VOID);
 
     if (failed) {
 	printf("ERROR: %d cases failed\n", failed);

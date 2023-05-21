@@ -23,9 +23,8 @@
 #define op_srl(x,i) ((x)>>(i))
 #define op_sra(x,i) ((x)>>(i))
 
-#define FRdimm(fld,d,imm,op) r[d].fld = op(imm)
-#define FRddimm(fld,d,imm,op) r[d].fld = op(r[d].fld,imm)
-#define FRdiimm(fld,d,i,imm,op) r[d].fld = op(r[i].fld,imm)
+#define FRdimm12(fld,d,imm12,op) r[d].fld = op(imm12)
+#define FRdiimm8(fld,d,i,imm,op) r[d].fld = op(r[i].fld,imm)
 #define FRdi(fld,d,i,op) r[d].fld = op(r[i].fld)
 #define FRdij(fld,d,i,j,op) r[d].fld = op(r[i].fld,r[j].fld)
 #define FFRdi(ifld,ofld,d,i,op) r[d].ofld = op(r[i].ifld)
@@ -55,49 +54,64 @@
 
 // MOVi
 
-#define TFRdimm(t,d,imm,op) do {				\
+#define TFRdimm12(t,d,imm12,op) do {				\
 	switch((t)) {						\
-	case UINT8:   FRdimm(u8,(d),(imm),op); break;		\
-	case UINT16:  FRdimm(u16,(d),(imm),op); break;		\
-	case UINT32:  FRdimm(u32,(d),(imm),op); break;		\
-	case UINT64:  FRdimm(u64,(d),(imm),op); break;		\
-	case INT8:    FRdimm(i8,(d),(imm),op); break;		\
-	case INT16:   FRdimm(i16,(d),(imm),op); break;		\
-	case INT32:   FRdimm(i32,(d),(imm),op); break;		\
-	case INT64:   FRdimm(i64,(d),(imm),op); break;		\
-	case FLOAT16: FRdimm(f16,(d),(imm),op); break;		\
-	case FLOAT32: FRdimm(f32,(d),(imm),op); break;		\
-	case FLOAT64: FRdimm(f64,(d),(imm),op); break;		\
+	case UINT8:   FRdimm12(u8,(d),(imm12),op); break;		\
+	case UINT16:  FRdimm12(u16,(d),(imm12),op); break;		\
+	case UINT32:  FRdimm12(u32,(d),(imm12),op); break;		\
+	case UINT64:  FRdimm12(u64,(d),(imm12),op); break;		\
+	case INT8:    FRdimm12(i8,(d),(imm12),op); break;		\
+	case INT16:   FRdimm12(i16,(d),(imm12),op); break;		\
+	case INT32:   FRdimm12(i32,(d),(imm12),op); break;		\
+	case INT64:   FRdimm12(i64,(d),(imm12),op); break;		\
+	case FLOAT16: FRdimm12(f16,(d),(imm12),op); break;		\
+	case FLOAT32: FRdimm12(f32,(d),(imm12),op); break;		\
+	case FLOAT64: FRdimm12(f64,(d),(imm12),op); break;		\
 	default: break;						\
 	}							\
     } while(0)
 
-// SLLI / SRLI / ADDI / SUBI
-#define TFRdiimm(t,d,i,imm,op) do {				\
+// SLLI / ADDI / SUBI
+#define TFRdiimm8(t,d,i,imm,op) do {				\
 	switch((t)) {						\
-	case UINT8:   FRdiimm(u8,(d),(i),(imm),op); break;	\
-	case UINT16:  FRdiimm(u16,(d),(i),(imm),op); break;		\
-	case UINT32:  FRdiimm(u32,(d),(i),(imm),op); break;		\
-	case UINT64:  FRdiimm(u64,(d),(i),(imm),op); break;		\
-	case INT8:    FRdiimm(i8,(d),(i),(imm),op); break;		\
-	case INT16:   FRdiimm(i16,(d),(i),(imm),op); break;		\
-	case INT32:   FRdiimm(i32,(d),(i),(imm),op); break;		\
-	case INT64:   FRdiimm(i64,(d),(i),(imm),op); break;		\
+	case UINT8:   FRdiimm8(u8,(d),(i),(imm),op); break;	\
+	case UINT16:  FRdiimm8(u16,(d),(i),(imm),op); break;		\
+	case UINT32:  FRdiimm8(u32,(d),(i),(imm),op); break;		\
+	case UINT64:  FRdiimm8(u64,(d),(i),(imm),op); break;		\
+	case INT8:    FRdiimm8(i8,(d),(i),(imm),op); break;		\
+	case INT16:   FRdiimm8(i16,(d),(i),(imm),op); break;		\
+	case INT32:   FRdiimm8(i32,(d),(i),(imm),op); break;		\
+	case INT64:   FRdiimm8(i64,(d),(i),(imm),op); break;		\
+	default: break;						\
+	}							\
+    } while(0)
+
+// SRLI
+#define TFURdiimm8(t,d,i,imm,op) do {				\
+	switch((t)) {						\
+	case UINT8:   FRdiimm8(u8,(d),(i),(imm),op); break;	\
+	case UINT16:  FRdiimm8(u16,(d),(i),(imm),op); break;		\
+	case UINT32:  FRdiimm8(u32,(d),(i),(imm),op); break;		\
+	case UINT64:  FRdiimm8(u64,(d),(i),(imm),op); break;		\
+	case INT8:    FRdiimm8(u8,(d),(i),(imm),op); break;		\
+	case INT16:   FRdiimm8(u16,(d),(i),(imm),op); break;		\
+	case INT32:   FRdiimm8(u32,(d),(i),(imm),op); break;		\
+	case INT64:   FRdiimm8(u64,(d),(i),(imm),op); break;		\
 	default: break;						\
 	}							\
     } while(0)
 
 // SRA
-#define TFIRdiimm(t,d,i,imm,op) do {					\
+#define TFIRdiimm8(t,d,i,imm,op) do {					\
 	switch((t)) {							\
-	case UINT8:   FRdiimm(i8,(d),(i),(imm),op); break;		\
-	case UINT16:  FRdiimm(i16,(d),(i),(imm),op); break;		\
-	case UINT32:  FRdiimm(i32,(d),(i),(imm),op); break;		\
-	case UINT64:  FRdiimm(i64,(d),(i),(imm),op); break;		\
-	case INT8:    FRdiimm(i8,(d),(i),(imm),op); break;		\
-	case INT16:   FRdiimm(i16,(d),(i),(imm),op); break;		\
-	case INT32:   FRdiimm(i32,(d),(i),(imm),op); break;		\
-	case INT64:   FRdiimm(i64,(d),(i),(imm),op); break;		\
+	case UINT8:   FRdiimm8(i8,(d),(i),(imm),op); break;		\
+	case UINT16:  FRdiimm8(i16,(d),(i),(imm),op); break;		\
+	case UINT32:  FRdiimm8(i32,(d),(i),(imm),op); break;		\
+	case UINT64:  FRdiimm8(i64,(d),(i),(imm),op); break;		\
+	case INT8:    FRdiimm8(i8,(d),(i),(imm),op); break;		\
+	case INT16:   FRdiimm8(i16,(d),(i),(imm),op); break;		\
+	case INT32:   FRdiimm8(i32,(d),(i),(imm),op); break;		\
+	case INT64:   FRdiimm8(i64,(d),(i),(imm),op); break;		\
 	default: break;							\
 	}								\
     } while(0)
@@ -174,19 +188,13 @@
 	}								\
     } while(0)
 
-#define KFVdimm(fld,d,imm,op) do {			\
+#define KFVdimm12(fld,d,imm12,op) do {			\
 	unsigned int k;					\
 	for (k=0; k<VSIZE/sizeof(v[0].fld[0]);k++)	\
-	    v[d].fld[k] = op(imm);			\
+	    v[d].fld[k] = op(imm12);			\
     } while(0)
 
-#define KFVddimm(fld,d,imm,op)  do {			\
-	unsigned int k;					\
-	for (k=0; k<VSIZE/sizeof(v[0].fld[0]);k++)	\
-	    v[d].fld[k] = op(vr[d].fld[k],imm);		\
-    } while(0)
-
-#define KFVdiimm(fld,d,i,imm,op) do {			\
+#define KFVdiimm8(fld,d,i,imm,op) do {			\
 	unsigned int k;					\
 	for (k=0; k<VSIZE/sizeof(v[0].fld[0]);k++)	\
 	    v[d].fld[k] = op(v[i].fld[k],imm);		\
@@ -250,48 +258,63 @@
     }								\
   } while(0)
 
-// MOVI
-#define TKVdimm(t,d,imm,op) do {					\
+// VMOVI
+#define TKVdimm12(t,d,imm12,op) do {					\
 	switch((t)) {							\
-	case UINT8:   KFVdimm(vu8,(d),(imm),op); break;		\
-	case UINT16:  KFVdimm(vu16,(d),(imm),op); break;		\
-	case UINT32:  KFVdimm(vu32,(d),(imm),op); break;		\
-	case UINT64:  KFVdimm(vu64,(d),(imm),op); break;		\
-	case INT8:    KFVdimm(vi8,(d),(imm),op); break;		\
-	case INT16:   KFVdimm(vi16,(d),(imm),op); break;		\
-	case INT32:   KFVdimm(vi32,(d),(imm),op); break;		\
-	case INT64:   KFVdimm(vi64,(d),(imm),op); break;		\
+	case UINT8:   KFVdimm12(vu8,(d),(imm12),op); break;		\
+	case UINT16:  KFVdimm12(vu16,(d),(imm12),op); break;		\
+	case UINT32:  KFVdimm12(vu32,(d),(imm12),op); break;		\
+	case UINT64:  KFVdimm12(vu64,(d),(imm12),op); break;		\
+	case INT8:    KFVdimm12(vi8,(d),(imm12),op); break;		\
+	case INT16:   KFVdimm12(vi16,(d),(imm12),op); break;		\
+	case INT32:   KFVdimm12(vi32,(d),(imm12),op); break;		\
+	case INT64:   KFVdimm12(vi64,(d),(imm12),op); break;		\
 	default: break;							\
 	}								\
     } while(0)
 
 
-// VSLLI /  VSRLI / VADDI / VSUBI
-#define TKVdiimm(t,d,i,imm,op) do {					\
+// VSLLI /  VADDI / VSUBI
+#define TKVdiimm8(t,d,i,imm,op) do {					\
 	switch((t)) {							\
-	case UINT8:   KFVdiimm(vu8,(d),(i),(imm),op); break;		\
-	case UINT16:  KFVdiimm(vu16,(d),(i),(imm),op); break;		\
-	case UINT32:  KFVdiimm(vu32,(d),(i),(imm),op); break;		\
-	case UINT64:  KFVdiimm(vu64,(d),(i),(imm),op); break;		\
-	case INT8:    KFVdiimm(vi8,(d),(i),(imm),op); break;		\
-	case INT16:   KFVdiimm(vi16,(d),(i),(imm),op); break;		\
-	case INT32:   KFVdiimm(vi32,(d),(i),(imm),op); break;		\
-	case INT64:   KFVdiimm(vi64,(d),(i),(imm),op); break;		\
+	case UINT8:   KFVdiimm8(vu8,(d),(i),(imm),op); break;		\
+	case UINT16:  KFVdiimm8(vu16,(d),(i),(imm),op); break;		\
+	case UINT32:  KFVdiimm8(vu32,(d),(i),(imm),op); break;		\
+	case UINT64:  KFVdiimm8(vu64,(d),(i),(imm),op); break;		\
+	case INT8:    KFVdiimm8(vi8,(d),(i),(imm),op); break;		\
+	case INT16:   KFVdiimm8(vi16,(d),(i),(imm),op); break;		\
+	case INT32:   KFVdiimm8(vi32,(d),(i),(imm),op); break;		\
+	case INT64:   KFVdiimm8(vi64,(d),(i),(imm),op); break;		\
 	default: break;						\
 	}							\
     } while(0)
 
-// VSRAI
-#define TKIVdiimm(t,d,i,imm,op) do { 				\
+// VSRLI
+#define TKUVdiimm8(t,d,i,imm,op) do { 				\
 	switch((t)) {						\
-	case UINT8:   KFVdiimm(vi8,(d),(i),(imm),op); break;		\
-	case UINT16:  KFVdiimm(vi16,(d),(i),(imm),op); break;		\
-	case UINT32:  KFVdiimm(vi32,(d),(i),(imm),op); break;		\
-	case UINT64:  KFVdiimm(vi64,(d),(i),(imm),op); break;		\
-	case INT8:    KFVdiimm(vi8,(d),(i),(imm),op); break;		\
-	case INT16:   KFVdiimm(vi16,(d),(i),(imm),op); break;		\
-	case INT32:   KFVdiimm(vi32,(d),(i),(imm),op); break;		\
-	case INT64:   KFVdiimm(vi64,(d),(i),(imm),op); break;		\
+	case UINT8:   KFVdiimm8(vu8,(d),(i),(imm),op); break;		\
+	case UINT16:  KFVdiimm8(vu16,(d),(i),(imm),op); break;		\
+	case UINT32:  KFVdiimm8(vu32,(d),(i),(imm),op); break;		\
+	case UINT64:  KFVdiimm8(vu64,(d),(i),(imm),op); break;		\
+	case INT8:    KFVdiimm8(vu8,(d),(i),(imm),op); break;		\
+	case INT16:   KFVdiimm8(vu16,(d),(i),(imm),op); break;		\
+	case INT32:   KFVdiimm8(vu32,(d),(i),(imm),op); break;		\
+	case INT64:   KFVdiimm8(vu64,(d),(i),(imm),op); break;		\
+	default: break;							\
+	}								\
+    } while(0)
+
+// VSRAI
+#define TKIVdiimm8(t,d,i,imm,op) do { 				\
+	switch((t)) {						\
+	case UINT8:   KFVdiimm8(vi8,(d),(i),(imm),op); break;		\
+	case UINT16:  KFVdiimm8(vi16,(d),(i),(imm),op); break;		\
+	case UINT32:  KFVdiimm8(vi32,(d),(i),(imm),op); break;		\
+	case UINT64:  KFVdiimm8(vi64,(d),(i),(imm),op); break;		\
+	case INT8:    KFVdiimm8(vi8,(d),(i),(imm),op); break;		\
+	case INT16:   KFVdiimm8(vi16,(d),(i),(imm),op); break;		\
+	case INT32:   KFVdiimm8(vi32,(d),(i),(imm),op); break;		\
+	case INT64:   KFVdiimm8(vi64,(d),(i),(imm),op); break;		\
 	default: break;							\
 	}								\
     } while(0)
@@ -340,32 +363,32 @@ void emu_mov(uint8_t type, scalar0_t r[16], int d, int i)
 
 void emu_movi(uint8_t type, scalar0_t r[16], int d, int16_t imm12)
 {
-    TFRdimm(type,d,imm12,op_nop);
+    TFRdimm12(type,d,imm12,op_nop);
 }
 
 void emu_addi(uint8_t type, scalar0_t r[16], int d, int i, int8_t imm8)
 {
-    TFRdiimm(type,d,i,imm8,op_add);
+    TFRdiimm8(type,d,i,imm8,op_add);
 }
 
 void emu_subi(uint8_t type, scalar0_t r[16], int d, int i, int8_t imm8)
 {
-    TFRdiimm(type,d,i,imm8,op_sub);    
+    TFRdiimm8(type,d,i,imm8,op_sub);    
 }
 
 void emu_slli(uint8_t type, scalar0_t r[16], int d, int i, int8_t imm8)
 {
-    TFRdiimm(type,d,i,imm8,op_sll);
+    TFRdiimm8(type,d,i,imm8,op_sll);
 }
 
 void emu_srli(uint8_t type, scalar0_t r[16], int d, int i, int8_t imm8)
 {
-    TFRdiimm(type,d,i,imm8,op_srl);
+    TFURdiimm8(type,d,i,imm8,op_srl);
 }
 
 void emu_srai(uint8_t type, scalar0_t r[16], int d, int i, int8_t imm8)
 {
-    TFIRdiimm(type,d,i,imm8,op_sra);
+    TFIRdiimm8(type,d,i,imm8,op_sra);
 }
 
 void emu_neg(uint8_t type, scalar0_t r[16], int d, int i)
@@ -457,32 +480,32 @@ void emu_vinv(uint8_t type, vscalar0_t v[16], int d, int i)
 
 void emu_vmovi(uint8_t type, vscalar0_t v[16], int d, int imm12)
 {
-    TKVdimm(type,d,imm12,op_nop);
+    TKVdimm12(type,d,imm12,op_nop);
 }
 
 void emu_vaddi(uint8_t type, vscalar0_t v[16], int d, int i, int imm8)
 {
-    TKVdiimm(type,d,i,imm8,op_add); 
+    TKVdiimm8(type,d,i,imm8,op_add); 
 }
 
 void emu_vsubi(uint8_t type, vscalar0_t v[16], int d, int i, int imm8)
 {
-    TKVdiimm(type,d,i,imm8,op_sub);    
+    TKVdiimm8(type,d,i,imm8,op_sub);    
 }
 
 void emu_vslli(uint8_t type, vscalar0_t v[16], int d, int i, int imm8)
 {
-    TKVdiimm(type,d,i,imm8,op_sll);    
+    TKVdiimm8(type,d,i,imm8,op_sll);    
 }
 
 void emu_vsrli(uint8_t type, vscalar0_t v[16], int d, int i, int imm8)
 {
-    TKVdiimm(type,d,i,imm8,op_srl);    
+    TKUVdiimm8(type,d,i,imm8,op_srl);
 }
 
 void emu_vsrai(uint8_t type, vscalar0_t v[16], int d, int i, int imm8)
 {
-    TKIVdiimm(type,d,i,imm8,op_sra);
+    TKIVdiimm8(type,d,i,imm8,op_sra);
 }
 
 
