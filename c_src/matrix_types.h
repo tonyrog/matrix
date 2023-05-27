@@ -43,6 +43,7 @@ typedef struct { uint64_t hi; uint64_t lo; } uint128_t;
 #define VSIZE 1
 #endif
 
+typedef uint8_t float8_t; // simulated
 typedef uint16_t float16_t; // simulated
 
 #if VSIZE == 1
@@ -58,6 +59,7 @@ typedef int16_t      vint16_t;
 typedef int32_t      vint32_t;
 typedef int64_t      vint64_t;
 typedef int128_t     vint128_t;
+typedef float8_t     vfloat8_t;
 typedef float16_t    vfloat16_t;
 typedef float32_t    vfloat32_t;
 typedef float64_t    vfloat64_t;
@@ -71,6 +73,7 @@ typedef float64_t    vfloat64_t;
 #define vuint32_t_const(a)      (a)
 #define vuint64_t_const(a)      (a)
 #define vint128_t_const(a)     {(0),(a)}
+#define vfloat8_t_const(a)     (a)
 #define vfloat16_t_const(a)    (a)
 #define vfloat32_t_const(a)    (a)
 #define vfloat64_t_const(a)    (a)
@@ -90,6 +93,7 @@ typedef int16_t   vint16_t   __attribute__ ((vector_size (VSIZE)));
 typedef int32_t   vint32_t   __attribute__ ((vector_size (VSIZE)));
 typedef int64_t   vint64_t   __attribute__ ((vector_size (VSIZE)));
 typedef int64_t  vint128_t  __attribute__ ((vector_size (VSIZE)));
+typedef float8_t vfloat8_t __attribute__ ((vector_size (VSIZE)));
 typedef float16_t vfloat16_t __attribute__ ((vector_size (VSIZE)));
 typedef float32_t vfloat32_t __attribute__ ((vector_size (VSIZE)));
 typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
@@ -111,6 +115,8 @@ typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
 #define vuint64_t_const(a)   {(a),(a)}
 
 #define vint128_t_const(a)  {{(0),(a)},{(0),(a)}}
+#define vfloat8_t_const(a)  {(a),(a),(a),(a),(a),(a),(a),(a),\
+	                     (a),(a),(a),(a),(a),(a),(a),(a)}
 #define vfloat16_t_const(a) {(a),(a),(a),(a),(a),(a),(a),(a)}
 #define vfloat32_t_const(a) {(a),(a),(a),(a)}
 #define vfloat64_t_const(a) {(a),(a)}
@@ -135,6 +141,10 @@ typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
 #define vuint64_t_const(a)   {(a),(a),(a),(a)}
 
 #define vint128_t_const(a)  {{(0),(a)},{(0),(a)},{(0),(a)},{(0),(a)}}
+#define vfloat8_t_const(a)  {(a),(a),(a),(a),(a),(a),(a),(a),\
+	                     (a),(a),(a),(a),(a),(a),(a),(a),\
+	                     (a),(a),(a),(a),(a),(a),(a),(a),\
+	                     (a),(a),(a),(a),(a),(a),(a),(a)}
 #define vfloat16_t_const(a) {(a),(a),(a),(a),(a),(a),(a),(a), \
 	                     (a),(a),(a),(a),(a),(a),(a),(a)}
 #define vfloat32_t_const(a) {(a),(a),(a),(a),(a),(a),(a),(a)}
@@ -212,6 +222,7 @@ typedef float64_t vfloat64_t __attribute__ ((vector_size (VSIZE)));
 #define    INT32   make_scalar_type(ELEM_SIZE32,INT)
 #define    INT64   make_scalar_type(ELEM_SIZE64,INT)
 #define    INT128  make_scalar_type(ELEM_SIZE128,INT)
+#define    FLOAT8  make_scalar_type(ELEM_SIZE8,FLOAT)
 #define    FLOAT16 make_scalar_type(ELEM_SIZE16,FLOAT)
 #define    FLOAT32 make_scalar_type(ELEM_SIZE32,FLOAT)
 #define    FLOAT64 make_scalar_type(ELEM_SIZE64,FLOAT)
@@ -255,6 +266,8 @@ typedef uint32_t  matrix_type_t;
 
 #define IS_NONE_INTEGER_TYPE(t)   ( ((1<<(t)) & NONE_INTEGER_TYPES) != 0 )
 
+typedef vint8_t vector_t;
+
 typedef uint32_t matrix_type_flags_t;
 
 // a union to represent all possible scalar data types
@@ -271,6 +284,7 @@ typedef union {
     int16_t   i16;
     int32_t   i32;
     int64_t   i64;
+    float8_t  f8;    
     float16_t f16;
     float32_t f32;
     float64_t f64;
@@ -286,9 +300,11 @@ typedef union {
     int16_t  vi16[VSIZE/sizeof(int16_t)];
     int32_t  vi32[VSIZE/sizeof(int32_t)];
     int64_t  vi64[VSIZE/sizeof(int64_t)];
+    float8_t vf8[VSIZE/sizeof(float8_t)];    
     float16_t vf16[VSIZE/sizeof(float16_t)];
     float32_t vf32[VSIZE/sizeof(float32_t)];
     float64_t vf64[VSIZE/sizeof(float64_t)];
+    vector_t v;
 } vscalar0_t;
 
 typedef union {
@@ -301,7 +317,8 @@ typedef union {
     int16_t   i16;
     int32_t   i32;
     int64_t   i64;
-    int128_t  i128;    
+    int128_t  i128;
+    float8_t  f8;    
     float16_t f16;
     float32_t f32;
     float64_t f64;
@@ -313,6 +330,7 @@ typedef union {
     int16_t   vi16[MAX_COMPONENTS];
     int32_t   vi32[MAX_COMPONENTS];
     int64_t   vi64[MAX_COMPONENTS];
+    float8_t  vf8[MAX_COMPONENTS];    
     float16_t vf16[MAX_COMPONENTS];
     float32_t vf32[MAX_COMPONENTS];
     float64_t vf64[MAX_COMPONENTS];
@@ -330,13 +348,12 @@ typedef union {
     vint32_t      vi32;
     vint64_t      vi64;
     vint128_t     vi128;
+    vfloat8_t     vf8;    
     vfloat16_t    vf16;
     vfloat32_t    vf32;
     vfloat64_t    vf64;
 } vscalar_t;
 
-
-typedef vint8_t vector_t;
 typedef void (*unary_op_t)(void* src, void* dst);
 typedef void (*binary_op_t)(void* src1, void* src2, void* dst);
 

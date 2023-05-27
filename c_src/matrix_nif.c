@@ -604,6 +604,9 @@ DECL_ATOM(inv);
 DECL_ATOM(cmplt);
 DECL_ATOM(cmple);
 DECL_ATOM(cmpeq);
+DECL_ATOM(cmpgt);
+DECL_ATOM(cmpge);
+DECL_ATOM(cmpne);
 DECL_ATOM(band);
 DECL_ATOM(bor);
 DECL_ATOM(bxor);
@@ -619,6 +622,9 @@ DECL_ATOM(vinv);
 DECL_ATOM(vcmplt);
 DECL_ATOM(vcmple);
 DECL_ATOM(vcmpeq);
+DECL_ATOM(vcmpgt);
+DECL_ATOM(vcmpge);
+DECL_ATOM(vcmpne);
 DECL_ATOM(vband);
 DECL_ATOM(vbor);
 DECL_ATOM(vbxor);
@@ -634,6 +640,7 @@ DECL_ATOM(int16);
 DECL_ATOM(int32);
 DECL_ATOM(int64);
 DECL_ATOM(int128);
+DECL_ATOM(float8);
 DECL_ATOM(float16);
 DECL_ATOM(float32);
 DECL_ATOM(float64);
@@ -1477,7 +1484,8 @@ static void set_const(matrix_type_t t, uint8_t* data, scalar_t* dst)
     case UINT32: memcpy(&dst->u32, data, sizeof(dst->u32)); break;
     case UINT64: memcpy(&dst->u64, data, sizeof(dst->u64)); break;
     case UINT128: memcpy(&dst->u128, data, sizeof(dst->u128)); break;
-	
+
+    case FLOAT8: memcpy(&dst->f8, data, sizeof(dst->f8)); break;	
     case FLOAT16: memcpy(&dst->f16, data, sizeof(dst->f16)); break;
     case FLOAT32: memcpy(&dst->f32, data, sizeof(dst->f32)); break;
     case FLOAT64: memcpy(&dst->f64, data, sizeof(dst->f64)); break;
@@ -1503,7 +1511,7 @@ next:
 
     switch(i & 0x7f) {
     case OP_NOP: break;
-    case OP_VMOVR: ack = r[ri]; break;
+    case OP_VMOV: ack = r[ri]; break;
     case OP_VNEG:  (*fun_neg_ops[t])(&r[ri],&ack); break;
     case OP_VBNOT: (*fun_bnot_ops[t])(&r[ri],&ack); break;
     case OP_VINV:  (*fun_reciprocal_ops[t])(&r[ri],&ack); break;
@@ -1589,6 +1597,13 @@ static void set_vconst(matrix_type_t t, uint8_t* data, vscalar_t* dst)
 	dst->vu64 = v;
 	break;
     }
+    case FLOAT8: {
+	float8_t fv;
+	memcpy(&fv, data, sizeof(fv));
+	vfloat8_t v = vfloat8_t_const(fv);
+	dst->vf8 = v;
+	break;
+    }		
     case FLOAT16: {
 	float16_t fv;	
 	memcpy(&fv, data, sizeof(fv));
@@ -1631,7 +1646,7 @@ next:
     rd = prog[pc].rd;
 
     switch(i & 0x7f) {
-    case OP_MOVR: ack = r[ri]; break;
+    case OP_MOV: ack = r[ri]; break;
     case OP_VNEG:  (*vfun_neg_ops[t])(&r[ri],&ack); break;
     case OP_VBNOT: (*vfun_bnot_ops[t])(&r[ri],&ack); break;
     case OP_VINV:  (*vfun_reciprocal_ops[t])(&r[ri],&ack); break;
@@ -4600,11 +4615,11 @@ static ERL_NIF_TERM matrix_native_vector_width(ErlNifEnv* env, int argc, const E
     else if (argv[0] == ATOM(int32)) type = INT32;
     else if (argv[0] == ATOM(int64)) type = INT64;
     else if (argv[0] == ATOM(int128)) type = INT128;
+    else if (argv[0] == ATOM(float8)) type = FLOAT8;    
     else if (argv[0] == ATOM(float16)) type = FLOAT16;
     else if (argv[0] == ATOM(float32)) type = FLOAT32;
     else if (argv[0] == ATOM(float64)) type = FLOAT64;
     else return enif_make_badarg(env);
-
     return enif_make_int(env, VSIZE / element_size(type));
 }
 
@@ -4623,6 +4638,7 @@ static ERL_NIF_TERM matrix_preferred_vector_width(ErlNifEnv* env, int argc, cons
     else if (argv[0] == ATOM(int32)) type = INT32;
     else if (argv[0] == ATOM(int64)) type = INT64;
     else if (argv[0] == ATOM(int128)) type = INT128;
+    else if (argv[0] == ATOM(float8)) type = FLOAT8;    
     else if (argv[0] == ATOM(float16)) type = FLOAT16;
     else if (argv[0] == ATOM(float32)) type = FLOAT32;
     else if (argv[0] == ATOM(float64)) type = FLOAT64;
@@ -5829,7 +5845,7 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	if (ie[0] == ATOM(nop))  op = OP_NOP;
 	
 	else if (ie[0] == ATOM(ret))  op = OP_RET;
-	else if (ie[0] == ATOM(mov))  op = OP_MOVR; // updated!
+	else if (ie[0] == ATOM(mov))  op = OP_MOV; // updated!
 	else if (ie[0] == ATOM(neg))  op = OP_NEG;
 	else if (ie[0] == ATOM(bnot)) op = OP_BNOT;
 	else if (ie[0] == ATOM(inv))  op = OP_INV;
@@ -5843,9 +5859,12 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	else if (ie[0] == ATOM(cmplt)) op = OP_CMPLT;
 	else if (ie[0] == ATOM(cmple)) op = OP_CMPLE;
 	else if (ie[0] == ATOM(cmpeq)) op = OP_CMPEQ;
+	else if (ie[0] == ATOM(cmpgt)) op = OP_CMPGT;
+	else if (ie[0] == ATOM(cmpge)) op = OP_CMPGE;
+	else if (ie[0] == ATOM(cmpne)) op = OP_CMPNE;	
 	
 	else if (ie[0] == ATOM(vret))  op = OP_VRET;
-	else if (ie[0] == ATOM(vmov))  op = OP_VMOVR; // updated!
+	else if (ie[0] == ATOM(vmov))  op = OP_VMOV;
 	else if (ie[0] == ATOM(vneg))  op = OP_VNEG;
 	else if (ie[0] == ATOM(vbnot)) op = OP_VBNOT;
 	else if (ie[0] == ATOM(vinv))  op = OP_VINV;
@@ -5856,9 +5875,13 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 	else if (ie[0] == ATOM(vadd))  op = OP_VADD;
 	else if (ie[0] == ATOM(vsub))  op = OP_VSUB;
 	else if (ie[0] == ATOM(vmul))  op = OP_VMUL;
-	else if (ie[0] == ATOM(vcmplt))   op = OP_VCMPLT;
-	else if (ie[0] == ATOM(vcmple))  op = OP_VCMPLE;
-	else if (ie[0] == ATOM(vcmpeq))   op = OP_VCMPEQ;
+	else if (ie[0] == ATOM(vcmplt)) op = OP_VCMPLT;
+	else if (ie[0] == ATOM(vcmple)) op = OP_VCMPLE;
+	else if (ie[0] == ATOM(vcmpeq)) op = OP_VCMPEQ;
+	else if (ie[0] == ATOM(vcmpgt)) op = OP_VCMPGT;
+	else if (ie[0] == ATOM(vcmpge)) op = OP_VCMPGE;
+	else if (ie[0] == ATOM(vcmpne)) op = OP_VCMPNE;	
+	
 	else return -1;
 
 	prog[pc].op = op;
@@ -5924,6 +5947,8 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 		prog[pc].ri = i;
 	    }
 	    else if (enif_get_int(env, rs[0], &imm12)) {
+		prog[pc].op |= OP_IMM;  // mark as immediate op		
+		// FIXME: check valid op! MOV
 		prog[pc].imm12 = imm12;
 	    }
 	    else
@@ -5943,16 +5968,19 @@ static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 		if (!enif_get_int(env, rs[1], &j) || (j < 0) || (j > 15))
 		    return -1;
 		prog[pc].rj = j;
+		// FIXME: op != OP_VEC
 	    }
 	    else if (rs[0] == ATOM(v)) {
 		int j;
 		if (!enif_get_int(env, rs[1], &j) || (j < 0) || (j > 15))
 		    return -1;
 		prog[pc].rj = j;
+		// FIXME: op == OP_VEC		
 	    }
 	    else if (enif_get_int(env, rs[0], &imm8)) {
+		prog[pc].op |= OP_IMM;  // mark as immediate op
 		prog[pc].imm8 = imm8;
-	    }	    
+	    }
 	    pos++;
 	}
 	pc++;         // next instruction
@@ -7757,6 +7785,9 @@ static int matrix_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     LOAD_ATOM(env,cmplt);
     LOAD_ATOM(env,cmple);
     LOAD_ATOM(env,cmpeq);
+    LOAD_ATOM(env,cmpgt);
+    LOAD_ATOM(env,cmpge);
+    LOAD_ATOM(env,cmpne);    
     LOAD_ATOM(env,band);
     LOAD_ATOM(env,bor);
     LOAD_ATOM(env,bxor);

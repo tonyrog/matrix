@@ -8,7 +8,7 @@
 
 %% -compile(native).
 -on_load(init/0).
--export([create/4, create/5]).
+-export([create/3, create/4, create/5]).
 -export([size/1]).
 -export([native_vector_width/1]).
 -export([preferred_vector_width/1]).
@@ -134,6 +134,12 @@
 init() ->
     Nif = filename:join(code:priv_dir(matrix), "matrix_nif"),
     erlang:load_nif(Nif, 0).
+
+-spec create(N::unsigned(), M::unsigned(), T::matrix_type()) ->
+	  matrix().
+
+create(N,M,T) ->
+    create(N,M,T,true,[]).
 
 -spec create(N::unsigned(), M::unsigned(), T::matrix_type(), Data::iolist()) ->
 		 matrix().

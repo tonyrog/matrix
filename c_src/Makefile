@@ -13,7 +13,7 @@ CFLAGS+= -msse3 # -mavx2  # -msse3
 # raspberry pi
 # CFLAGS+=-mfloat-abi=softfp -mfpu=neon -flax-vector-conversions
 # CFLAGS+=-mfpu=neon -flax-vector-conversions
-CXXFLAGS+= -Wall -Wextra -Wswitch-enum -Wswitch-default -fno-common -O -g #-O2
+CXXFLAGS+= -Wall -Wextra -Wswitch-enum -Wswitch-default -fno-common -g #-O2
 CXXFLAGS+= -msse3
 
 LDFLAGS+=-shared
@@ -33,6 +33,11 @@ kernel: ../priv/kernel
 
 ../priv/kernel:	$(KOBJS)
 	$(CXX) $(KOBJS) $(KLIBS) -g -o $ $@
+
+matrix_kernel.o:	matrix_kernel.h matrix_types.h matrix_kernel_asm.h
+matrix_kernel_util.o:   matrix_kernel.h matrix_types.h
+matrix_kernel_emu.o:   matrix_kernel.h matrix_types.h
+matrix_kernel_x86.o:	matrix_kernel.h matrix_types.h matrix_kernel_asm.h
 
 %.o:	%.c
 	$(CC) $(CFLAGS) -c -fPIC $<
