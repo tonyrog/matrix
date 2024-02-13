@@ -216,6 +216,8 @@ void sprint(FILE* f, uint8_t type, scalar0_t v)
     case INT16: fprintf(f, "%d", v.i16); break;
     case INT32: fprintf(f, "%d", v.i32); break;
     case INT64: fprintf(f, "%ld", v.i64); break;
+    case FLOAT8: fprintf(f, "%u", v.f8);break;
+    case FLOAT16: fprintf(f, "%u", v.f16);break;		
     case FLOAT32: fprintf(f, "%f", v.f32);break;
     case FLOAT64: fprintf(f, "%f", v.f64);break;
     default: break;
