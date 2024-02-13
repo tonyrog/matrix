@@ -1471,6 +1471,7 @@ static void ev_binary(binary_op_t* opv,matrix_type_t type,
 }
 
 // splat data into dst vector
+#if 0
 static void set_const(matrix_type_t t, uint8_t* data, scalar_t* dst)
 {
     switch(t) {
@@ -1492,10 +1493,12 @@ static void set_const(matrix_type_t t, uint8_t* data, scalar_t* dst)
     default: break;
     }
 }
+#endif
 
 static void eval_prog(instr_t* prog, int argc, scalar_t argv[], scalar_t* dst)
 {
     UNUSED(argc);
+    UNUSED(argv);    
     scalar_t r[16];
     scalar_t ack;
     matrix_type_t t;
@@ -1538,6 +1541,7 @@ next:
 #ifdef USE_VECTOR
 
 // splat data into dst vector
+#if 0
 static void set_vconst(matrix_type_t t, uint8_t* data, vscalar_t* dst)
 {
     switch(t) {
@@ -1629,9 +1633,12 @@ static void set_vconst(matrix_type_t t, uint8_t* data, vscalar_t* dst)
 	break;
     }
 }
+#endif
 
 static void eval_vprog(instr_t* prog, int argc, vector_t* argv[], vector_t* dst)
 {
+    UNUSED(argc);
+    UNUSED(argv);
     vscalar_t r[16];
     vscalar_t ack;
     matrix_type_t t;
@@ -5819,6 +5826,7 @@ static ERL_NIF_TERM matrix_bnot(ErlNifEnv* env, int argc, const ERL_NIF_TERM arg
 static int load_program(ErlNifEnv* env, ERL_NIF_TERM arg, int nargs,
 			instr_t* prog, size_t maxlen)
 {
+    UNUSED(nargs);
     ERL_NIF_TERM list = arg;
     ERL_NIF_TERM head, tail;    
     int pc = 0;
@@ -6729,7 +6737,7 @@ ERL_NIF_TERM matrix_argmax(ErlNifEnv* env, int argc,
 	    if ((c=create_matrix(env,1,a->n,FALSE,INT32,&res))==NULL)
 		return enif_make_badarg(env);
 	    matrix_r_lock(a);
-	    argmax(a->type, a->first,1,a->n_stride,
+	    argmax(a->type, a->first,a->m_stride,a->n_stride,
 		   (int32_t*)c->first, 1,
 		   a->m,a->n,opts);
 	    matrix_r_unlock(a);
@@ -6905,7 +6913,7 @@ ERL_NIF_TERM matrix_argmin(ErlNifEnv* env, int argc,
 	    if ((c=create_matrix(env,1,a->n,FALSE,INT32,&res))==NULL)
 		return enif_make_badarg(env);
 	    matrix_r_lock(a);
-	    argmin(a->type, a->first,1,a->n_stride,
+	    argmin(a->type,a->first,a->m_stride,a->n_stride,
 		   (int32_t*)c->first, 1,
 		   a->m,a->n,opts);
 	    matrix_r_unlock(a);
