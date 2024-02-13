@@ -114,7 +114,7 @@
 -export([foldl_column/4, foldr_column/4]).
 -export([foldl_matrix/3, foldr_matrix/3]).
 -export([invert_l/1, invert_u/1]).
-
+-export([det_/2]).
 -export_type([matrix/0]).
 
 -define(EPS, 2.2204460492503131e-16).        %% float32 smallest step
@@ -1313,11 +1313,40 @@ sum_l(I,J,K,A,X,Sum) ->
 -define(pow_sign(N), ((((N)+1) band 1)*2 - 1)).
 
 det(A) ->
+    case signature(A) of
+	{0,0,_Ta} ->  element_zero(A);
+	{1,1,_Ta} ->  element(1,1,A);
+	{2,2,_Ta} ->
+	    A11 = element(1,1,A),A12 = element(1,2,A),
+	    A21 = element(2,1,A),A22 = element(2,2,A),
+	    element_subtract(element_multiply(A11,A22),
+			     element_multiply(A12,A21));
+	{3,3,_Ta} ->
+	    A11 = element(1,1,A),A12 = element(1,2,A), A13 = element(1,3,A),
+	    A21 = element(2,1,A),A22 = element(2,2,A), A23 = element(2,3,A),
+	    A31 = element(3,1,A),A32 = element(3,2,A), A33 = element(3,3,A),
+	    %% det = A11*(A22*A33 - A23*A32) - 
+	    %%       A12*(A21*A33 - A23*A31) + 
+	    %%       A13*(A21*A32 - A22*A31)
+	    T1 = element_subtract(element_multiply(A22,A33),
+				  element_multiply(A23,A32)),
+	    T2 = element_subtract(element_multiply(A21,A33),
+				  element_multiply(A23,A31)),
+	    T3 = element_subtract(element_multiply(A21,A32),
+				  element_multiply(A22,A31)),
+	    %% det = A11*T1 - A12*T2 + A13*T3
+	    element_add(element_subtract(element_multiply(A11,T1),
+					 element_multiply(A12,T2)),
+			element_multiply(A13,T3));
+	{N,N,_Ta} when N > 3 ->
+	    det_(A,N)
+    end.
+
+det_(A,N) ->
     {_L,U,_P,Pn} = matrix_lu:decompose(A),
-    {N,_,T} = signature(U),
-    D = det_u(N,elem_one(T),U),       %% multiply diagonal
-    element_multiply(D,?pow_sign(Pn)).   %% with -1^Pn
-    
+    D = det_u(N,element_one(A),U),       %% multiply diagonal
+    element_multiply(D,?pow_sign(Pn)).   %% with -1^Pn    
+
 det_u(0,D,_U) -> D;
 det_u(I,D,U) -> det_u(I-1,element_multiply(D,element(I,I,U)),U).
 
