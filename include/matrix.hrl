@@ -40,6 +40,7 @@
 -define(get_comp_size(T),         (1 bsl ?get_comp_exp_size((T)))).
 -define(get_vector_size(T),       (((T) bsr 5)+1)).
 -define(get_element_size(T), (?get_vector_size(T)*?get_comp_size(T))).
+
 %% SclarType
 -define(UINT,    2#00).
 -define(INT,     2#01).
@@ -159,8 +160,16 @@
 -define(float32(X),   (X):32/native-float).
 -define(float64(X),   (X):64/native-float).
 
+%% is signed! integer scalar type
+-define(is_integer_scalar(T),
+	(((T) band (?SCALAR_TYPE_MASK bor ?VECTOR_SIZE_MASK)) =:= ?INT)).
+-define(is_unsigned_scalar(T),
+	(((T) band (?SCALAR_TYPE_MASK bor ?VECTOR_SIZE_MASK)) =:= ?UINT)).
+-define(is_float_scalar(T),
+	(((T) band (?SCALAR_TYPE_MASK bor ?VECTOR_SIZE_MASK)) =:= ?FLOAT)).
+
 -type unsigned() :: non_neg_integer().
--type matrix_int_type() :: uint8|uint16|uint32|uint64|uint128.
+-type matrix_int_type() :: int8|int16|int32|int64|int128.
 -type matrix_uint_type() :: uint8|uint16|uint32|uint64|uint128.
 -type matrix_float_type() :: float16|float32|float64.
 
@@ -198,6 +207,7 @@
 -type vector()   :: vector2()|vector3()|vector4()|vector8()|vector16().
 
 -type constant() :: scalar() | vector().
+-type element_type() :: scalar() | vector().
 
 -type resource() :: reference() | {unsigned(),binary()} | binary().
 
@@ -216,7 +226,7 @@
 
 -record(matrix_t,
 	{
-	 type     :: encoded_type(),
+	 type     :: matrix_type() | encoded_type(),
 	 resource :: resource()
 	}).
 
@@ -229,7 +239,7 @@
 -define(is_constant(X), (is_number((X)) orelse ?is_vector(X))).
 
 -define(matrix_cdata_vec(M, Type, Data),
-	#matrix { type=(Type) band ?TYPE_MASk,
+	#matrix { type=(Type) band ?TYPE_MASK,
 		  resource=(Data),
 		  n=1,
 		  m=(M),

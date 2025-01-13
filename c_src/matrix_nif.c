@@ -9,8 +9,8 @@
 
 #include "erl_nif.h"
 
-//#define NIF_TRACE
-//#define DEBUG
+// #define NIF_TRACE
+// #define DEBUG
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -52,7 +52,8 @@ typedef enum {
     NORMAL         = 18,
     RECIPROCAL     = 19,
     SQRT           = 20,
-    LAST_UNARY_OP  = SQRT,
+    ABS            = 21,
+    LAST_UNARY_OP  = ABS,
 } unary_operation_t;
 
 #define NUM_UNARYOP (LAST_UNARY_OP+1)
@@ -200,12 +201,12 @@ typedef void (*mtv_mulop_func_t)(byte_t* ap,int au,size_t an, size_t am,
 
 typedef void (*mt_kmulop_func_t)(byte_t* ap,int au,int av,size_t an,size_t am,
 				 byte_t* bp,int bu,int bv,size_t bn,size_t bm,
-				 int32_t* kp,int kv,size_t km,
+				 byte_t* kp,int kv,size_t km,
 				 byte_t* cp,int cu,int cv);
 
 typedef void (*mtv_kmulop_func_t)(byte_t* ap,int au,size_t an, size_t am,
 				  byte_t* bp,int bu,size_t bn, size_t bm,
-				  int32_t* kp, int kv, size_t km,
+				  byte_t* kp, int kv, size_t km,
 				  byte_t* cp,int cu,int cv);
 
 // typedef vector_t (*vector_unary_func_t)(vector_t a);
@@ -433,6 +434,8 @@ static void matrix_unload(ErlNifEnv* env, void* priv_data);
     NIF("reciprocal",   2, matrix_reciprocal) \
     NIF("sqrt",         1, matrix_sqrt) \
     NIF("sqrt",         2, matrix_sqrt) \
+    NIF("abs",          1, matrix_abs) \
+    NIF("abs",          2, matrix_abs) \
     NIF("mulsum",       2, matrix_mulsum) \
     NIF("l2pool",       5, matrix_l2pool) \
     NIF("l2pool",       6, matrix_l2pool) \
@@ -1244,6 +1247,11 @@ static float64_t sqrt_float64(float64_t a)
     return sqrt(a);
 }
 
+static float64_t abs_float64(float64_t a)
+{
+    return fabs(a);
+}
+
 static float64_t (*unaryop_float64[NUM_UNARYOP])(float64_t) = {
     [ZERO] = zero_float64,
     [ONE]  = one_float64,
@@ -1265,7 +1273,8 @@ static float64_t (*unaryop_float64[NUM_UNARYOP])(float64_t) = {
     [UNIFORM] = uniform_float64,
     [NORMAL] = normal_float64,
     [RECIPROCAL] = reciprocal_float64,
-    [SQRT] = sqrt_float64,    
+    [SQRT] = sqrt_float64,
+    [ABS] = abs_float64,    
 };
 
 // integer unary functions (FIXME!!!)
@@ -1395,6 +1404,11 @@ static int64_t sqrt_int64(int64_t a)
     return xk;
 }
 
+static int64_t abs_int64(int64_t a)
+{
+    return labs(a);
+}
+
 static int64_t (*unaryop_int64[NUM_UNARYOP])(int64_t) = {
     [ZERO] = zero_int64,
     [ONE]  = one_int64,
@@ -1417,6 +1431,7 @@ static int64_t (*unaryop_int64[NUM_UNARYOP])(int64_t) = {
     [NORMAL] = normal_int64,
     [RECIPROCAL] = reciprocal_int64,
     [SQRT] = sqrt_int64,
+    [ABS] = abs_int64,
 };
 
 static int64_t (*iunaryop_int64[NUM_IUNARYOP])(int64_t) = {
@@ -2814,6 +2829,48 @@ static void mop_times(bool_t use_vector,
     }
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// times
+///////////////////////////////////////////////////////////////////////////////
+
+static void mop_ktimes(bool_t use_vector,
+		       matrix_type_t at, byte_t* ap, int au, int av,
+		       matrix_type_t bt, byte_t* bp, int bu, int bv,
+		       matrix_type_t ct, byte_t* cp, int cu, int cv,
+		       size_t n, size_t m, void* extra)
+{
+    matrix_t* kp = (matrix_t*)extra;
+    int32_t* iv = (int32_t*) kp->first;
+    int i;
+    
+    for (i = 0; i < (int)kp->m; i++) {
+	int j = iv[i]-1;
+	if ((j >= 0) || (j < (int)n)) {
+	    byte_t* apk = ap + j*au;
+	    byte_t* bpk = bp + j*bu;
+	    byte_t* cpk = cp + j*cu;
+    
+	    if ((at == bt) && (bt == ct)) {
+#ifdef USE_VECTOR
+		if (use_vector &&
+		    is_aligned(apk) && is_aligned(bpk) && is_aligned(cpk)) {
+		    mtv_binary_eval(vfun_times_ops, fun_times_ops, at,
+				    apk,au,av, bpk,bu,bv, cpk,cu,cv, 1,m); 
+		}
+		else
+#endif
+		{
+		    mt_binary_eval(fun_times_ops, at,
+				   apk,au,av, bpk,bu,bv, cpk,cu,cv, 1,m);	    
+		}
+	    }
+	    else {
+		apply2(MUL, at, apk,au,av, bt,bpk,bu,bv, ct,cpk,cu,cv, 1,m);
+	    }
+	}
+    }
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // divide
@@ -2913,6 +2970,20 @@ static void mop_sqrt(bool_t use_vector,
     UNUSED(extra);    
     UNUSED(use_vector);
     apply1(SQRT, at, ap, au, av, ct, cp, cu, cv, n, m);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// abs
+///////////////////////////////////////////////////////////////////////////////
+
+static void mop_abs(bool_t use_vector,
+		    matrix_type_t at, byte_t* ap, int au, int av,
+		    matrix_type_t ct, byte_t* cp, int cu, int cv,
+		    size_t n, size_t m, void* extra)
+{
+    UNUSED(extra);    
+    UNUSED(use_vector);
+    apply1(ABS, at, ap, au, av, ct, cp, cu, cv, n, m);
 }
 
 
@@ -3595,7 +3666,7 @@ static void kmultiply(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
-    int32_t* kp,int kv,size_t km,
+    byte_t* kp,int kv,size_t km,
     matrix_type_t ct,byte_t* cp,int cu,int cv)
 {
     if ((at == bt) && (bt == ct)) {
@@ -3618,7 +3689,7 @@ static void kmultiply(
 	    float64_t (*read_cf)(byte_t*) = read_float64_func[ct];
 	    void (*write_cf)(byte_t*, float64_t) = write_float64_func[ct];
 	    while(km--) {
-		int32_t i = *kp - 1;
+		int32_t i = *((int32_t*)kp) - 1;
 		if ((i >= 0) && (i < (int)an)) {
 		    size_t m = bm;
 		    byte_t* cp1 = cp + cu*i;
@@ -3651,7 +3722,7 @@ static void kmultiply(
 	    int64_t (*read_cf)(byte_t*) = read_int64_func[ct];
 	    void    (*write_cf)(byte_t*, int64_t) = write_int64_func[ct];
 	    while(km--) {
-		int32_t i = *kp - 1;
+		int32_t i = *((int32_t*)kp) - 1;
 		if ((i >= 0) && (i < (int)an)) {
 		    size_t m = bm;
 		    byte_t* cp1 = cp + cu*i;
@@ -3689,7 +3760,7 @@ static void kmultiply_t(
     bool_t use_vector,
     matrix_type_t at,byte_t* ap,int au,int av,size_t an,size_t am,
     matrix_type_t bt,byte_t* bp,int bu,int bv,size_t bn,size_t bm,
-    int32_t* kp,int kv,size_t km,
+    byte_t* kp,int kv,size_t km,
     matrix_type_t ct,byte_t* cp,int cu,int cv)
 {
     if ((at == bt) && (bt == ct)) {
@@ -3708,7 +3779,7 @@ static void kmultiply_t(
 	    float64_t (*read_cf)(byte_t*) = read_float64_func[ct];
 	    void (*write_cf)(byte_t*, float64_t) = write_float64_func[ct];
 	    while(km--) {
-		int32_t i = *kp - 1;
+		int32_t i = *((int32_t*)kp) - 1;
 		if ((i >= 0) && (i < (int)an)) {
 		    byte_t* cp1 = cp + cu*i;
 		    byte_t* ap1 = ap + au*i;
@@ -3741,7 +3812,7 @@ static void kmultiply_t(
 	    int64_t (*read_cf)(byte_t*) = read_int64_func[ct];
 	    void    (*write_cf)(byte_t*, int64_t) = write_int64_func[ct];
 	    while(km--) {
-		int32_t i = *kp - 1;
+		int32_t i = *((int32_t*)kp) - 1;
 		if ((i >= 0) && (i < (int)an)) {
 		    byte_t* cp1 = cp + cu*i;
 		    byte_t* ap1 = ap + au*i;
@@ -5190,10 +5261,20 @@ ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     matrix_t mat[4];
     matrix_t *a, *b, *k, *c;
 
-    if (!get_matrix(env, argv[0], &mat[0], &a))
-	return enif_make_badarg(env);
-    if (!get_matrix(env, argv[1], &mat[1], &b))
-	return enif_make_badarg(env);
+    if (get_matrix(env, argv[0], &mat[0], &a)) {
+	if (!get_matrix(env, argv[1], &mat[1], &b)) {
+	    if (!get_scalar_matrix(env,argv[1],&mat[1],&b,
+				   a->rowmajor,a->type,a->n,a->m))
+		return enif_make_badarg(env);
+	}
+    }
+    else {
+	if (!get_matrix(env, argv[1], &mat[1], &b))
+	    return enif_make_badarg(env);
+	if (!get_scalar_matrix(env,argv[0],&mat[0],&a,
+			       b->rowmajor,b->type,b->n,b->m))
+	    return enif_make_badarg(env);
+    }
     if (!get_matrix(env, argv[2], &mat[2], &k))
 	return enif_make_badarg(env);
 
@@ -5206,16 +5287,17 @@ ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	return enif_make_badarg(env);
     if (!k->rowmajor || (k->n != 1))
 	return enif_make_badarg(env);
-
+	
     if (argc == 3) {
 	ERL_NIF_TERM res;
 	matrix_type_t ct = combine_type(a->type, b->type);
 
 	if ((c=create_matrix(env,a->n,a->m,a->rowmajor,ct,&res)) == NULL)
 	    return enif_make_badarg(env);
+	memset(c->data, 0, c->size);  // set to zero
 
 	matrix_rr_lock(a,b);
-	m_apply2(mop_times,NULL,a,b,c);
+	m_apply2(mop_ktimes,k,a,b,c);
 	matrix_rr_unlock(a,b);
 	return make_matrix_t(env,c,res);
     }
@@ -5227,11 +5309,10 @@ ERL_NIF_TERM matrix_ktimes(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 	else if ((a->rowmajor != c->rowmajor) &&
 		 ((a->n != c->m) || (a->m != c->n)))
 	    return enif_make_badarg(env);
-
 	matrix_rrw_lock(a, b, c);
-	m_apply2(mop_times, NULL, a, b, c);
+	m_apply2(mop_ktimes, k, a, b, c);
 	matrix_rrw_unlock(a, b, c);
-	return argv[2];
+	return argv[3];
     }
 }
 
@@ -5376,19 +5457,19 @@ static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
 	    kmultiply(TRUE,
 		      ap->type,ap->first,ap->n_stride,ap->m_stride,ap->n,ap->m,
 		      bp->type,bp->first,bp->n_stride,bp->m_stride,bp->n,bp->m,
-		      (int32_t*)kp->first,kp->m_stride,kp->m,
+		      kp->first,kp->m_stride,kp->m,
 		      cp->type,cp->first,cp->n_stride,cp->m_stride);
 	} else if (ap->rowmajor && !bp->rowmajor) {
 	    kmultiply_t(TRUE,
 			ap->type,ap->first,ap->n_stride,ap->m_stride,ap->n,ap->m,
 			bp->type,bp->first,bp->n_stride,bp->m_stride,bp->n,bp->m,
-			(int32_t*)kp->first,kp->m_stride,kp->m,
+			kp->first,kp->m_stride,kp->m,
 			cp->type,cp->first,cp->n_stride,cp->m_stride);
 	} else if (!ap->rowmajor && bp->rowmajor) {
 	    kmultiply(FALSE,
 		      ap->type,ap->first,ap->m_stride,ap->n_stride,ap->m,ap->n,
 		      bp->type,bp->first,bp->n_stride,bp->m_stride,bp->n,bp->m,
-		      (int32_t*)kp->first,kp->m_stride,kp->m,
+		      kp->first,kp->m_stride,kp->m,
 		      cp->type,cp->first,cp->n_stride,cp->m_stride);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor (NOTE A/B swap!)
@@ -5396,7 +5477,7 @@ static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
 	    kmultiply(TRUE,
 		      bp->type,bp->first,bp->n_stride,bp->m_stride,bp->n,bp->m,
 		      ap->type,ap->first,ap->n_stride,ap->m_stride,ap->n,ap->m,
-		      (int32_t*)kp->first,kp->m_stride,kp->m,
+		      kp->first,kp->m_stride,kp->m,
 		      cp->type,cp->first,1,cp->n_stride);
 	}
     }
@@ -5405,19 +5486,19 @@ static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
 	    kmultiply(TRUE,
 		      ap->type,ap->first,ap->n_stride,ap->m_stride,ap->n,ap->m,
 		      bp->type,bp->first,bp->n_stride,bp->m_stride,bp->n,bp->m,
-		      (int32_t*)kp->first,kp->m_stride,kp->m,
+		      kp->first,kp->m_stride,kp->m,
 		      cp->type,cp->first,1,cp->n_stride);
 	} else if (ap->rowmajor && !bp->rowmajor) {
 	    kmultiply_t(TRUE,
 			ap->type,ap->first,ap->n_stride,ap->m_stride,ap->n,ap->m,
 			bp->type,bp->first,bp->n_stride,bp->m_stride,bp->n,bp->m,
-			(int32_t*)kp->first,kp->m_stride,kp->m,
+			kp->first,kp->m_stride,kp->m,
 			cp->type,cp->first,1,cp->n_stride);
 	} else if (!ap->rowmajor && bp->rowmajor) {
 	    kmultiply(FALSE,
 		      ap->type,ap->first,ap->m_stride,ap->n_stride,ap->m,ap->n,
 		      bp->type,bp->first,bp->n_stride,bp->m_stride,bp->n,bp->m,
-		      (int32_t*)kp->first,kp->m_stride,kp->m,
+		      kp->first,kp->m_stride,kp->m,
 		      cp->type,cp->first,1,cp->n_stride);
 	}
 	else { // !ap->rowmajor && !bp->rowmajor
@@ -5425,7 +5506,7 @@ static void k_multiply(matrix_t* ap, matrix_t* bp, matrix_t* kp,
 	    kmultiply(TRUE,
 		      bp->type,bp->first,bp->n_stride,bp->m_stride,bp->n,bp->m,
 		      ap->type,ap->first,ap->n_stride,ap->m_stride,ap->n,ap->m,
-		      (int32_t*)kp->first,kp->m_stride,kp->m,
+		      kp->first,kp->m_stride,kp->m,
 		      cp->type,cp->first,cp->n_stride,cp->m_stride);
 	}
     }
@@ -5671,6 +5752,13 @@ ERL_NIF_TERM matrix_sqrt(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 		    ALL_TYPES, ALL_TYPES);
 }
 
+// abs integer/float arguments element wise
+ERL_NIF_TERM matrix_abs(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    return unary_op(env, argc, argv, mop_abs, NULL,
+		    copy_type,
+		    ALL_TYPES, ALL_TYPES);
+}
 
 static void mulsum(bool_t use_vector, bool_t square_root,
 		   matrix_type_t at, byte_t* ap, int au, int av,

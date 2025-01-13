@@ -6,6 +6,8 @@
 
 -module(matrix).
 
+-no_auto_import([size/1]).
+-no_auto_import([abs/1]).
 %% -compile(native).
 -on_load(init/0).
 -export([create/3, create/4, create/5]).
@@ -46,7 +48,7 @@
 -export([mulsum/2]).
 -export([expsum/1]).
 -export([sum/1, sum/2]).
--export([ktimes/3]).
+-export([ktimes/3, ktimes/4]).
 -export([scale/2, scale/3]).
 -export([exp/1]).
 -export([square/1]).
@@ -54,11 +56,13 @@
 -export([negate/1, negate/2]).
 -export([reciprocal/1, reciprocal/2]).
 -export([sqrt/1, sqrt/2]).
--export([validate/1, validate/2]).
+-export([abs/1, abs/2]).
+-export([validate/1]). %% , validate/2]).
 -export([eval/2, eval/3]).
 -export([type/1]).
--export([signature/1]).
+-export([signature/1, sig/1]).
 -export([is_integer_matrix/1]).
+-export([is_unsigned_matrix/1]).
 -export([is_float_matrix/1]).
 %%-export([is_complex_matrix/1]).
 
@@ -108,6 +112,7 @@
 -export([element_reciprocal/1, element_negate/1]).
 -export([element_add/2, element_subtract/2]).
 -export([element_divide/2, element_multiply/2]).
+-export([element_remainder/2]).
 %% debug
 -export([type_from_lists/1, type_from_list/1]).
 -export([foldl_row/4, foldr_row/4]).
@@ -302,15 +307,15 @@ one(N,M,Type) when is_integer(N), N >= 1,
 		   is_integer(M), M >= 1 ->
     constant_(N, M, Type, 1).
 
--spec constant({N::unsigned(),M::unsigned()},C::constant()) -> matrix();
-	      ({N::unsigned(),M::unsigned(),T::matrix_type()},C::constant()) ->
+-spec constant({N::unsigned(),M::unsigned()},C::element_type()) -> matrix();
+	      ({N::unsigned(),M::unsigned(),T::matrix_type()},C::element_type()) ->
 		      matrix().
 constant({N,M},C) ->
     constant_(N,M,arg_type(C),C);
 constant({N,M,T},C) ->
     constant_(N,M,T,C).
 
--spec constant(N::unsigned(), M::unsigned(),C::constant()) -> matrix().
+-spec constant(N::unsigned(), M::unsigned(),C::element_type()) -> matrix().
 constant({N,M},Type,C) ->
     constant(N,M,Type,C);
 constant(N,M,C) when is_integer(C) ->
@@ -321,7 +326,7 @@ constant(N,M,C) when is_tuple(C), tuple_size(C) > 0, tuple_size(C) =< 16 ->
     T = arg_type(C),
     constant_(N,M,T,C).
 
--spec constant(N::unsigned(), M::unsigned(), T::matrix_type(), C::constant()) ->
+-spec constant(N::unsigned(), M::unsigned(), T::matrix_type(), C::element_type()) ->
 		      matrix().
 constant(N,M,Type,C) when is_integer(N), N >= 1,
 			  is_integer(M), M >= 1,
@@ -338,7 +343,7 @@ constant_(N,M,T,C) ->
     #matrix { type=T, n=N, m=M, n_stride=0, m_stride=0, k_stride=0,
 	      rowmajor=true, resource=Bin }.
 
--spec rep(N::unsigned(), M::unsigned(), constant()) -> matrix().
+-spec rep(N::unsigned(), M::unsigned(), element_type()) -> matrix().
 rep(N, M, C) when is_integer(C) ->
     rep(N,M,int32,C);
 rep(N, M, C) when is_float(C) ->
@@ -364,7 +369,7 @@ rep(N, M, Type, C) when is_atom(Type), ?is_constant(C) ->
 	      rowmajor=true, resource=Bin }.
 
 
--spec cdata(N::unsigned(), Data::[constant()]) -> matrix().
+-spec cdata(N::unsigned(), Data::[element_type()]) -> matrix().
 cdata(N,X=#matrix{n=1,m=_M}) when N > 0 ->
     X#matrix { n=N, n_stride=0 };
 cdata(M,X=#matrix{m=1,n=_N}) when M > 0 ->
@@ -406,11 +411,11 @@ identity(N,M,Type) when is_integer(N), N >= 1,
 identity_(_N,_M,_T) ->
     ?nif_stub().
 
--spec apply1(A::matrix(), Op::atom()) -> matrix().
+-spec apply1(Op::atom(), A::matrix()) -> matrix().
 apply1(_A, _Op) ->
     ?nif_stub().
 
--spec apply1(A::matrix(), Dst::matrix(), Op::atom()) -> matrix().
+-spec apply1(Op::atom(), A::matrix(), Dst::matrix()) -> matrix().
 apply1(_A, _Dst, _Op) ->
     ?nif_stub().
 
@@ -440,17 +445,29 @@ signature(A=#matrix_t{type=T}) ->
     {N,M} = size(A),
     {N,M,decode_type(T)}.
 
+%% like signature but return the type as an integer!
+-spec sig(A::matrix()) -> {N::unsigned(),M::unsigned(),Typ::unsigned()}.
+sig(#matrix{n=N,m=M,type=T,rowmajor=true}) -> {N,M,T};
+sig(#matrix{n=N,m=M,type=T,rowmajor=false}) -> {M,N,T};
+sig(A=#matrix_t{type=T}) -> {N,M} = size(A), {N,M,T}.
+
 -spec is_integer_matrix(X::matrix()) -> boolean().
 is_integer_matrix(#matrix_t{type=T}) -> 
-    (T >= ?int8_t) andalso (T =< ?int128_t);
+    ?is_integer_scalar(T);
 is_integer_matrix(#matrix{type=T}) -> 
-    (T >= ?int8_t) andalso (T =< ?int128_t).
+    ?is_integer_scalar(T).
+
+-spec is_unsigned_matrix(X::matrix()) -> boolean().
+is_unsigned_matrix(#matrix_t{type=T}) -> 
+    ?is_unsigned_scalar(T);
+is_unsigned_matrix(#matrix{type=T}) -> 
+    ?is_unsigned_scalar(T).
 
 -spec is_float_matrix(X::matrix()) -> boolean().
 is_float_matrix(#matrix_t{type=T}) ->
-    (T >= ?float32_t) andalso (T =< ?float64_t);
+    ?is_float_scalar(T);
 is_float_matrix(#matrix{type=T}) ->
-    (T >= ?float32_t) andalso (T =< ?float64_t).
+    ?is_float_scalar(T).
 
 %%-spec is_complex_matrix(X::matrix()) -> boolean().
 %%is_complex_matrix(#matrix_t{type=T}) ->
@@ -462,7 +479,7 @@ is_float_matrix(#matrix{type=T}) ->
 %% element([[r1,r2,..,rm]],A) -> [[A[r1][1], A[r2][2], ... A[rm][m]]]
 %% element([[c1],[c2],..,[cn]],A) -> [[A[1][c1]], [A[2][c2]], ... [A[n][cn]]]
 %%
--spec element(I::unsigned(),J::unsigned(),X::matrix()) -> constant().
+-spec element(I::unsigned(),J::unsigned(),X::matrix()) -> element_type().
 
 element(_I,_J,_A) ->
     ?nif_stub().
@@ -472,24 +489,16 @@ element(_I,_J,_A) ->
 %% Diag = element(Index, A),
 
 -spec element(I::matrix(),A::matrix()) -> matrix();
-	     ({I::unsigned(),J::unsigned()},A::matrix()) -> constant().
-%% element({I,J},A) when is_integer(I), is_integer(J) -> element(I,J,A);
-%% element(I,A) -> element_(I,A).
-
+	     ({I::unsigned(),J::unsigned()},A::matrix()) -> element_type().
 element(_I,_A) ->
     ?nif_stub().
 
 %% DESTRUCTIVE
--spec setelement(I::unsigned(),J::unsigned(),X::matrix(),V::constant()) ->
-			matrix().
+-spec setelement(I::unsigned(),J::unsigned(),X::matrix(),V::element_type()) ->
+	  matrix().
 setelement(_I,_J,_X,_V) ->
     ?nif_stub().
-%%     setelement_(I,J,X,V).
 
-%% -spec setelement_(I::unsigned(),J::unsigned(),X::matrix(),V::constant()) ->
-%%			matrix().
-%% setelement_(_I,_J,_X,_V) ->
-%%    ?nif_stub().
 
 foldl_matrix(F,A,X) ->
     {N,M} = size(X),
@@ -509,7 +518,6 @@ foldl_row_(I,J,M,F,A,X) ->
     E = element(I,J,X),
     A1 = F(E,A),
     foldl_row_(I,J+1,M,F,A1,X).
-
 
 foldr_matrix(F,A,X) ->
     {N,_M} = size(X),
@@ -554,16 +562,16 @@ foldr_column_(I,J,F,A,X) ->
 %% Add two matrices
 %%
 -spec add(A::matrix(), B::matrix()) -> matrix();
-	 (A::matrix(), B::constant()) -> matrix();
-	 (A::constant(), B::matrix()) -> matrix().
+	 (A::matrix(), B::element_type()) -> matrix();
+	 (A::element_type(), B::matrix()) -> matrix().
 
 add(_A,_B) ->
     ?nif_stub().
 
 %% destructive add
 -spec add(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	 (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	 (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	 (A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	 (A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 
 add(_A, _B, _Dst) ->
     ?nif_stub().
@@ -574,16 +582,16 @@ add(_A, _B, _Dst) ->
 %%
 
 -spec subtract(A::matrix(), B::matrix()) -> matrix();
-	      (A::matrix(), B::constant()) -> matrix();
-	      (A::constant(), B::matrix()) -> matrix().
+	      (A::matrix(), B::element_type()) -> matrix();
+	      (A::element_type(), B::matrix()) -> matrix().
 
 subtract(_A, _B) ->
     ?nif_stub().
 
 %% destructive subtract
 -spec subtract(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	      (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	      (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	      (A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	      (A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 
 subtract(_A,_B,_Dst) ->
     ?nif_stub().
@@ -593,15 +601,15 @@ subtract(_A,_B,_Dst) ->
 %% Element wise maximum
 %%
 -spec maximum(A::matrix(), B::matrix()) -> matrix();
-	     (A::matrix(), B::constant()) -> matrix();
-	     (A::constant(), B::matrix()) -> matrix().
+	     (A::matrix(), B::element_type()) -> matrix();
+	     (A::element_type(), B::matrix()) -> matrix().
 maximum(_A,_B) ->
     ?nif_stub().
 
 %% DESTRUTIVE
 -spec maximum(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	     (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	     (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	     (A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	     (A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 maximum(_A, _B, _Dst) ->
     ?nif_stub().
 
@@ -609,58 +617,58 @@ maximum(_A, _B, _Dst) ->
 %% Element wise minimum
 %%
 -spec minimum(A::matrix(), B::matrix()) -> matrix();
-	     (A::matrix(), B::constant()) -> matrix();
-	     (A::constant(), B::matrix()) -> matrix().
+	     (A::matrix(), B::element_type()) -> matrix();
+	     (A::element_type(), B::matrix()) -> matrix().
 minimum(_A,_B) ->
     ?nif_stub().
 
 %% DESTRUTIVE
 -spec minimum(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	     (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	     (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	     (A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	     (A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 minimum(_A, _B, _Dst) ->
     ?nif_stub().
 
 %% Compare two matrices
 
 -spec eq(A::matrix(), B::matrix()) -> matrix();
-	(A::matrix(), B::constant()) -> matrix();
-	(A::constant(), B::matrix()) -> matrix().
+	(A::matrix(), B::element_type()) -> matrix();
+	(A::element_type(), B::matrix()) -> matrix().
 
 eq(_A,_B) ->
     ?nif_stub().
 
 -spec eq(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	(A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	(A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	(A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	(A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 
 eq(_A, _B, _Dst) ->
     ?nif_stub().
 
 -spec lt(A::matrix(), B::matrix()) -> matrix();
-	(A::matrix(), B::constant()) -> matrix();
-	(A::constant(), B::matrix()) -> matrix().
+	(A::matrix(), B::element_type()) -> matrix();
+	(A::element_type(), B::matrix()) -> matrix().
 
 lt(_A,_B) ->
     ?nif_stub().
 
 -spec lt(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	(A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	(A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	(A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	(A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 
 lt(_A, _B, _Dst) ->
     ?nif_stub().
 
 -spec lte(A::matrix(), B::matrix()) -> matrix();
-	(A::matrix(), B::constant()) -> matrix();
-	(A::constant(), B::matrix()) -> matrix().
+	(A::matrix(), B::element_type()) -> matrix();
+	(A::element_type(), B::matrix()) -> matrix().
 
 lte(_A,_B) ->
     ?nif_stub().
 
 -spec lte(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	(A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	(A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	(A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	(A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 
 lte(_A, _B, _Dst) ->
     ?nif_stub().
@@ -708,45 +716,45 @@ info(Src) ->
 
 %% Multiply two matrices element wise
 -spec times(A::matrix(), B::matrix()) -> matrix();
-	   (A::matrix(), B::constant()) -> matrix();
-	   (A::constant(), B::matrix()) -> matrix().
+	   (A::matrix(), B::element_type()) -> matrix();
+	   (A::element_type(), B::matrix()) -> matrix().
 
 times(_A,_B) ->
     ?nif_stub().
 
 -spec times(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	   (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	   (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	   (A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	   (A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 
 times(_X,_Y,_Dst) ->
     ?nif_stub().
 
 %% Divide two matrices element wise
 -spec divide(A::matrix(), B::matrix()) -> matrix();
-	    (A::matrix(), B::constant()) -> matrix();
-	    (A::constant(), B::matrix()) -> matrix().
+	    (A::matrix(), B::element_type()) -> matrix();
+	    (A::element_type(), B::matrix()) -> matrix().
 
 divide(_A,_B) ->
     ?nif_stub().
 
 -spec divide(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	    (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	    (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	    (A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	    (A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 
 divide(_X,_Y,_Dst) ->
     ?nif_stub().
 
 %% Remainder two matrices element wise
 -spec remainder(A::matrix(), B::matrix()) -> matrix();
-	       (A::matrix(), B::constant()) -> matrix();
-	       (A::constant(), B::matrix()) -> matrix().
+	       (A::matrix(), B::element_type()) -> matrix();
+	       (A::element_type(), B::matrix()) -> matrix().
 
 remainder(_A,_B) ->
     ?nif_stub().
 
 -spec remainder(A::matrix(), B::matrix(), Dst::matrix()) -> matrix();
-	       (A::matrix(), B::constant(), Dst::matrix()) -> matrix();
-	       (A::constant(), B::matrix(), Dst::matrix()) -> matrix().
+	       (A::matrix(), B::element_type(), Dst::matrix()) -> matrix();
+	       (A::element_type(), B::matrix(), Dst::matrix()) -> matrix().
 
 remainder(_X,_Y,_Dst) ->
     ?nif_stub().
@@ -783,16 +791,29 @@ sqrt(_A) ->
 sqrt(_A, _Dst) ->
     ?nif_stub().
 
+%%
+%% absolute value matrix element wise
+%%
+-spec abs(A::matrix()) -> matrix().
+abs(_A) ->
+    ?nif_stub().
+
+-spec abs(A::matrix(),Dst::matrix()) -> matrix().
+abs(_A, _Dst) ->
+    ?nif_stub().
+
 
 %% validate matrix kernel
--spec validate(Prog::[matrix_kernel:inst()]) -> matrix_type().
+-spec validate(Prog::[matrix_kernel:inst()]) ->
+	  {ok, Prog1::[matrix_kernel:inst()]} |
+	  {error, [{integer(),matrix_kernel:inst()}]}.
 validate(Prog) ->
     matrix_kernel:validate(Prog).
 
--spec validate(Prog::[matrix_kernel:inst()], 
-	       VarList::[term()]) -> matrix_type().
-validate(Prog, VarList) ->
-    matrix_kernel:validate(Prog, VarList).
+%%-spec validate(Prog::[matrix_kernel:inst()], 
+%%	       VarList::[term()]) -> matrix_type().
+%%validate(Prog, VarList) ->
+%%    matrix_kernel:validate(Prog, VarList).
     
 %%
 %% element updates
@@ -829,12 +850,12 @@ eval_(_Prog, _As, _Dst) ->
 %%
 %% Scale a matrix by a scalar number
 %%
--spec scale(F::constant(), X::matrix()) -> matrix().
+-spec scale(F::element_type(), X::matrix()) -> matrix().
 
 scale(F, X) when ?is_constant(F) ->
     times(F, X).
 
--spec scale(F::constant(), X::matrix(), Dst::matrix()) -> matrix().
+-spec scale(F::element_type(), X::matrix(), Dst::matrix()) -> matrix().
 scale(F, X, Dst) when ?is_constant(F) ->
     times(F, X, Dst).
 
@@ -941,11 +962,18 @@ ktimes(A, B, undefined) ->
 ktimes(A, B, K) ->
     ktimes_(A, B, K).
 
+-spec ktimes(A::matrix(), B::matrix(), K::matrix(),C::matrix()) -> matrix().
+
+ktimes(A, B, undefined, C) ->
+    times(A, B, C);
+ktimes(A, B, K, C) ->
+    ktimes_(A, B, K, C).
+
 -spec ktimes_(A::matrix(), B::matrix(), K::matrix()) -> matrix().
 ktimes_(_A, _B, _K) ->
     ?nif_stub().
 
--spec ktimes_(X::matrix(), Y::matrix(), K::matrix(), C::matrix()) -> matrix().
+-spec ktimes_(A::matrix(), B::matrix(), K::matrix(), C::matrix()) -> matrix().
 ktimes_(_A, _B, _K, _C) ->
     ?nif_stub().
 
@@ -1010,32 +1038,40 @@ submatrix(_I,_J,_N,_M,_A) ->
 %% padding value PAD) using Sn and Sm as stride steps.
 %%
 
--spec convolve(F::function(),
+-spec convolve(F::fun((integer(),integer()) -> T),
 	       N::unsigned(),M::unsigned(),
 	       Sn::unsigned(), Sm::unsigned(),A::matrix()) ->
-		      matrix().
+	  [T].
 
 convolve(F,N,M,Sn,Sm,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
     [ F(I,J) || I <- lists:seq(1,Nx-N+1,Sn), J <- lists:seq(1,Mx-M+1,Sm)].
 
--spec convolve(F::fun((integer(),integer()) -> term()),
-	       N::unsigned(),M::unsigned(),A::matrix()) -> [term()].
+-spec convolve(F::fun((integer(),integer()) -> T),
+	       N::unsigned(),M::unsigned(),A::matrix()) -> [T].
 
 convolve(F,N,M,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
     [ F(I,J) || I <- lists:seq(1,Nx-N+1,1), J <- lists:seq(1,Mx-M+1,1)].
 
--spec rconvolve(F::function(),
+-spec rconvolve(F::fun((integer(),integer()) -> T),
 	       N::unsigned(),M::unsigned(),
 	       Sn::unsigned(), Sm::unsigned(),A::matrix()) ->
-		      matrix().
+	  [T].
 
-rconvolve(F,N,M,Sn,Sm,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
+rconvolve(F,N,M,Sn,Sm,#matrix{n=Nx,m=Mx}) 
+  when is_function(F,2),
+       is_integer(N),N>0,N =< Nx,
+       is_integer(M),M>0,M =< Mx,
+       is_integer(Sn),Sn>0,
+       is_integer(Sm),Sm>0 ->
     [ F(I,J) || I <- lists:seq(Nx-N+1,1,-Sn), J <- lists:seq(Mx-M+1,1,-Sm)].
 
--spec rconvolve(F::fun((integer(),integer()) -> term()),
-	       N::unsigned(),M::unsigned(),A::matrix()) -> [term()].
+-spec rconvolve(F::fun((integer(),integer()) -> T),
+		N::unsigned(),M::unsigned(),A::matrix()) -> [T].
 
-rconvolve(F,N,M,#matrix{n=Nx,m=Mx}) when N =< Nx, M =< Mx ->
+rconvolve(F,N,M,#matrix{n=Nx,m=Mx}) 
+  when is_function(F,2),
+       is_integer(N),N>0,N =< Nx,
+       is_integer(M),M>0,M =< Mx ->
     [ F(I,J) || I <- lists:seq(Nx-N+1,1,-1), J <- lists:seq(Mx-M+1,1,-1)].
 
 %%
@@ -1146,11 +1182,12 @@ sort(_A, _K, _Axis, _Opts) ->
 argmax(A) ->
     argmax(A, 0, []).
 
--spec argmax(A::matrix(),Axis::0..2) -> matrix().
+-spec argmax(A::matrix(),Axis::0..2) -> {I::integer(),J::integer()} | matrix().
 argmax(A,I) ->
     argmax(A,I,[]).
 
--spec argmax(A::matrix(),Axis::0..2,Opts::[compare_option()]) -> matrix().
+-spec argmax(A::matrix(),Axis::0..2,Opts::[compare_option()]) -> 
+	  {I::integer(),J::integer()} | matrix().
 argmax(_A,_I,_Opts) ->
     ?nif_stub().
 
@@ -1159,35 +1196,38 @@ argmax(_A,_I,_Opts) ->
 argmin(A) ->
     argmin(A,0,[]).
 
--spec argmin(A::matrix(),Axis::0..2) -> matrix().
+-spec argmin(A::matrix(),Axis::0..2) -> {I::integer(),J::integer()} | matrix().
 argmin(A,I) ->
     argmin(A,I,[]).
 
--spec argmin(A::matrix(),Axis::0..2,Opts::[compare_option()]) -> matrix().
+-spec argmin(A::matrix(),Axis::0..2,Opts::[compare_option()]) ->
+	  {I::integer(),J::integer()} | matrix().
 argmin(_A,_I,_Opts) ->
     ?nif_stub().
 
--spec max(A::matrix()) -> constant().
+-spec max(A::matrix()) -> element_type() | matrix().
 max(A) ->
     max(A,0,[]).
 
--spec max(A::matrix(), Axis::0..2) -> matrix().
+-spec max(A::matrix(), Axis::0..2) -> element_type() | matrix().
 max(A, Axis) -> 
     max(A,Axis,[]).
 
--spec max(A::matrix(), Axis::0..2,Opts::[compare_option()]) -> matrix().
+-spec max(A::matrix(), Axis::0..2,Opts::[compare_option()]) -> 
+	  element_type() | matrix().
 max(_A, _Axis, _Opts) ->
     ?nif_stub().
 
--spec min(A::matrix()) -> constant().
+-spec min(A::matrix()) -> element_type() | matrix().
 min(A) ->
     min(A, 0, []).
 
--spec min(A::matrix(), Axis::0..2) -> matrix().
+-spec min(A::matrix(), Axis::0..2) -> element_type() | matrix().
 min(A, Axis) ->
     min(A, Axis, []).
 
--spec min(A::matrix(), Axis::0..2,Opts::[compare_option()]) -> matrix().
+-spec min(A::matrix(), Axis::0..2,Opts::[compare_option()]) -> 
+	  element_type() | matrix().
 min(_A, _Axis, _Opts) ->
     ?nif_stub().
 
@@ -1281,9 +1321,15 @@ invert_l(L) ->
 %% row by row
 invert_l_rows(I,N,A,X) when I =< N ->
     Xii = element(I,I,A),
-    X1  = setelement(I,I,X,element_reciprocal(Xii)),
-    X2  = invert_l_row(I, I-1, Xii, A, X1),
-    invert_l_rows(I+1,N,A,X2);
+    case element_abs(Xii) =< ?EPS of 
+	true ->
+	    %% if Xii is close to zero, then the matrix is singular
+	    error(singular_matrix);
+	false ->
+	    X1  = setelement(I,I,X,element_reciprocal(Xii)),
+	    X2  = invert_l_row(I, I-1, Xii, A, X1),
+	    invert_l_rows(I+1,N,A,X2)
+    end;
 invert_l_rows(_I,_N,_A,X) ->
     X.
 
@@ -1293,22 +1339,15 @@ invert_l_row(I,J,Xii,A,X) ->
     K = I-1,
     Aik = row(I,J,K,A),     %% A[I][J]..A[I][K]
     Xkj = column(J,J,K,X),  %% X[J][J]..X[K][J]
-    S = mulsum(Aik,transpose(Xkj)),
-    %% S = sum_l(I, J, I-1, A, X, element_zero(A)),
+    XkjT = transpose(Xkj),
+    S = mulsum(Aik,XkjT),
     Sneg = element_negate(S),
-    X1 = setelement(I,J,X,element_divide(Sneg,Xii)),  %% destructive!
+    E = element_divide(Sneg,Xii),
+    X1 = setelement(I,J,X,E),  %% destructive!
     invert_l_row(I,J-1,Xii,A,X1).
 
--ifdef(not_used).
-sum_l(_I,J,K,_A,_X,Sum)  when K < J->
-    Sum;
-sum_l(I,J,K,A,X,Sum) ->
-    Aik = element(I,K,A),
-    Xkj = element(K,J,X),
-    sum_l(I,J,K-1,A,X,element_add(element_multiply(Aik,Xkj),Sum)).
--endif
     
--spec det(A::matrix()) -> constant().
+-spec det(A::matrix()) -> element_type().
 
 -define(pow_sign(N), ((((N)+1) band 1)*2 - 1)).
 
@@ -1343,9 +1382,16 @@ det(A) ->
     end.
 
 det_(A,N) ->
-    {_L,U,_P,Pn} = matrix_lu:decompose(A),
-    D = det_u(N,element_one(A),U),       %% multiply diagonal
-    element_multiply(D,?pow_sign(Pn)).   %% with -1^Pn    
+    {L,U,_P,Pn} = matrix_lu:decompose(A),
+    Du = det_u(N,element_one(A),U),       %% multiply diagonal
+    case is_integer_matrix(A) of
+	true ->
+	    Dl = det_u(N,element_one(A),L),
+	    element_divide(element_multiply(Du,?pow_sign(Pn)),
+			   Dl);
+	false ->
+	    element_multiply(Du,?pow_sign(Pn))   %% with -1^Pn 
+    end.
 
 det_u(0,D,_U) -> D;
 det_u(I,D,U) -> det_u(I-1,element_multiply(D,element(I,I,U)),U).
@@ -1607,6 +1653,11 @@ decode_type(T) ->
 			     [$x|integer_to_list(VecSize)])
     end.    
 
+element_remainder(A,B) when is_integer(A), is_integer(B) ->
+    A rem B;
+element_remainder(A,B) ->
+    math:fmod(A,B).
+
 element_divide(A,B) when is_integer(A), is_integer(B), A rem B =:= 0 ->
     A div B;
 element_divide(A,B) when is_number(A), is_number(B) ->
@@ -1647,7 +1698,7 @@ element_subtract({A1,B1},C) when is_number(C) ->
 element_subtract(C, {A2,B2}) when is_number(C) ->
     {C-A2,B2}.
 
-element_abs(C) when is_number(C) -> abs(C);
+element_abs(C) when is_number(C) -> erlang:abs(C);
 element_abs({A,B}) -> math:sqrt(A*A+B*B).
 
 element_zero(#matrix_t{type=T}) -> elem_zero(T);

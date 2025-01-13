@@ -17,7 +17,7 @@
 
 static void PROC(byte_t* ap, int au, int av, size_t an, size_t am,
 		 byte_t* bp, int bu, int bv, size_t bn, size_t bm,
-		 int32_t* kp, int kv, size_t km,
+		 byte_t* kp, int kv, size_t km,
 		 byte_t* cp, int cu, int cv
 		 PARAMS_DECL)
 {
@@ -26,7 +26,7 @@ static void PROC(byte_t* ap, int au, int av, size_t an, size_t am,
     UNUSED(an);    
 
     while(km--) {
-	int32_t i = *kp-1;
+	int32_t i = *((int32_t*)kp) - 1;
 	if ((i >= 0) && (i < (int)an)) {
 	    byte_t* cp1 = cp + i*cu;
 	    byte_t* ap1 = ap + i*au;
