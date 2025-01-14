@@ -1,3 +1,10 @@
+%%% @author Tony Rogvall <tony@rogvall.se>
+%%% @copyright (C) 2025, Tony Rogvall
+%%% @doc
+%%%    4 dimensional vector operations
+%%% @end
+%%% Created : 14 Jan 2025 by Tony Rogvall <tony@rogvall.se>
+
 -module(vecf).
 
 -export([new/1, new/3, new/4,
@@ -57,8 +64,8 @@ new(X,Y,Z) ->
 	 (A::[scalar]) -> vec4f().
 new(A) when is_number(A) ->
     new(A,A,A);
-%%new({X,Y,Z,W}) -> new(X,Y,Z,W);
-%%new([X,Y,Z,W]) -> new(X,Y,Z,W).
+new({X,Y,Z,W}) -> new(X,Y,Z,W);
+new([X,Y,Z,W]) -> new(X,Y,Z,W);
 new({X,Y,Z})   -> new(X,Y,Z);
 new([X,Y,Z])   -> new(X,Y,Z).
 

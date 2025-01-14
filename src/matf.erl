@@ -7,7 +7,8 @@
 
 -module(matf).
 
--export([zero/0, one/0, uniform/0]).
+-export([zero/0, one/0, id/0, uniform/0]).
+-export([new/1, new/9, new/16]).
 -export([transpose/1]).
 -export([transform/2]).
 
@@ -29,7 +30,6 @@
 -export([format/1,format/2,format/3]).
 
 
-
 -include_lib("matrix/include/matrix.hrl").
 
 -type mat44f() :: matrix:matrix(). %% 4x4 (?FTYPE)
@@ -45,23 +45,59 @@ zero() -> matrix:zero(4, 4, ?ELEM_TYPE).
 -spec one() -> mat44f().
 one() -> matrix:one(4, 4, ?ELEM_TYPE).
 
+-spec id() -> mat44f().
+id() -> matrix:identity(4, 4, ?ELEM_TYPE).
+
 -spec uniform() -> mat44f().
 uniform() -> matrix:uniform(4, 4, ?ELEM_TYPE).
 
+-spec new(Tuple3x3::tuple()|Tuple4x4::tuple()) -> mat44f().
+new({{A11,A12,A13},
+     {A21,A22,A23},
+     {A31,A32,A33}}) ->
+    new(A11,A12,A13,
+	A21,A22,A23,
+	A31,A32,A33);
+new({{A11,A12,A13,A14},
+     {A21,A22,A23,A24},
+     {A31,A32,A33,A34},
+     {A41,A42,A43,A44}}) ->
+    new(A11,A12,A13,A14,
+	A21,A22,A23,A24,
+	A31,A32,A33,A34,
+	A41,A42,A43,A44).
+
+new(A11,A12,A13,
+    A21,A22,A23,
+    A31,A32,A33) ->
+    matrix:create(4, 4, ?ELEM_TYPE,
+		  <<?BIN_ELEM(A11), ?BIN_ELEM(A12), ?BIN_ELEM(A13), ?BIN_ELEM(0),
+		    ?BIN_ELEM(A21), ?BIN_ELEM(A22), ?BIN_ELEM(A23), ?BIN_ELEM(0),
+		    ?BIN_ELEM(A31), ?BIN_ELEM(A32), ?BIN_ELEM(A33), ?BIN_ELEM(0),
+		    ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(1)>>).
+
+new(A11,A12,A13,A14,
+    A21,A22,A23,A24,
+    A31,A32,A33,A34,
+    A41,A42,A43,A44) ->
+    matrix:create(4, 4, ?ELEM_TYPE,
+		  <<?BIN_ELEM(A11), ?BIN_ELEM(A12), ?BIN_ELEM(A13), ?BIN_ELEM(A14),
+		    ?BIN_ELEM(A21), ?BIN_ELEM(A22), ?BIN_ELEM(A23), ?BIN_ELEM(A24),
+		    ?BIN_ELEM(A31), ?BIN_ELEM(A32), ?BIN_ELEM(A33), ?BIN_ELEM(A34),
+		    ?BIN_ELEM(A41), ?BIN_ELEM(A42), ?BIN_ELEM(A43), ?BIN_ELEM(A44)>>).
+
 -spec translate(Tx::number(),Ty::number(),Tz::number()) -> mat44f().
 translate(Tx,Ty,Tz) when is_number(Tx), is_number(Ty), is_number(Tz) ->
-    matrix:create(4, 4, ?ELEM_TYPE,
-		  <<?BIN_ELEM(1), ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(0),
-		    ?BIN_ELEM(0), ?BIN_ELEM(1), ?BIN_ELEM(0), ?BIN_ELEM(0),
-		    ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(1), ?BIN_ELEM(0),
-		    ?BIN_ELEM(Tx), ?BIN_ELEM(Ty), ?BIN_ELEM(Tz), ?BIN_ELEM(1)>>).
+    new(1, 0, 0, 0,
+	0, 1, 0, 0,
+	0, 0, 1, 1,
+	Tx, Ty, Tz, 1).
+
 -spec scale(Sx::number(),Sy::number(),Sz::number()) -> mat44f().
 scale(Sx,Sy,Sz) when is_number(Sx), is_number(Sy), is_number(Sz) ->
-    matrix:create(4, 4, ?ELEM_TYPE,
-		  <<?BIN_ELEM(Sx), ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(0),
-		    ?BIN_ELEM(0), ?BIN_ELEM(Sy), ?BIN_ELEM(0), ?BIN_ELEM(0),
-		    ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(Sz), ?BIN_ELEM(0),
-		    ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(1)>>).
+    new(Sx, 0, 0,
+	0, Sy, 0,
+	0, 0, Sz).
 
 %%
 %% create a matrix that rotate A0 degrees around the
@@ -70,7 +106,7 @@ scale(Sx,Sy,Sz) when is_number(Sx), is_number(Sy), is_number(Sz) ->
 %% (1,0,0) (0,1,0) (0,0,1) 
 %% 
 -spec rotate(Angle::number(),Ux::number(),Uy::number(),Uz::number()) ->
-		    mat44f().
+	  mat44f().
 rotate(A0,Ux,Uy,Uz) when is_number(Ux), is_number(Uy), is_number(Uz) ->
     A = A0*(math:pi()/180),
     CosA = math:cos(A),
@@ -82,16 +118,14 @@ rotate(A0,Ux,Uy,Uz) when is_number(Ux), is_number(Uy), is_number(Uz) ->
     UxSinA = Ux*SinA,
     UySinA = Uy*SinA,
     UzSinA = Uz*SinA,
-    matrix:create(4, 4, ?ELEM_TYPE,
-<<?BIN_ELEM(Ux*Ux*NCosA+CosA), ?BIN_ELEM(Uxy*NCosA-UzSinA), ?BIN_ELEM(Uxz*NCosA+UySinA), ?BIN_ELEM(0),
-  ?BIN_ELEM(Uxy*NCosA+UzSinA), ?BIN_ELEM(Uy*Uy*NCosA+CosA), ?BIN_ELEM(Uyz*NCosA-UxSinA), ?BIN_ELEM(0),
-  ?BIN_ELEM(Uxz*NCosA-UySinA), ?BIN_ELEM(Uyz*NCosA+UxSinA), ?BIN_ELEM(Uz*Uz*NCosA+CosA), ?BIN_ELEM(0),
-  ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(0), ?BIN_ELEM(1)>>).
+    new(Ux*Ux*NCosA+CosA, Uxy*NCosA-UzSinA, Uxz*NCosA+UySinA,
+	Uxy*NCosA+UzSinA, Uy*Uy*NCosA+CosA, Uyz*NCosA-UxSinA,
+	Uxz*NCosA-UySinA, Uyz*NCosA+UxSinA, Uz*Uz*NCosA+CosA).
 
 -spec transpose(A::mat44f()) -> mat44f().
 transpose(A) -> 
     matrix:transpose(A).
-     
+
 -spec add(A::mat44f(),B::mat44f()) -> mat44f().
 add(A, B) -> matrix:add(A, B).
 
@@ -149,27 +183,26 @@ invert(A) ->
     Det = S1*C6 - S2*C5 + S3*C4 + S4*C3 - S5*C2 + S6*C1,
     try 1/Det of 
 	Di ->
-	    matrix:from_list(
-	      [
-	       [ Di*( A22*C6 - A23*C5 + A24*C4),
-		 Di*(-A12*C6 + A13*C5 - A14*C4),
-		 Di*( A42*S6 - A43*S5 + A44*S4),
-		 Di*(-A32*S6 + A33*S5 - A44*S4) ],
-	       
-	       [ Di*(-A21*C6 + A23*C3 - A24*C2),
-		 Di*( A11*C6 - A13*C3 + A14*C2),
-		 Di*(-A41*S6 + A43*S3 - A44*S2),
-		 Di*( A31*S6 - A33*S3 + A34*S2) ],
-	       
-	       [ Di*( A21*C5 - A22*C3 + A24*C1),
-		 Di*(-A11*C5 + A12*C3 - A14*C1),
-		 Di*( A41*S5 - A42*S3 + A44*S1),
-		 Di*(-A31*S5 + A32*S3 - A34*S1) ],
-	       
-	       [ Di*(-A21*C4 + A22*C2 - A23*C1),
-		 Di*( A11*C4 - A12*C2 + A13*C1),
-		 Di*(-A41*S4 + A42*S2 - A43*S1),
-		 Di*( A31*S4 - A32*S2 + A33*S1) ] ], ?ELEM_TYPE)
+	    new(
+	      Di*( A22*C6 - A23*C5 + A24*C4),
+	      Di*(-A12*C6 + A13*C5 - A14*C4),
+	      Di*( A42*S6 - A43*S5 + A44*S4),
+	      Di*(-A32*S6 + A33*S5 - A44*S4),
+
+	      Di*(-A21*C6 + A23*C3 - A24*C2),
+	      Di*( A11*C6 - A13*C3 + A14*C2),
+	      Di*(-A41*S6 + A43*S3 - A44*S2),
+	      Di*( A31*S6 - A33*S3 + A34*S2),
+
+	      Di*( A21*C5 - A22*C3 + A24*C1),
+	      Di*(-A11*C5 + A12*C3 - A14*C1),
+	      Di*( A41*S5 - A42*S3 + A44*S1),
+	      Di*(-A31*S5 + A32*S3 - A34*S1),
+
+	      Di*(-A21*C4 + A22*C2 - A23*C1),
+	      Di*( A11*C4 - A12*C2 + A13*C1),
+	      Di*(-A41*S4 + A42*S2 - A43*S1),
+	      Di*( A31*S4 - A32*S2 + A33*S1))
     catch
 	error:badarith ->
 	    matrix:print(A),
@@ -187,7 +220,7 @@ invert33(A) ->
     M11 = A22*A33 - A32*A23,
     M12 = A12*A33 - A32*A13,
     M13 = A12*A23 - A22*A13,
-    
+
     M21 = A21*A33 - A31*A23,
     M22 = A11*A33 - A31*A13,
     M23 = A11*A23 - A21*A13,
@@ -214,7 +247,7 @@ invert33(A) ->
 	    matrix:print(A),
 	    error(det_zero)
     end.
-	
+
 -spec divide(A::mat44f(), B::mat44f()) -> mat44f().
 divide(A,B) ->
     multiply(A, invert(B)).
