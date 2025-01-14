@@ -23,8 +23,8 @@
 	 divide/2
 	]).
 
--export([translate/3,
-	 scale/3,
+-export([translate/3, translate/1,
+	 scale/3, scale/1,
 	 rotate/4]).
 -export([print/1,print/2,print/3]).
 -export([format/1,format/2,format/3]).
@@ -92,12 +92,20 @@ translate(Tx,Ty,Tz) when is_number(Tx), is_number(Ty), is_number(Tz) ->
 	0, 1, 0, 0,
 	0, 0, 1, 1,
 	Tx, Ty, Tz, 1).
+-spec translate(V::vecf()) -> mat44f().
+translate(V) when ?is_vector(V) ->
+    [Tx,Ty,Tz|_] = matrix:to_list(V),
+    translate(Tx, Ty, Tz).
 
 -spec scale(Sx::number(),Sy::number(),Sz::number()) -> mat44f().
 scale(Sx,Sy,Sz) when is_number(Sx), is_number(Sy), is_number(Sz) ->
     new(Sx, 0, 0,
 	0, Sy, 0,
 	0, 0, Sz).
+-spec scale(V::vecf()) -> mat44f().
+scale(V) when ?is_vector(V) ->
+    [Sx,Sy,Sz|_] = matrix:to_list(V),
+    translate(Sx, Sy, Sz).
 
 %%
 %% create a matrix that rotate A0 degrees around the

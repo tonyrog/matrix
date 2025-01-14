@@ -36,7 +36,7 @@
 zero() -> vecf:new(0, 0, 0, 0).
 
 -spec one() -> quatf().
-one() -> vecf:new(0, 0, 0, 1).
+one() -> vecf:new(1, 0, 0, 0).
 
 new(W) when is_number(W) ->
     vecf:new(0, 0, 0, W);
@@ -167,15 +167,15 @@ from_mat(M) ->
 %% Passive rotation of vector P by quaternion Q 
 %% Rotate P with respect to coordinate system defined by Q
 %% Assume P.w = 0!
--spec rotate(P::vecf(),Q::quatf()) -> vecf().
-rotate(P,Q)  ->
+-spec rotate(Q::quatf(),P::vecf()) -> vecf().
+rotate(Q, P)  ->
     multiply(multiply(Q,P),invert(Q)).
 
 %% Active rotation of vector P by quaternion Q 
 %% Coordinate system is rotated with respect to the point
 %% Assume P.w = 0!
--spec arotate(P::vecf(),Q::quatf()) -> vecf().
-arotate(P,Q)  ->
+-spec arotate(Q::quatf(),P::vecf()) -> vecf().
+arotate(Q,P)  ->
     multiply(multiply(invert(Q),new(P)),Q).
 
 %% Convert quaternion to euler angles
